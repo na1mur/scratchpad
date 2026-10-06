@@ -4,6 +4,8 @@ import { verifyAccessToken } from "@/lib/auth/jwt";
 import { ONBOARDING_PATHS, homeFor } from "@/lib/auth/routes";
 
 const GUEST_PAGES = new Set(["/", "/login", "/signup"]);
+// Open to everyone, logged in or not.
+const PUBLIC_PAGES = new Set(["/demo"]);
 
 // Verifies the access token only; never touches the database. Route handlers
 // and pages re-check the session themselves.
@@ -19,6 +21,8 @@ export async function proxy(req: NextRequest) {
       { status: 401 },
     );
   }
+
+  if (PUBLIC_PAGES.has(pathname)) return NextResponse.next();
 
   if (!session) {
     if (GUEST_PAGES.has(pathname)) return NextResponse.next();

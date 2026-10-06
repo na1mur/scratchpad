@@ -45,9 +45,14 @@ export default function Home() {
             Paste your pseudo-code and reasoning, or a photo of your notebook. DSA Buddy simulates it,
             animates every step, and explains what goes wrong without giving away the solution.
           </p>
-          <Link href="/signup" className={buttonVariants({ size: "lg" })}>
-            Get started
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/signup" className={buttonVariants({ size: "lg" })}>
+              Get started
+            </Link>
+            <Link href="/demo" className={buttonVariants({ size: "lg", variant: "outline" })}>
+              See a demo
+            </Link>
+          </div>
         </div>
         <div className="grid w-full gap-4 sm:grid-cols-3">
           {features.map((f) => (
