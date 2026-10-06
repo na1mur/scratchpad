@@ -7,7 +7,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -39,6 +39,12 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-viz-active: var(--viz-active);
+  --color-viz-compare: var(--viz-compare);
+  --color-viz-success: var(--viz-success);
+  --color-viz-error: var(--viz-error);
+  --color-viz-visited: var(--viz-visited);
+  --color-viz-pointer: var(--viz-pointer);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -81,6 +87,12 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --viz-active: oklch(0.62 0.19 255);
+  --viz-compare: oklch(0.75 0.16 75);
+  --viz-success: oklch(0.63 0.17 150);
+  --viz-error: oklch(0.6 0.22 25);
+  --viz-visited: oklch(0.6 0.12 300);
+  --viz-pointer: oklch(0.55 0.2 290);
 }
 
 .dark {
@@ -115,6 +127,12 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --viz-active: oklch(0.7 0.16 255);
+  --viz-compare: oklch(0.8 0.15 80);
+  --viz-success: oklch(0.72 0.17 150);
+  --viz-error: oklch(0.68 0.2 25);
+  --viz-visited: oklch(0.7 0.12 300);
+  --viz-pointer: oklch(0.72 0.17 290);
 }
 
 @layer base {
