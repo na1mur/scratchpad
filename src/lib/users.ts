@@ -30,6 +30,7 @@ export async function getPageUser(): Promise<UserDoc> {
   const session = await requirePageSession();
   await connectDB();
   const user = await User.findById(session.userId).lean();
-  if (!user) redirect("/login");
+  // A valid token for a deleted user: clear the session, or /login would bounce back here.
+  if (!user) redirect("/api/auth/logout");
   return user;
 }

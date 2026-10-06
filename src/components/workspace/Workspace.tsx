@@ -32,7 +32,9 @@ import { Player } from "@/components/viz/Player";
 import { ChatPanel } from "@/components/workspace/ChatPanel";
 import { CodeEditor } from "@/components/workspace/CodeEditor";
 import { ImageDropzone, type UploadedImage } from "@/components/workspace/ImageDropzone";
+import { ProblemActions } from "@/components/workspace/ProblemActions";
 import { ProgressStepper } from "@/components/workspace/ProgressStepper";
+import { UsageBadge } from "@/components/workspace/UsageBadge";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import type { AttemptDetail, AttemptSummary } from "@/lib/attempts";
 import { api, apiRaw, toApiError } from "@/lib/fetcher";
@@ -217,11 +219,14 @@ export function Workspace({
               </div>
             )}
           </div>
-          <CollapsibleTrigger
-            render={<Button variant="ghost" size="sm" className="shrink-0 data-panel-open:[&_svg]:rotate-180" />}
-          >
-            Statement <ChevronDownIcon className="transition-transform" />
-          </CollapsibleTrigger>
+          <div className="flex shrink-0 items-center">
+            <CollapsibleTrigger
+              render={<Button variant="ghost" size="sm" className="data-panel-open:[&_svg]:rotate-180" />}
+            >
+              Statement <ChevronDownIcon className="transition-transform" />
+            </CollapsibleTrigger>
+            <ProblemActions problem={problem} />
+          </div>
         </div>
         <CollapsibleContent>
           <pre className="mt-3 max-h-64 overflow-auto rounded-lg border bg-muted/30 p-3 font-sans text-sm whitespace-pre-wrap">
@@ -405,6 +410,7 @@ export function Workspace({
           <p className="min-w-0 flex-1 text-sm text-muted-foreground">
             Input: <span className="font-mono text-foreground">{spec.summary.testInputDescription}</span>
           </p>
+          <UsageBadge attempt={viewing} />
           {viewing.specVersions.length > 1 && (
             <Select
               items={viewing.specVersions.map((v) => ({ value: String(v.version), label: specLabel(v.version) }))}
