@@ -1,5 +1,7 @@
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
+import type { NextResponse } from "next/server";
+import { setAccessCookie } from "@/lib/auth/cookies";
 import { connectDB } from "@/lib/db";
 import {
   REFRESH_TTL_SECONDS,
@@ -94,4 +96,9 @@ export async function revokeByRawToken(rawToken: string | undefined) {
   const payload = await verifyRefreshToken(rawToken);
   if (!payload) return;
   await revokeFamily(payload.family);
+}
+
+/** Re-signs the access token after the user's onboarding step changes. */
+export async function refreshAccessCookie(res: NextResponse, userId: string, onboardingStep: OnboardingStep) {
+  setAccessCookie(res, await signAccessToken({ sub: userId, onboardingStep }));
 }
