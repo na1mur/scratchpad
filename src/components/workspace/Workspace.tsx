@@ -30,6 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DiagnosisPanel } from "@/components/viz/DiagnosisPanel";
 import { Player } from "@/components/viz/Player";
 import { CodeEditor } from "@/components/workspace/CodeEditor";
+import { ImageDropzone, type UploadedImage } from "@/components/workspace/ImageDropzone";
 import { ProgressStepper } from "@/components/workspace/ProgressStepper";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import type { AttemptDetail, AttemptSummary } from "@/lib/attempts";
@@ -57,11 +58,13 @@ export function Workspace({
   initialAttempts,
   initialAttempt,
   hasProvider,
+  uploadsEnabled,
 }: {
   problem: ProblemDetail;
   initialAttempts: AttemptSummary[];
   initialAttempt: AttemptDetail | null;
   hasProvider: boolean;
+  uploadsEnabled: boolean;
 }) {
   const router = useRouter();
   const isDesktop = useMediaQuery("(min-width: 1024px)", true);
@@ -296,6 +299,46 @@ export function Workspace({
             </Field>
           )}
         />
+        {mode === "new" && uploadsEnabled && (
+          <Controller
+            name="images"
+            control={form.control}
+            render={({ field }) => (
+              <Field>
+                <FieldLabel>Notebook photos</FieldLabel>
+                <ImageDropzone
+                  problemId={problem.id}
+                  images={(field.value ?? []) as UploadedImage[]}
+                  onChange={field.onChange}
+                  disabled={Boolean(running)}
+                  onExtracted={({ pseudoCode, notes }) => {
+                    const { pseudoCode: code, idea } = form.getValues();
+                    // Append rather than overwrite: never lose what the learner already typed.
+                    const join = (a: string | undefined, b: string) => (a?.trim() ? `${a.trimEnd()}\n\n${b}` : b);
+                    form.setValue("pseudoCode", join(code, pseudoCode), { shouldDirty: true });
+                    if (notes.trim()) form.setValue("idea", join(idea, notes), { shouldDirty: true });
+                  }}
+                />
+                <FieldDescription>The transcription lands in the editor above so you can fix anything misread.</FieldDescription>
+              </Field>
+            )}
+          />
+        )}
+        {mode === "view" && viewing && viewing.images.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <span className="text-sm font-medium">Notebook photos</span>
+            <div className="grid grid-cols-2 gap-2">
+              {viewing.images.map((img) =>
+                img.url ? (
+                  <a key={img.r2Key} href={img.url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-lg border">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- presigned R2 URL */}
+                    <img src={img.url} alt="Notebook page" className="aspect-[4/3] w-full object-cover" />
+                  </a>
+                ) : null,
+              )}
+            </div>
+          </div>
+        )}
         {mode === "new" &&
           (hasProvider ? (
             <Button type="submit" size="lg" disabled={Boolean(running)}>

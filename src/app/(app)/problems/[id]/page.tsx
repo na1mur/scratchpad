@@ -5,6 +5,7 @@ import { ApiError } from "@/lib/api";
 import { getOwnedAttempt, serializeAttempt, serializeAttemptSummary } from "@/lib/attempts";
 import { requirePageSession } from "@/lib/auth/session";
 import { getOwnedProblem, serializeProblem } from "@/lib/problems";
+import { r2Enabled } from "@/lib/r2";
 import { getPageUser } from "@/lib/users";
 import { Attempt } from "@/models/Attempt";
 
@@ -42,6 +43,7 @@ export default async function WorkspacePage({ params }: PageProps<"/problems/[id
       initialAttempts={summaries}
       initialAttempt={latest}
       hasProvider={Boolean(user.ai)}
+      uploadsEnabled={r2Enabled}
     />
   );
 }

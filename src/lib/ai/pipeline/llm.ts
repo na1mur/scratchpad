@@ -51,6 +51,8 @@ export async function generateStructured<S extends z.ZodType, R = z.infer<S>>(op
   meter: UsageMeter;
   check?: Check<z.infer<S>, R>;
   maxOutputTokens?: number;
+  /** Images sent alongside the prompt (vision calls). */
+  images?: { data: Uint8Array; mediaType: string }[];
 }): Promise<R> {
   let feedback = "";
   for (let attempt = 0; attempt <= MAX_FIX_RETRIES; attempt++) {
@@ -58,10 +60,23 @@ export async function generateStructured<S extends z.ZodType, R = z.infer<S>>(op
       ? `${opts.prompt}\n\n<previous_attempt_problems>\nYour previous answer was rejected:\n${feedback}\nFix every problem listed and answer again in full.\n</previous_attempt_problems>`
       : opts.prompt;
     try {
+      const input = opts.images?.length
+        ? {
+            messages: [
+              {
+                role: "user" as const,
+                content: [
+                  { type: "text" as const, text: prompt },
+                  ...opts.images.map((img) => ({ type: "file" as const, mediaType: img.mediaType, data: img.data })),
+                ],
+              },
+            ],
+          }
+        : { prompt };
       const result = await generateText({
         model: opts.model,
         instructions: opts.instructions,
-        prompt,
+        ...input,
         output: Output.object({ schema: opts.schema, name: opts.name }),
         maxOutputTokens: opts.maxOutputTokens,
         maxRetries: 1,
