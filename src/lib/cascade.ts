@@ -2,6 +2,7 @@ import "server-only";
 import type { Types } from "mongoose";
 import { deleteKeys } from "@/lib/r2";
 import { Attempt } from "@/models/Attempt";
+import { Message } from "@/models/Message";
 import { Problem } from "@/models/Problem";
 
 /** Deletes a problem and everything hanging off it, including R2 objects. */
@@ -12,6 +13,7 @@ export async function deleteProblemCascade(userId: string, problemId: Types.Obje
     ...(a.specR2Key ? [a.specR2Key] : []),
     ...(a.specVersions ?? []).map((v) => v.specR2Key).filter((k): k is string => Boolean(k)),
   ]);
+  await Message.deleteMany({ attemptId: { $in: attempts.map((a) => a._id) }, userId });
   await Attempt.deleteMany({ problemId, userId });
   await Problem.deleteOne({ _id: problemId, userId });
   // Best effort: orphaned objects are harmless and the DB is the source of truth.

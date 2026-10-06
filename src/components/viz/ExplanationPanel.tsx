@@ -11,6 +11,7 @@ export function ExplanationPanel({
   loops,
   iterationCounts,
   isBug,
+  action,
 }: {
   step: Step;
   index: number;
@@ -19,6 +20,8 @@ export function ExplanationPanel({
   /** loopId -> number of distinct iterations in the whole run. */
   iterationCounts: Map<string, number>;
   isBug: boolean;
+  /** Extra control shown at the end of the badge row. */
+  action?: React.ReactNode;
 }) {
   const loop = step.iteration ? loops.find((l) => l.id === step.iteration!.loopId) : undefined;
   return (
@@ -41,6 +44,7 @@ export function ExplanationPanel({
             <BugIcon className="size-3" /> Where it goes wrong
           </span>
         )}
+        {action && <span className="ml-auto">{action}</span>}
       </div>
       <AnimatePresence mode="wait" initial={false}>
         <motion.div

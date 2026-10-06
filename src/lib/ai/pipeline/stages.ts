@@ -66,14 +66,14 @@ function guidanceBlock(g?: Guidance) {
 
 // Stage 1 ---------------------------------------------------------------
 
-export function understand(ctx: Ctx): Promise<Understanding> {
+export function understand(ctx: Ctx, guidance?: Guidance): Promise<Understanding> {
   return generateStructured({
     model: ctx.model,
     meter: ctx.meter,
     name: "understanding",
     schema: understandingSchema,
     instructions: instr(ctx, UNDERSTAND_ROLE),
-    prompt: learnerContext(ctx.learner),
+    prompt: `${learnerContext(ctx.learner)}${guidanceBlock(guidance)}`,
     check: (u) => {
       try {
         const args = JSON.parse(u.chosenTestInput.argumentsJson);

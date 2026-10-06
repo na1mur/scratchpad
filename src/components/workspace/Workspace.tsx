@@ -29,6 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { DiagnosisPanel } from "@/components/viz/DiagnosisPanel";
 import { Player } from "@/components/viz/Player";
+import { ChatPanel } from "@/components/workspace/ChatPanel";
 import { CodeEditor } from "@/components/workspace/CodeEditor";
 import { ImageDropzone, type UploadedImage } from "@/components/workspace/ImageDropzone";
 import { ProgressStepper } from "@/components/workspace/ProgressStepper";
@@ -50,6 +51,9 @@ type StreamEvent =
 
 const IN_PROGRESS = new Set<AttemptStatus>(["queued", "extracting", "understanding", "tracing", "diagnosing"]);
 const NEW = "new";
+
+/** Attempts already use "v1, v2"; regenerated visualizations get their own wording. */
+const specLabel = (version: number) => (version === 1 ? "Original visualization" : `Regenerated #${version - 1}`);
 
 const dateFormat = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
@@ -80,6 +84,9 @@ export function Workspace({
   const [streaming, setStreaming] = useState(false);
   const [playerIndex, setPlayerIndex] = useState(0);
   const [tab, setTab] = useState("viz");
+  const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
+  const toggleStep = (id: string) =>
+    setSelectedSteps((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id].slice(-8)));
   const pollToken = useRef(0);
 
   const form = useForm<CreateAttemptInput>({
@@ -87,14 +94,16 @@ export function Workspace({
     defaultValues: { pseudoCode: initialAttempt?.pseudoCode ?? "", idea: initialAttempt?.idea ?? "", images: [] },
   });
 
-  async function loadAttempt(attemptId: string) {
+  async function loadAttempt(attemptId: string, specVersion?: number) {
     setLoadingAttempt(true);
     try {
-      const { attempt } = await api<{ attempt: AttemptDetail }>(`/api/attempts/${attemptId}`);
+      const query = specVersion ? `?specVersion=${specVersion}` : "";
+      const { attempt } = await api<{ attempt: AttemptDetail }>(`/api/attempts/${attemptId}${query}`);
       setViewing(attempt);
       setMode("view");
       setPlayerIndex(0);
       setTab("viz");
+      setSelectedSteps([]);
       setAttempts((list) => list.map((a) => (a.id === attempt.id ? { ...a, status: attempt.status, verdict: attempt.verdict } : a)));
       return attempt;
     } catch (err) {
@@ -396,6 +405,25 @@ export function Workspace({
           <p className="min-w-0 flex-1 text-sm text-muted-foreground">
             Input: <span className="font-mono text-foreground">{spec.summary.testInputDescription}</span>
           </p>
+          {viewing.specVersions.length > 1 && (
+            <Select
+              items={viewing.specVersions.map((v) => ({ value: String(v.version), label: specLabel(v.version) }))}
+              value={String(viewing.specVersion)}
+              onValueChange={(v) => v && void loadAttempt(viewing.id, Number(v))}
+            >
+              <SelectTrigger size="sm" aria-label="Visualization version">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {viewing.specVersions.map((v) => (
+                  <SelectItem key={v.version} value={String(v.version)}>
+                    {specLabel(v.version)}
+                    {v.version > 1 && <span className="text-muted-foreground"> · {v.reason}</span>}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
         <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
           <TabsList>
@@ -409,6 +437,8 @@ export function Workspace({
               index={playerIndex}
               onIndexChange={setPlayerIndex}
               layoutId={viewing.id}
+              selectedStepIds={new Set(selectedSteps)}
+              onToggleStepSelect={toggleStep}
             />
           </TabsContent>
           <TabsContent value="diagnosis" className="pt-3">
@@ -422,6 +452,16 @@ export function Workspace({
             />
           </TabsContent>
         </Tabs>
+        <ChatPanel
+          key={viewing.id}
+          attemptId={viewing.id}
+          specVersion={viewing.specVersion}
+          steps={spec.steps}
+          selectedStepIds={selectedSteps}
+          onToggleStep={toggleStep}
+          onClearSelection={() => setSelectedSteps([])}
+          onSpecVersion={(v) => void loadAttempt(viewing.id, v)}
+        />
       </div>
     );
   } else {

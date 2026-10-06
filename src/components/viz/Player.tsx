@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { LayoutGroup } from "motion/react";
 import {
+  CheckIcon,
   ChevronFirstIcon,
+  MessageCircleQuestionIcon,
   ChevronLastIcon,
   PauseIcon,
   PlayIcon,
@@ -152,6 +154,14 @@ export function Player({
           loops={prepared.loops}
           iterationCounts={iterationCounts}
           isBug={bugs.has(current)}
+          action={
+            onToggleStepSelect && (
+              <Button variant="ghost" size="xs" onClick={() => onToggleStepSelect(step.id)}>
+                {selectedStepIds?.has(step.id) ? <CheckIcon /> : <MessageCircleQuestionIcon />}
+                {selectedStepIds?.has(step.id) ? "Selected to ask" : "Ask about this step"}
+              </Button>
+            )
+          }
         />
 
         <div className="grid gap-3 @3xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
