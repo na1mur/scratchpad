@@ -6,7 +6,14 @@ import { cn } from "cn";
 /** Two spaces keep indented code readable in the narrow left panel. */
 const INDENT = "  ";
 
-/** Textarea with a line-number gutter that scrolls in sync. Tab inserts spaces. */
+const LINE_HEIGHT = 24; // leading-6
+// Vertical padding (py-2), the border, and room for a horizontal scrollbar so it never forces a vertical one.
+const CHROME = 16 + 2 + 14;
+
+/**
+ * Textarea with a line-number gutter that scrolls in sync. Tab inserts spaces.
+ * It grows with its content between `minLines` and `maxLines`, then scrolls.
+ */
 export function CodeEditor({
   id,
   value,
@@ -17,6 +24,8 @@ export function CodeEditor({
   invalid,
   maxLength,
   className,
+  minLines = 14,
+  maxLines = 32,
 }: {
   id?: string;
   value: string;
@@ -27,9 +36,12 @@ export function CodeEditor({
   invalid?: boolean;
   maxLength?: number;
   className?: string;
+  minLines?: number;
+  maxLines?: number;
 }) {
   const gutter = useRef<HTMLDivElement>(null);
   const lineCount = Math.max(1, value.split("\n").length);
+  const visibleLines = Math.min(maxLines, Math.max(minLines, lineCount));
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key !== "Tab" || readOnly || e.shiftKey) return;
@@ -43,6 +55,7 @@ export function CodeEditor({
 
   return (
     <div
+      style={{ height: visibleLines * LINE_HEIGHT + CHROME }}
       className={cn(
         "flex overflow-hidden rounded-lg border bg-muted/20 font-mono text-[13px] leading-6 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
         invalid && "border-destructive ring-3 ring-destructive/20",

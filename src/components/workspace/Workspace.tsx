@@ -435,7 +435,6 @@ export function Workspace({
                 invalid={fieldState.invalid}
                 maxLength={MAX_TEXT}
                 placeholder={"left = 0, right = n - 1\nwhile left < right:\n  ..."}
-                className="h-64"
               />
               {mode === "new" && uploadsEnabled && notebook.thumbnails}
               <FieldError errors={[fieldState.error]} />
@@ -463,7 +462,8 @@ export function Workspace({
                 value={mode === "view" && viewing ? viewing.idea : field.value}
                 readOnly={readOnly}
                 maxLength={MAX_TEXT}
-                rows={4}
+                rows={6}
+                className="min-h-36"
                 placeholder="Why do you think this works? What are you relying on?"
                 aria-invalid={fieldState.invalid}
               />
@@ -638,7 +638,9 @@ export function Workspace({
   }
 
   return (
-    <ResizablePanelGroup orientation="horizontal" className="h-[calc(100dvh-3.5rem)]">
+    // Inline style, because the library's own inline `height: 100%` would beat a height class. The extra 1px is
+    // the header's bottom border.
+    <ResizablePanelGroup orientation="horizontal" style={{ height: "calc(100dvh - 3.5rem - 1px)" }}>
       <ResizablePanel defaultSize="38%" minSize="25%" className={cn("overflow-y-auto")}>
         {left}
       </ResizablePanel>
