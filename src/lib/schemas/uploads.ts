@@ -9,13 +9,9 @@ export const EXTENSIONS: Record<(typeof IMAGE_MIME_TYPES)[number], string> = {
   "image/webp": "webp",
 };
 
-const problemId = z.string().regex(/^[a-f\d]{24}$/i, "Invalid problem id");
+export const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
-export const presignSchema = z.object({
-  problemId,
-  mimeType: z.enum(IMAGE_MIME_TYPES, { error: "Only PNG, JPG or WebP images" }),
-  size: z.number().int().positive().max(MAX_IMAGE_BYTES, "Images must be 8 MB or smaller"),
-});
+const problemId = z.string().regex(/^[a-f\d]{24}$/i, "Invalid problem id");
 
 export const extractSchema = z.object({
   problemId,

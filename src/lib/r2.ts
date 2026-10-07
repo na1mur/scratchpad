@@ -18,7 +18,7 @@ function r2(): S3Client {
     region: "auto",
     endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
     credentials: { accessKeyId: env.R2_ACCESS_KEY_ID, secretAccessKey: env.R2_SECRET_ACCESS_KEY },
-    // Default checksum query params on presigned PUTs break browser uploads to R2.
+    // R2 doesn't support the SDK's default flexible checksums, so only send them when an operation requires one.
     requestChecksumCalculation: "WHEN_REQUIRED",
     responseChecksumValidation: "WHEN_REQUIRED",
   });
@@ -27,11 +27,15 @@ function r2(): S3Client {
 
 export { r2Enabled };
 
-export function presignPut(key: string, contentType: string, contentLength: number): Promise<string> {
-  return getSignedUrl(
-    r2(),
-    new PutObjectCommand({ Bucket: env.R2_BUCKET, Key: key, ContentType: contentType, ContentLength: contentLength }),
-    { expiresIn: 5 * 60 },
+/** Uploads from the server, so the browser never talks to R2 and the bucket needs no CORS rules. */
+export async function putObject(
+  key: string,
+  body: Uint8Array,
+  contentType: string,
+  cacheControl = "public, max-age=31536000, immutable",
+): Promise<void> {
+  await r2().send(
+    new PutObjectCommand({ Bucket: env.R2_BUCKET, Key: key, Body: body, ContentType: contentType, CacheControl: cacheControl }),
   );
 }
 

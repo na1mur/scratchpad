@@ -18,7 +18,7 @@ export type UploadedImage = {
 const MAX_IMAGES = 4;
 
 /**
- * Notebook photos: uploaded straight to R2 with a presigned PUT, then
+ * Notebook photos: posted to our API, which stores them in R2, then
  * transcribed on request. The transcription is handed back to the editor
  * for review; nothing is submitted automatically.
  */
@@ -55,12 +55,10 @@ export function ImageDropzone({
       }
       setUploading((n) => n + 1);
       try {
-        const { key, uploadUrl, headers } = await api<{ key: string; uploadUrl: string; headers: Record<string, string> }>(
-          "/api/uploads/presign",
-          { method: "POST", body: { problemId, mimeType: file.type, size: file.size } },
-        );
-        const put = await fetch(uploadUrl, { method: "PUT", headers, body: file });
-        if (!put.ok) throw new Error(`Upload failed (${put.status}).`);
+        const form = new FormData();
+        form.append("file", file);
+        form.append("problemId", problemId);
+        const { key } = await api<{ key: string }>("/api/uploads/file", { method: "POST", body: form });
         setPreviews((p) => ({ ...p, [key]: URL.createObjectURL(file) }));
         next = [...next, { r2Key: key, mimeType: file.type as UploadedImage["mimeType"] }];
         onChange(next);

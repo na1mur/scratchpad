@@ -410,7 +410,7 @@ export function Workspace({
               {viewing.images.map((img) =>
                 img.url ? (
                   <a key={img.r2Key} href={img.url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-lg border">
-                    {/* eslint-disable-next-line @next/next/no-img-element -- presigned R2 URL */}
+                    {/* eslint-disable-next-line @next/next/no-img-element -- public R2 URL */}
                     <img src={img.url} alt="Notebook page" className="aspect-[4/3] w-full object-cover" />
                   </a>
                 ) : null,
