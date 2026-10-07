@@ -2,7 +2,7 @@
 
 ### 1. Product summary
 
-A web app where a learner pastes pseudo-code and their reasoning for a DSA problem, or uploads a photo of their notebook. An AI agent works out what they're trying to do, simulates their approach on a small input, and shows a step-by-step animated visualization of execution, including each loop iteration. It then explains why the approach fails, if it does. The AI never gives the solution. It can only point out where the reasoning breaks and nudge how to think about the problem. Users bring their own API key (OpenAI, Anthropic, or OpenRouter).
+A web app where a learner pastes pseudo-code and their reasoning for a DSA problem, or uploads a photo of their notebook. An AI agent works out what they're trying to do, simulates their approach on a small input, and shows a step-by-step animated visualization of execution, including each loop iteration. It then explains why the approach fails, if it does. The AI never gives the solution. It can only point out where the reasoning breaks and nudge how to think about the problem. Users bring their own API key (OpenAI, Anthropic, Google, xAI, and a dozen more; see `src/lib/providers.ts`).
 
 ### 2. Tech stack
 
@@ -87,7 +87,7 @@ src/
 
 **Step 2: AI provider.** The form (React Hook Form + Zod) has these fields:
 
-- Provider dropdown: OpenAI, Anthropic, or OpenRouter.
+- Provider dropdown: every provider in `src/lib/providers.ts`.
 - API key input (password type).
 - Model dropdown, enabled only after the key is entered.
 

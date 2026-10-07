@@ -1,8 +1,20 @@
 import "server-only";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createBaseten } from "@ai-sdk/baseten";
+import { createCerebras } from "@ai-sdk/cerebras";
+import { createCohere } from "@ai-sdk/cohere";
+import { createDeepInfra } from "@ai-sdk/deepinfra";
+import { createDeepSeek } from "@ai-sdk/deepseek";
+import { createFireworks } from "@ai-sdk/fireworks";
+import { createGoogle } from "@ai-sdk/google";
+import { createGroq } from "@ai-sdk/groq";
+import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createPerplexity } from "@ai-sdk/perplexity";
+import { createTogetherAI } from "@ai-sdk/togetherai";
+import { createXai } from "@ai-sdk/xai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import type { LanguageModel } from "ai";
+import { createGateway, type LanguageModel } from "ai";
 import { ApiError } from "@/lib/api";
 import { decrypt } from "@/lib/crypto";
 import type { ProviderId } from "@/lib/providers";
@@ -14,6 +26,32 @@ export function createModel(provider: ProviderId, apiKey: string, model: string)
       return createOpenAI({ apiKey })(model);
     case "anthropic":
       return createAnthropic({ apiKey })(model);
+    case "google":
+      return createGoogle({ apiKey })(model);
+    case "xai":
+      return createXai({ apiKey })(model);
+    case "mistral":
+      return createMistral({ apiKey })(model);
+    case "deepseek":
+      return createDeepSeek({ apiKey })(model);
+    case "groq":
+      return createGroq({ apiKey })(model);
+    case "cerebras":
+      return createCerebras({ apiKey })(model);
+    case "togetherai":
+      return createTogetherAI({ apiKey })(model);
+    case "fireworks":
+      return createFireworks({ apiKey })(model);
+    case "deepinfra":
+      return createDeepInfra({ apiKey })(model);
+    case "cohere":
+      return createCohere({ apiKey })(model);
+    case "perplexity":
+      return createPerplexity({ apiKey })(model);
+    case "baseten":
+      return createBaseten({ apiKey })(model);
+    case "gateway":
+      return createGateway({ apiKey })(model);
     case "openrouter":
       return createOpenRouter({ apiKey, appName: "Scratchpad" })(model);
   }

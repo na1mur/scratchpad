@@ -24,11 +24,31 @@ type TestState = { status: "idle" | "testing" | "ok" | "error"; message?: string
 
 const providerItems = PROVIDERS.map((p) => ({ value: p, label: PROVIDER_LABELS[p] }));
 
+// Only prefixes that are known to be stable; the rest just get a generic prompt.
 const KEY_HINTS: Record<ProviderId, string> = {
   openai: "sk-…",
   anthropic: "sk-ant-…",
+  google: "AIza…",
+  xai: "xai-…",
+  mistral: "API key",
+  deepseek: "sk-…",
+  groq: "gsk_…",
+  cerebras: "csk-…",
+  togetherai: "API key",
+  fireworks: "fw_…",
+  deepinfra: "API key",
+  cohere: "API key",
+  perplexity: "pplx-…",
+  baseten: "API key",
+  gateway: "API key",
   openrouter: "sk-or-…",
 };
+
+/** Placeholder for a saved key: its prefix when the hint has one, then the last 4. */
+function savedKeyHint(provider: ProviderId, last4: string) {
+  const hint = KEY_HINTS[provider];
+  return `${hint.includes("…") ? hint.replace("…", "") : ""}…${last4} (saved)`;
+}
 
 function defaults(ai: PublicUser["ai"]): ProviderFormValues {
   const vision = ai?.vision;
@@ -183,7 +203,7 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
 
   const mainModels = main.listing?.models ?? [];
   const keyPlaceholder =
-    canUseStoredMain && ai ? `${KEY_HINTS[v.provider ?? "openai"].replace("…", "")}…${ai.keyLast4} (saved)` : KEY_HINTS[v.provider ?? "openai"];
+    canUseStoredMain && ai ? savedKeyHint(v.provider ?? "openai", ai.keyLast4) : KEY_HINTS[v.provider ?? "openai"];
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-8" noValidate>
