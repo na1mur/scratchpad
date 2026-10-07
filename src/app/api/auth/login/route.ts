@@ -6,13 +6,13 @@ import { homeFor } from "@/lib/auth/routes";
 import { issueTokenPair } from "@/lib/auth/tokens";
 import { connectDB } from "@/lib/db";
 import { rateLimits } from "@/lib/rateLimit";
-import { credentialsSchema } from "@/lib/schemas/auth";
+import { loginSchema } from "@/lib/schemas/auth";
 import { publicUser } from "@/lib/serializers";
 import { User } from "@/models/User";
 
 export function POST(req: NextRequest) {
   return handle(req, async () => {
-    const { email, password } = await parseJson(req, credentialsSchema);
+    const { email, password } = await parseJson(req, loginSchema);
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
     const limit = await rateLimits.login().consume(`${ip}:${email}`);
     if (!limit.ok) {

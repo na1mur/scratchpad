@@ -1,12 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { CheckIcon, Loader2Icon } from "lucide-react";
+import { CheckIcon } from "lucide-react";
 import { cn } from "cn";
-import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/loading-button";
 import { FieldError } from "@/components/ui/field";
 import { api } from "@/lib/fetcher";
 import { LANGUAGES, type LanguageId } from "@/lib/languages";
@@ -22,6 +23,7 @@ export function LanguageForm({
   onboarding?: boolean;
 }) {
   const router = useRouter();
+  const [redirecting, setRedirecting] = useState(false);
   const form = useForm<LanguageInput>({
     resolver: zodResolver(languageSchema),
     defaultValues: { language: initial ?? undefined },
@@ -33,10 +35,11 @@ export function LanguageForm({
         method: "PATCH",
         body: values,
       });
+      toast.success("Language saved");
       if (onboarding) {
+        setRedirecting(true);
         router.push(redirectTo);
       } else {
-        toast.success("Language saved");
         form.reset(values);
       }
       router.refresh();
@@ -45,8 +48,11 @@ export function LanguageForm({
     }
   }
 
+  const busy = form.formState.isSubmitting || redirecting;
+
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-6">
+      <fieldset disabled={busy} className="contents">
       <Controller
         name="language"
         control={form.control}
@@ -63,7 +69,7 @@ export function LanguageForm({
                     aria-checked={selected}
                     onClick={() => field.onChange(lang.id)}
                     className={cn(
-                      "flex items-center justify-between rounded-lg border px-4 py-3 text-left text-sm transition-colors hover:bg-muted",
+                      "flex items-center justify-between rounded-lg border px-4 py-3 text-left text-sm transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60",
                       selected && "border-primary bg-muted",
                       lang.id === "pseudocode" && "sm:col-span-2",
                     )}
@@ -78,14 +84,15 @@ export function LanguageForm({
           </div>
         )}
       />
-      <Button
+      </fieldset>
+      <LoadingButton
         type="submit"
         className="self-end"
-        disabled={form.formState.isSubmitting || (!onboarding && !form.formState.isDirty)}
+        loading={busy}
+        disabled={!onboarding && !form.formState.isDirty}
       >
-        {form.formState.isSubmitting && <Loader2Icon className="animate-spin" />}
-        {submitLabel}
-      </Button>
+        {busy ? "Saving…" : submitLabel}
+      </LoadingButton>
     </form>
   );
 }

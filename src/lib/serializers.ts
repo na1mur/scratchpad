@@ -6,6 +6,7 @@ export function publicUser(user: UserDoc) {
   return {
     id: String(user._id),
     email: user.email,
+    name: user.name ?? null,
     preferredLanguage: user.preferredLanguage ?? null,
     onboardingStep: user.onboardingStep,
     ai: user.ai

@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { CheckCircle2Icon, Loader2Icon, PlugZapIcon, RefreshCwIcon, XCircleIcon } from "lucide-react";
 import { cn } from "cn";
+import { LoadingButton } from "@/components/loading-button";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -58,6 +59,8 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
   const [main, setMain] = useState<LoadState>({ status: ai ? "loading" : "idle" });
   const [vision, setVision] = useState<LoadState>({ status: initialVisionCustom ? "loading" : "idle" });
   const [test, setTest] = useState<TestState>({ status: "idle" });
+  const [redirecting, setRedirecting] = useState(false);
+  const busy = form.formState.isSubmitting || redirecting;
 
   const canUseStoredMain = ai?.provider === v.provider;
   const canUseStoredVision =
@@ -93,7 +96,9 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
   async function loadModels(target: "main" | "vision") {
     const set = target === "main" ? setMain : setVision;
     set({ status: "loading" });
-    set((await requestModels(target)) ?? { status: "idle" });
+    const result = await requestModels(target);
+    if (result?.status === "error") toast.error(result.error);
+    set(result ?? { status: "idle" });
   }
 
   // Settings page: the key is already stored, so list models straight away.
@@ -117,9 +122,13 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
         method: "POST",
         body: { provider: values.provider, apiKey: values.apiKey || undefined, model: values.model },
       });
-      setTest({ status: "ok", message: `Connected in ${(latencyMs / 1000).toFixed(1)}s` });
+      const message = `Connected in ${(latencyMs / 1000).toFixed(1)}s`;
+      setTest({ status: "ok", message });
+      toast.success(`Connection works. ${message}.`);
     } catch (err) {
-      setTest({ status: "error", message: err instanceof Error ? err.message : "Connection failed." });
+      const message = err instanceof Error ? err.message : "Connection failed.";
+      setTest({ status: "error", message });
+      toast.error(message);
     }
   }
 
@@ -144,6 +153,8 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
         body: payload,
       });
       if (onboarding) {
+        setRedirecting(true);
+        toast.success("You're all set! Add your first problem.");
         router.push(redirectTo);
       } else {
         toast.success("AI provider saved");
@@ -161,6 +172,7 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-8" noValidate>
+      <fieldset disabled={busy} className="contents">
       <FieldGroup>
         <Controller
           name="provider"
@@ -272,15 +284,16 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
         />
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button
+          <LoadingButton
             type="button"
             variant="secondary"
             onClick={testConnection}
-            disabled={test.status === "testing" || !v.model}
+            loading={test.status === "testing"}
+            disabled={!v.model || busy}
+            icon={<PlugZapIcon />}
           >
-            {test.status === "testing" ? <Loader2Icon className="animate-spin" /> : <PlugZapIcon />}
-            Test connection
-          </Button>
+            {test.status === "testing" ? "Testing…" : "Test connection"}
+          </LoadingButton>
           {test.status === "ok" && (
             <span className="flex items-center gap-1.5 text-sm text-viz-success">
               <CheckCircle2Icon className="size-4" /> {test.message}
@@ -412,10 +425,10 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
         )}
       </FieldSet>
 
-      <Button type="submit" className="self-end" disabled={form.formState.isSubmitting}>
-        {form.formState.isSubmitting && <Loader2Icon className="animate-spin" />}
-        {onboarding ? "Finish setup" : "Save provider"}
-      </Button>
+      </fieldset>
+      <LoadingButton type="submit" className="self-end" loading={busy}>
+        {busy ? "Saving…" : onboarding ? "Finish setup" : "Save provider"}
+      </LoadingButton>
     </form>
   );
 }

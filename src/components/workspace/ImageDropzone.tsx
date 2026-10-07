@@ -64,6 +64,7 @@ export function ImageDropzone({
         setPreviews((p) => ({ ...p, [key]: URL.createObjectURL(file) }));
         next = [...next, { r2Key: key, mimeType: file.type as UploadedImage["mimeType"] }];
         onChange(next);
+        toast.success("Photo uploaded. Press Extract text to transcribe it.");
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Upload failed.");
       } finally {

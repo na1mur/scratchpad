@@ -40,6 +40,8 @@ const aiSchema = new Schema(
 const userSchema = new Schema(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    // Optional only because accounts created before names were collected lack one.
+    name: { type: String, required: false, trim: true, maxlength: 60 },
     passwordHash: { type: String, required: true },
     preferredLanguage: { type: String, enum: LANGUAGES.map((l) => l.id), required: false },
     onboardingStep: { type: String, enum: ONBOARDING_STEPS, default: "language", required: true },

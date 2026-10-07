@@ -28,11 +28,8 @@ export default function Home() {
         <span className="font-semibold tracking-tight">DSA Buddy</span>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <Link href="/login" className={buttonVariants({ variant: "ghost" })}>
+          <Link href="/login" className={buttonVariants({ variant: "outline" })}>
             Log in
-          </Link>
-          <Link href="/signup" className={buttonVariants()}>
-            Sign up
           </Link>
         </div>
       </header>

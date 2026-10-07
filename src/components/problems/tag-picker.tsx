@@ -32,7 +32,7 @@ export function TagPicker({
             aria-pressed={on}
             onClick={() => toggle(tag)}
             className={cn(
-              "flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors",
+              "flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50",
               on ? "border-primary bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
             )}
           >

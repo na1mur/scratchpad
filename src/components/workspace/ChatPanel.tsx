@@ -74,6 +74,7 @@ export function ChatPanel({
         else if (e.type === "regenerating") setPending((p) => (p ? { ...p, regenerating: e.reason } : p));
         else if (e.type === "spec") {
           setPending((p) => (p ? { ...p, regenerating: null } : p));
+          toast.success("New visualization ready.");
           onSpecVersion(e.specVersion);
         } else if (e.type === "done") setMessages((m) => [...(m ?? []), e.message]);
         else if (e.type === "error") {

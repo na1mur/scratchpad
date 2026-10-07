@@ -1,12 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ArrowRightIcon, Loader2Icon } from "lucide-react";
+import { ArrowRightIcon } from "lucide-react";
 import { TagPicker } from "@/components/problems/tag-picker";
-import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/loading-button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +18,7 @@ import type { Tag } from "@/lib/tags";
 
 export function NewProblemForm() {
   const router = useRouter();
+  const [redirecting, setRedirecting] = useState(false);
   const form = useForm<CreateProblemInput>({
     resolver: zodResolver(createProblemSchema),
     defaultValues: { title: "", statement: "", tags: [] },
@@ -25,14 +27,19 @@ export function NewProblemForm() {
   async function onSubmit(values: CreateProblemInput) {
     try {
       const { problem } = await api<{ problem: ProblemDetail }>("/api/problems", { method: "POST", body: values });
+      setRedirecting(true);
+      toast.success("Problem created. Now write your approach.");
       router.push(`/problems/${problem.id}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't create the problem.");
     }
   }
 
+  const busy = form.formState.isSubmitting || redirecting;
+
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="flex flex-col gap-6">
+      <fieldset disabled={busy} className="contents">
       <FieldGroup>
         <Controller
           name="statement"
@@ -91,10 +98,10 @@ export function NewProblemForm() {
           )}
         />
       </FieldGroup>
-      <Button type="submit" className="self-end" disabled={form.formState.isSubmitting}>
-        {form.formState.isSubmitting ? <Loader2Icon className="animate-spin" /> : null}
-        Continue <ArrowRightIcon />
-      </Button>
+      </fieldset>
+      <LoadingButton type="submit" className="self-end" loading={busy}>
+        {busy ? "Creating…" : "Continue"} {!busy && <ArrowRightIcon />}
+      </LoadingButton>
     </form>
   );
 }

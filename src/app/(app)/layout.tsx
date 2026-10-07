@@ -5,7 +5,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await getPageUser();
   return (
     <div className="flex flex-1 flex-col">
-      <AppHeader email={user.email} />
+      <AppHeader email={user.email} name={user.name ?? null} />
       {children}
     </div>
   );

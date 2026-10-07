@@ -1,43 +1,60 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { Loader2Icon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/loading-button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { api, ApiClientError } from "@/lib/fetcher";
-import { credentialsSchema, safeNextPath, type Credentials } from "@/lib/schemas/auth";
+import { loginSchema, safeNextPath, signupSchema, type SignupInput } from "@/lib/schemas/auth";
 
 type Mode = "login" | "signup";
 
-const copy: Record<Mode, { title: string; description: string; submit: string }> = {
-  login: { title: "Welcome back", description: "Log in to keep debugging your ideas.", submit: "Log in" },
+const copy: Record<Mode, { title: string; description: string; submit: string; pending: string }> = {
+  login: {
+    title: "Welcome back",
+    description: "Log in to keep debugging your ideas.",
+    submit: "Log in",
+    pending: "Logging in…",
+  },
   signup: {
     title: "Create your account",
     description: "Bring your own API key. Your reasoning, visualized.",
     submit: "Sign up",
+    pending: "Creating your account…",
   },
 };
+
+type AuthResponse = { redirectTo: string; user: { name: string | null } };
 
 export function AuthForm({ mode }: { mode: Mode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const form = useForm<Credentials>({
-    resolver: zodResolver(credentialsSchema),
-    defaultValues: { email: "", password: "" },
+  // Stays true after success so the form stays locked while the next page loads.
+  const [redirecting, setRedirecting] = useState(false);
+  const form = useForm<SignupInput>({
+    resolver: zodResolver(mode === "signup" ? signupSchema : (loginSchema as unknown as typeof signupSchema)),
+    defaultValues: { name: "", email: "", password: "" },
   });
+  const busy = form.formState.isSubmitting || redirecting;
 
-  async function onSubmit(values: Credentials) {
+  async function onSubmit(values: SignupInput) {
     try {
-      const { redirectTo } = await api<{ redirectTo: string }>(`/api/auth/${mode}`, {
-        method: "POST",
-        body: values,
-      });
+      const { redirectTo, user } = await api<AuthResponse>(`/api/auth/${mode}`, { method: "POST", body: values });
+      setRedirecting(true);
+      const first = user.name?.split(/\s+/)[0];
+      toast.success(
+        mode === "signup"
+          ? `Welcome, ${first}! Let's get you set up.`
+          : first
+            ? `Welcome back, ${first}.`
+            : "Welcome back.",
+      );
       // `next` only matters once onboarding is done; otherwise onboarding wins.
       const next = searchParams.get("next");
       router.replace(redirectTo === "/problems" ? safeNextPath(next) : redirectTo);
@@ -45,13 +62,14 @@ export function AuthForm({ mode }: { mode: Mode }) {
     } catch (err) {
       if (err instanceof ApiClientError && err.code === "email_taken") {
         form.setError("email", { message: err.message });
+        toast.error(err.message);
       } else {
         toast.error(err instanceof Error ? err.message : "Something went wrong.");
       }
     }
   }
 
-  const { title, description, submit } = copy[mode];
+  const { title, description, submit, pending } = copy[mode];
   return (
     <Card className="w-full max-w-sm">
       <CardHeader>
@@ -60,48 +78,70 @@ export function AuthForm({ mode }: { mode: Mode }) {
       </CardHeader>
       <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
         <CardContent>
-          <FieldGroup>
-            <Controller
-              name="email"
-              control={form.control}
-              render={({ field, fieldState }) => (
-                <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="email">Email</FieldLabel>
-                  <Input
-                    {...field}
-                    id="email"
-                    type="email"
-                    autoComplete="email"
-                    aria-invalid={fieldState.invalid}
-                  />
-                  <FieldError errors={[fieldState.error]} />
-                </Field>
+          <fieldset disabled={busy} className="contents">
+            <FieldGroup>
+              {mode === "signup" && (
+                <Controller
+                  name="name"
+                  control={form.control}
+                  render={({ field, fieldState }) => (
+                    <Field data-invalid={fieldState.invalid}>
+                      <FieldLabel htmlFor="name">Name</FieldLabel>
+                      <Input
+                        {...field}
+                        id="name"
+                        autoComplete="name"
+                        placeholder="Ada Lovelace"
+                        aria-invalid={fieldState.invalid}
+                      />
+                      <FieldError errors={[fieldState.error]} />
+                    </Field>
+                  )}
+                />
               )}
-            />
-            <Controller
-              name="password"
-              control={form.control}
-              render={({ field, fieldState }) => (
-                <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="password">Password</FieldLabel>
-                  <Input
-                    {...field}
-                    id="password"
-                    type="password"
-                    autoComplete={mode === "login" ? "current-password" : "new-password"}
-                    aria-invalid={fieldState.invalid}
-                  />
-                  <FieldError errors={[fieldState.error]} />
-                </Field>
-              )}
-            />
-          </FieldGroup>
+              <Controller
+                name="email"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor="email">Email</FieldLabel>
+                    <Input
+                      {...field}
+                      id="email"
+                      type="email"
+                      autoComplete="email"
+                      placeholder="you@example.com"
+                      aria-invalid={fieldState.invalid}
+                    />
+                    <FieldError errors={[fieldState.error]} />
+                  </Field>
+                )}
+              />
+              <Controller
+                name="password"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor="password">Password</FieldLabel>
+                    <Input
+                      {...field}
+                      id="password"
+                      type="password"
+                      autoComplete={mode === "login" ? "current-password" : "new-password"}
+                      placeholder={mode === "login" ? "Your password" : "At least 8 characters"}
+                      aria-invalid={fieldState.invalid}
+                    />
+                    <FieldError errors={[fieldState.error]} />
+                  </Field>
+                )}
+              />
+            </FieldGroup>
+          </fieldset>
         </CardContent>
         <CardFooter className="mt-6 flex flex-col gap-3">
-          <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting && <Loader2Icon className="animate-spin" />}
-            {submit}
-          </Button>
+          <LoadingButton type="submit" className="w-full" loading={busy}>
+            {busy ? pending : submit}
+          </LoadingButton>
           <p className="text-sm text-muted-foreground">
             {mode === "login" ? (
               <>

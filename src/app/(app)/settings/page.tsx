@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { LogoutButton } from "@/components/logout-button";
 import { LanguageForm } from "@/components/settings/language-form";
+import { ProfileForm } from "@/components/settings/profile-form";
 import { ProviderForm } from "@/components/settings/provider-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { LanguageId } from "@/lib/languages";
@@ -39,8 +40,11 @@ export default async function SettingsPage() {
           <CardTitle>Account</CardTitle>
           <CardDescription>Signed in as {user.email}</CardDescription>
         </CardHeader>
-        <CardContent>
-          <LogoutButton withLabel />
+        <CardContent className="flex flex-col gap-4">
+          <ProfileForm name={user.name} />
+          <div>
+            <LogoutButton withLabel />
+          </div>
         </CardContent>
       </Card>
     </main>

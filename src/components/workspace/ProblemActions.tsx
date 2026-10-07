@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { Loader2Icon, MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { TagPicker } from "@/components/problems/tag-picker";
+import { LoadingButton } from "@/components/loading-button";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -79,13 +80,14 @@ export function ProblemActions({ problem }: { problem: ProblemDetail }) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Dialog open={dialog === "edit"} onOpenChange={(open) => !open && setDialog(null)}>
+      <Dialog open={dialog === "edit"} onOpenChange={(open) => !open && !form.formState.isSubmitting && setDialog(null)}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit problem</DialogTitle>
             <DialogDescription>Existing attempts keep the analysis they already have.</DialogDescription>
           </DialogHeader>
           <form id="edit-problem" onSubmit={form.handleSubmit(onSave)} noValidate>
+            <fieldset disabled={form.formState.isSubmitting} className="contents">
             <FieldGroup>
               <Controller
                 name="title"
@@ -127,20 +129,20 @@ export function ProblemActions({ problem }: { problem: ProblemDetail }) {
                 )}
               />
             </FieldGroup>
+            </fieldset>
           </form>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialog(null)}>
+            <Button variant="outline" onClick={() => setDialog(null)} disabled={form.formState.isSubmitting}>
               Cancel
             </Button>
-            <Button type="submit" form="edit-problem" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting && <Loader2Icon className="animate-spin" />}
-              Save
-            </Button>
+            <LoadingButton type="submit" form="edit-problem" loading={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? "Saving…" : "Save"}
+            </LoadingButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={dialog === "delete"} onOpenChange={(open) => !open && setDialog(null)}>
+      <Dialog open={dialog === "delete"} onOpenChange={(open) => !open && !deleting && setDialog(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete &ldquo;{problem.title}&rdquo;?</DialogTitle>
@@ -150,13 +152,12 @@ export function ProblemActions({ problem }: { problem: ProblemDetail }) {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialog(null)}>
+            <Button variant="outline" onClick={() => setDialog(null)} disabled={deleting}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={onDelete} disabled={deleting}>
-              {deleting && <Loader2Icon className="animate-spin" />}
-              Delete
-            </Button>
+            <LoadingButton variant="destructive" onClick={onDelete} loading={deleting}>
+              {deleting ? "Deleting…" : "Delete"}
+            </LoadingButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

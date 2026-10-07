@@ -9,7 +9,6 @@ import { toast } from "sonner";
 import {
   ChevronDownIcon,
   CopyPlusIcon,
-  Loader2Icon,
   PlayIcon,
   RotateCcwIcon,
   SparklesIcon,
@@ -29,6 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { DiagnosisPanel } from "@/components/viz/DiagnosisPanel";
 import { Player } from "@/components/viz/Player";
+import { LoadingButton } from "@/components/loading-button";
 import { ChatPanel } from "@/components/workspace/ChatPanel";
 import { CodeEditor } from "@/components/workspace/CodeEditor";
 import { ImageDropzone, type UploadedImage } from "@/components/workspace/ImageDropzone";
@@ -131,6 +131,7 @@ export function Workspace({
         }
         clearInterval(timer);
         setRunning(null);
+        notifyFinished(attempt);
         setViewing(attempt);
         setMode("view");
         setPlayerIndex(0);
@@ -142,6 +143,12 @@ export function Workspace({
     }, 2000);
     return () => clearInterval(timer);
   }, [running?.attemptId, streaming, router]);
+
+  function notifyFinished(attempt: AttemptDetail) {
+    if (attempt.status === "error") toast.error(attempt.error?.message ?? "Processing failed.");
+    else if (attempt.verdict === "works") toast.success("Analysis ready: your approach works on this input.");
+    else toast.success("Analysis ready. Step through it to see where it breaks.");
+  }
 
   async function onProcess(values: CreateAttemptInput) {
     setRunning({ attemptId: null, status: "queued" });
@@ -164,7 +171,8 @@ export function Workspace({
         } else if (e.type === "done") {
           finished = true;
           setRunning(null);
-          await loadAttempt(e.attemptId);
+          const attempt = await loadAttempt(e.attemptId);
+          if (attempt) notifyFinished(attempt);
           router.refresh();
         } else if (e.type === "error") {
           finished = true;
@@ -239,6 +247,7 @@ export function Workspace({
         <Select
           items={attemptItems}
           value={selectValue}
+          disabled={loadingAttempt || Boolean(running)}
           onValueChange={(v) => {
             if (!v) return;
             if (v === NEW) startNewAttempt();
@@ -257,7 +266,7 @@ export function Workspace({
           </SelectContent>
         </Select>
         {mode === "view" && viewing && (
-          <Button variant="outline" onClick={() => startNewAttempt(viewing)} disabled={Boolean(running)}>
+          <Button variant="outline" onClick={() => startNewAttempt(viewing)} disabled={Boolean(running) || loadingAttempt}>
             <CopyPlusIcon /> New attempt
           </Button>
         )}
@@ -355,10 +364,9 @@ export function Workspace({
         )}
         {mode === "new" &&
           (hasProvider ? (
-            <Button type="submit" size="lg" disabled={Boolean(running)}>
-              {running ? <Loader2Icon className="animate-spin" /> : <PlayIcon />}
+            <LoadingButton type="submit" size="lg" loading={Boolean(running)} icon={<PlayIcon />}>
               {running ? "Processing…" : "Process"}
-            </Button>
+            </LoadingButton>
           ) : (
             <Link href="/settings" className={buttonVariants({ size: "lg" })}>
               Set up an AI provider to process
@@ -415,6 +423,7 @@ export function Workspace({
             <Select
               items={viewing.specVersions.map((v) => ({ value: String(v.version), label: specLabel(v.version) }))}
               value={String(viewing.specVersion)}
+              disabled={loadingAttempt}
               onValueChange={(v) => v && void loadAttempt(viewing.id, Number(v))}
             >
               <SelectTrigger size="sm" aria-label="Visualization version">
