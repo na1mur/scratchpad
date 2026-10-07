@@ -42,9 +42,9 @@ export async function traceAndDiagnose(
   const check = await revealsSolution(ctx, diagnosisText(d));
   if (check.reveals) {
     d = await diagnose(ctx, u, trace, true);
-    // Still leaking after one stricter retry: drop the hints rather than ship them.
+    // Still leaking after one stricter retry: drop the hints and the new angle rather than ship them.
     const recheck = await revealsSolution(ctx, diagnosisText(d));
-    if (recheck.reveals) d = { ...d, thinkingHints: [], failingInputs: d.failingInputs };
+    if (recheck.reveals) d = { ...d, thinkingHints: [], shiftInThinking: "" };
   }
 
   const spec = assemble(trace, trace.steps, d, u);

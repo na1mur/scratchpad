@@ -3,6 +3,7 @@ import { LogoutButton } from "@/components/logout-button";
 import { LanguageForm } from "@/components/settings/language-form";
 import { ProfileForm } from "@/components/settings/profile-form";
 import { ProviderForm } from "@/components/settings/provider-form";
+import { ProviderSummary } from "@/components/settings/provider-summary";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { LanguageId } from "@/lib/languages";
 import { publicUser } from "@/lib/serializers";
@@ -31,7 +32,8 @@ export default async function SettingsPage() {
             Your key is encrypted at rest. Only the last four characters are ever shown back to you.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-6">
+          <ProviderSummary ai={user.ai} />
           <ProviderForm ai={user.ai} />
         </CardContent>
       </Card>

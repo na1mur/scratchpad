@@ -167,6 +167,7 @@ export function Player({
         <div className="grid gap-3 @3xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           <CodePane
             lines={prepared.codeLines}
+            addedLines={prepared.addedLines}
             activeLine={step.line}
             isBug={bugs.has(current)}
             className="max-h-72 @3xl:max-h-[32rem]"

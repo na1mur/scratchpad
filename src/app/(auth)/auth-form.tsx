@@ -7,6 +7,7 @@ import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { LoadingButton } from "@/components/loading-button";
+import { Logo } from "@/components/logo";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -71,9 +72,10 @@ export function AuthForm({ mode }: { mode: Mode }) {
 
   const { title, description, submit, pending } = copy[mode];
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader>
-        <CardTitle className="text-xl">{title}</CardTitle>
+    <Card className="w-full max-w-sm shadow-xl shadow-black/5 [--card-spacing:--spacing(6)] dark:shadow-black/40">
+      <CardHeader className="justify-items-center text-center">
+        <Logo href="/" height={40} priority className="mb-4" />
+        <CardTitle className="text-2xl font-semibold tracking-tight">{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
       <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
@@ -137,11 +139,11 @@ export function AuthForm({ mode }: { mode: Mode }) {
               />
             </FieldGroup>
           </fieldset>
-        </CardContent>
-        <CardFooter className="mt-6 flex flex-col gap-3">
-          <LoadingButton type="submit" className="w-full" loading={busy}>
+          <LoadingButton type="submit" size="lg" className="mt-6 w-full" loading={busy}>
             {busy ? pending : submit}
           </LoadingButton>
+        </CardContent>
+        <CardFooter className="mt-6 justify-center">
           <p className="text-sm text-muted-foreground">
             {mode === "login" ? (
               <>

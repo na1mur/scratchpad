@@ -27,9 +27,14 @@ export function PATCH(req: NextRequest, ctx: RouteContext<"/api/problems/[id]">)
       set.tags = input.tags;
       set.tagsSource = input.tags.length ? "user" : "none";
     }
+    const update: Record<string, Record<string, unknown>> = { $set: set };
+    if (input.sourceUrl !== undefined) {
+      if (input.sourceUrl) set.sourceUrl = input.sourceUrl;
+      else update.$unset = { sourceUrl: "" };
+    }
     const updated = await Problem.findOneAndUpdate(
       { _id: existing._id, userId: session.userId },
-      { $set: set },
+      update,
       { returnDocument: "after" },
     ).lean();
     return NextResponse.json({ problem: serializeProblem(updated!) });

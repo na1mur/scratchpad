@@ -1,6 +1,6 @@
-# DSA Buddy
+# Scratchpad
 
-Paste your pseudo-code and reasoning for a DSA problem (or a photo of your notebook). DSA Buddy works out what you're
+Paste your pseudo-code and reasoning for a DSA problem (or a photo of your notebook). Scratchpad works out what you're
 trying to do, runs your approach on a small input, animates every step and loop iteration, and explains where your
 reasoning breaks. It never gives you the solution: only where it goes wrong, why, and progressively more specific
 hints.

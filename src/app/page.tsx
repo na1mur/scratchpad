@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BugIcon, PlayIcon, SparklesIcon } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Logo } from "@/components/logo";
 
 const features = [
   {
@@ -25,7 +26,7 @@ export default function Home() {
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between px-6 py-4">
-        <span className="font-semibold tracking-tight">DSA Buddy</span>
+        <Logo href="/" height={36} priority />
         <div className="flex items-center gap-2">
           <ThemeToggle />
           <Link href="/login" className={buttonVariants({ variant: "outline" })}>
@@ -39,7 +40,7 @@ export default function Home() {
             Find out <span className="text-viz-error">where</span> your approach breaks.
           </h1>
           <p className="max-w-xl text-lg text-muted-foreground">
-            Paste your pseudo-code and reasoning, or a photo of your notebook. DSA Buddy simulates it,
+            Paste your pseudo-code and reasoning, or a photo of your notebook. Scratchpad simulates it,
             animates every step, and explains what goes wrong without giving away the solution.
           </p>
           <div className="flex gap-2">

@@ -23,6 +23,7 @@ export function serializeProblem(p: ProblemDoc) {
   return {
     ...serializeProblemSummary(p),
     statement: p.statement,
+    sourceUrl: p.sourceUrl ?? null,
     language: p.language,
     latestAttemptId: p.latestAttemptId ? String(p.latestAttemptId) : null,
     createdAt: p.createdAt.toISOString(),

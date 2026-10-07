@@ -1,14 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { BugIcon, LightbulbIcon, TriangleAlertIcon } from "lucide-react";
+import { BugIcon, TriangleAlertIcon } from "lucide-react";
 import { VerdictBadge } from "@/components/problems/verdict-badge";
 import { Button } from "@/components/ui/button";
 import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
 
 export function DiagnosisPanel({ spec, onJumpToStep }: { spec: VizSpec; onJumpToStep: (index: number) => void }) {
   const { summary, diagnosis } = spec;
-  const [revealed, setRevealed] = useState(0);
   const bugSteps = diagnosis.bugStepIds
     .map((id) => ({ id, index: spec.steps.findIndex((s) => s.id === id) }))
     .filter((b) => b.index >= 0);
@@ -71,31 +69,6 @@ export function DiagnosisPanel({ spec, onJumpToStep }: { spec: VizSpec; onJumpTo
               </li>
             ))}
           </ul>
-        </section>
-      )}
-
-      {diagnosis.thinkingHints.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h3 className="flex items-center gap-1.5 font-medium">
-            <LightbulbIcon className="size-4 text-viz-compare" /> Hints
-          </h3>
-          <ol className="flex flex-col gap-2">
-            {diagnosis.thinkingHints.slice(0, revealed).map((h, i) => (
-              <li key={i} className="rounded-lg border border-viz-compare/30 bg-viz-compare/10 p-3 text-sm">
-                <span className="mr-1 font-medium">{i + 1}.</span>
-                {h}
-              </li>
-            ))}
-          </ol>
-          {revealed < diagnosis.thinkingHints.length ? (
-            <Button variant="outline" className="self-start" onClick={() => setRevealed(revealed + 1)}>
-              <LightbulbIcon />
-              {revealed === 0 ? "Show a hint" : "Show a more specific hint"} ({revealed + 1}/
-              {diagnosis.thinkingHints.length})
-            </Button>
-          ) : (
-            <p className="text-xs text-muted-foreground">That&apos;s every hint. The rest is yours to figure out.</p>
-          )}
         </section>
       )}
     </div>

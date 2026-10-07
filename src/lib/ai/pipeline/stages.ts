@@ -47,6 +47,7 @@ export type Guidance = { reason: string; focus?: string; newTestInput?: string }
 export type TraceResult = {
   mode: "execution" | "simulation";
   codeLines: string[];
+  addedLines: number[];
   structures: Structure[];
   loops: Loop[];
   steps: Step[];
@@ -92,7 +93,7 @@ function inputBlock(u: Understanding) {
   return `<test_input>\n${u.chosenTestInput.description}\narguments: ${u.chosenTestInput.argumentsJson}\nexpected (correct) output: ${u.expectedOutput}\n</test_input>`;
 }
 
-function checkDeclarations(t: { codeLines: string[]; structures: Structure[]; loops: Loop[] }): string[] {
+function checkDeclarations(t: { codeLines: string[]; addedLines: number[]; structures: Structure[]; loops: Loop[] }): string[] {
   const issues: string[] = [];
   const ids = new Set<string>();
   for (const s of t.structures) {
@@ -103,6 +104,8 @@ function checkDeclarations(t: { codeLines: string[]; structures: Structure[]; lo
   for (const l of t.loops) {
     if (l.line < 0 || l.line >= t.codeLines.length) issues.push(`- loop "${l.id}" line ${l.line} is outside codeLines`);
   }
+  const outside = t.addedLines.filter((i) => i < 0 || i >= t.codeLines.length);
+  if (outside.length) issues.push(`- addedLines ${outside.join(", ")} are outside codeLines`);
   return issues;
 }
 
@@ -183,6 +186,7 @@ export async function traceByExecution(ctx: Ctx, u: Understanding, guidance?: Gu
     return {
       mode: "execution",
       codeLines: t.codeLines,
+      addedLines: t.addedLines,
       structures: t.structures,
       loops: t.loops,
       steps: narrated,
@@ -278,7 +282,7 @@ function wireToState(w: WireState, kind: Structure["kind"]): StructureState | nu
       break;
     case "graph":
       raw.nodes = (w.nodes ?? []).map((n) => ({ id: n.id, label: n.value ?? n.id }));
-      raw.edges = w.edges ?? [];
+      raw.edges = (w.edges ?? []).map((e) => ({ from: e.from, to: e.to, ...(e.weight != null && { weight: e.weight }) }));
       raw.directed = Boolean(w.directed);
       break;
   }
@@ -343,6 +347,7 @@ export async function traceBySimulation(ctx: Ctx, u: Understanding, guidance?: G
         value: {
           mode: "simulation" as const,
           codeLines: sim.codeLines,
+          addedLines: sim.addedLines,
           structures: sim.structures,
           loops: sim.loops,
           steps,
@@ -366,11 +371,14 @@ function placeholderDiagnosis(actualOutput: string): DiagnosisOutput {
     bugStepIds: [],
     failingInputs: [],
     thinkingHints: [],
+    rethinkScope: "none",
+    brokenAssumption: "",
+    shiftInThinking: "",
   };
 }
 
 export function assemble(
-  trace: Pick<TraceResult, "codeLines" | "structures" | "loops">,
+  trace: Pick<TraceResult, "codeLines" | "addedLines" | "structures" | "loops">,
   steps: Step[],
   d: DiagnosisOutput,
   u?: Understanding,
@@ -386,6 +394,7 @@ export function assemble(
       actualOutput: d.actualOutput,
     },
     codeLines: trace.codeLines,
+    ...(trace.addedLines.length && { addedLines: [...new Set(trace.addedLines)].sort((a, b) => a - b) }),
     structures: trace.structures,
     loops: trace.loops,
     steps,
@@ -395,9 +404,20 @@ export function assemble(
       bugStepIds: d.bugStepIds,
       ...(d.failingInputs.length && { failingInputs: d.failingInputs }),
       thinkingHints: d.thinkingHints,
+      ...(d.rethinkScope !== "none" &&
+        d.brokenAssumption && {
+          rethink: { scope: d.rethinkScope, brokenAssumption: d.brokenAssumption, shiftInThinking: d.shiftInThinking },
+        }),
     },
     ...(autoTags?.length && { autoTags }),
   };
+}
+
+/** Scaffolding the pipeline wrote; the learner shouldn't be blamed for it. */
+function addedLinesBlock(t: Pick<TraceResult, "codeLines" | "addedLines">): string {
+  if (!t.addedLines.length) return "";
+  const lines = t.addedLines.map((i) => `${i}: ${(t.codeLines[i] ?? "").trim()}`).join("\n");
+  return `\n\n<lines_added_to_complete_their_code note="not written by the learner; don't attribute bugs to these">\n${lines}\n</lines_added_to_complete_their_code>`;
 }
 
 export async function diagnose(ctx: Ctx, u: Understanding, trace: TraceResult, stricter = false): Promise<DiagnosisOutput> {
@@ -408,7 +428,7 @@ export async function diagnose(ctx: Ctx, u: Understanding, trace: TraceResult, s
     name: "diagnosis",
     schema: diagnosisOutputSchema,
     instructions: instr(ctx, stricter ? `${DIAGNOSE_ROLE}\n\n${STRICTER_ADDENDUM}` : DIAGNOSE_ROLE),
-    prompt: `${learnerContext(ctx.learner)}\n\n${inputBlock(u)}\n\n<their_approach>${u.userApproachInOwnWords}</their_approach>\n<assumptions>${u.keyInvariantsUserAssumes.join("; ")}</assumptions>\n\n<run_result>\nactual output: ${trace.actualOutput}${
+    prompt: `${learnerContext(ctx.learner)}\n\n${inputBlock(u)}\n\n<their_approach>${u.userApproachInOwnWords}</their_approach>\n<assumptions>${u.keyInvariantsUserAssumes.join("; ")}</assumptions>${addedLinesBlock(trace)}\n\n<run_result>\nactual output: ${trace.actualOutput}${
       trace.runNote ? `\n${trace.runNote}` : ""
     }\n</run_result>\n\n<trace>\n${describeSteps(trace.steps, trace.codeLines)}\n</trace>`,
     check: (d) => {
@@ -416,6 +436,9 @@ export async function diagnose(ctx: Ctx, u: Understanding, trace: TraceResult, s
       if (unknown.length) return { ok: false, issues: `- bugStepIds not in the trace: ${unknown.join(", ")}` };
       if (d.verdict !== "works" && d.thinkingHints.length < 2) {
         return { ok: false, issues: "- give 2–4 progressive thinkingHints" };
+      }
+      if (d.verdict !== "works" && (d.rethinkScope === "none" || !d.brokenAssumption)) {
+        return { ok: false, issues: "- give rethinkScope and brokenAssumption" };
       }
       return { ok: true, value: d };
     },
@@ -436,7 +459,14 @@ export async function revealsSolution(ctx: Ctx, text: string): Promise<{ reveals
 }
 
 export function diagnosisText(d: DiagnosisOutput): string {
-  return [d.whatGoesWrong, d.whyItGoesWrong, ...d.failingInputs, ...d.thinkingHints.map((h, i) => `Hint ${i + 1}: ${h}`)]
+  return [
+    d.whatGoesWrong,
+    d.whyItGoesWrong,
+    ...d.failingInputs,
+    d.brokenAssumption,
+    d.shiftInThinking && `A different way to think about it: ${d.shiftInThinking}`,
+    ...d.thinkingHints.map((h, i) => `Hint ${i + 1}: ${h}`),
+  ]
     .filter(Boolean)
     .join("\n");
 }

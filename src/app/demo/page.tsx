@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Logo } from "@/components/logo";
 import { DemoPlayer } from "./demo-player";
 
 export const metadata: Metadata = { title: "Demo" };
@@ -9,9 +9,7 @@ export default function DemoPage() {
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between px-6 py-4">
-        <Link href="/" className="font-semibold tracking-tight">
-          DSA Buddy
-        </Link>
+        <Logo href="/" height={36} priority />
         <ThemeToggle />
       </header>
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 pb-16 sm:px-6">

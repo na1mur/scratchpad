@@ -9,6 +9,8 @@ import { toast } from "sonner";
 import {
   ChevronDownIcon,
   CopyPlusIcon,
+  CpuIcon,
+  ExternalLinkIcon,
   PlayIcon,
   RotateCcwIcon,
   SparklesIcon,
@@ -27,9 +29,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { DiagnosisPanel } from "@/components/viz/DiagnosisPanel";
+import { HintsPanel } from "@/components/viz/HintsPanel";
 import { Player } from "@/components/viz/Player";
 import { LoadingButton } from "@/components/loading-button";
 import { ChatPanel } from "@/components/workspace/ChatPanel";
+import { DeleteAttemptButton } from "@/components/workspace/DeleteAttemptButton";
 import { CodeEditor } from "@/components/workspace/CodeEditor";
 import { ImageDropzone, type UploadedImage } from "@/components/workspace/ImageDropzone";
 import { ProblemActions } from "@/components/workspace/ProblemActions";
@@ -39,6 +43,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import type { AttemptDetail, AttemptSummary } from "@/lib/attempts";
 import { api, apiRaw, toApiError } from "@/lib/fetcher";
 import type { ProblemDetail } from "@/lib/problems";
+import { PROVIDER_LABELS, type ProviderId } from "@/lib/providers";
 import { createAttemptSchema, type CreateAttemptInput } from "@/lib/schemas/attempts";
 import { MAX_TEXT } from "@/lib/schemas/problems";
 import { readSSE } from "@/lib/sse";
@@ -63,13 +68,14 @@ export function Workspace({
   problem,
   initialAttempts,
   initialAttempt,
-  hasProvider,
+  aiModel,
   uploadsEnabled,
 }: {
   problem: ProblemDetail;
   initialAttempts: AttemptSummary[];
   initialAttempt: AttemptDetail | null;
-  hasProvider: boolean;
+  /** The provider and model new attempts will use. */
+  aiModel: { provider: ProviderId; model: string } | null;
   uploadsEnabled: boolean;
 }) {
   const router = useRouter();
@@ -198,6 +204,19 @@ export function Workspace({
     setMode("new");
   }
 
+  async function onAttemptDeleted(attemptId: string) {
+    const remaining = attempts.filter((a) => a.id !== attemptId);
+    setAttempts(remaining);
+    router.refresh();
+    if (remaining.length) {
+      await loadAttempt(remaining[0].id);
+    } else {
+      setViewing(null);
+      form.reset({ pseudoCode: "", idea: "", images: [] });
+      setMode("new");
+    }
+  }
+
   const readOnly = mode === "view" || Boolean(running);
   const draftCode = useWatch({ control: form.control, name: "pseudoCode" });
   const shownCode = mode === "view" && viewing ? viewing.pseudoCode : draftCode;
@@ -216,6 +235,17 @@ export function Workspace({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h1 className="text-lg font-semibold tracking-tight">{problem.title}</h1>
+            {problem.sourceUrl && (
+              <a
+                href={problem.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-0.5 inline-flex max-w-full items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+              >
+                <span className="truncate">{new URL(problem.sourceUrl).hostname.replace(/^www\./, "")}</span>
+                <ExternalLinkIcon className="size-3 shrink-0" />
+              </a>
+            )}
             {problem.tags.length > 0 && (
               <div className="mt-1 flex flex-wrap gap-1">
                 {problem.tags.map((t) => (
@@ -242,6 +272,20 @@ export function Workspace({
           </pre>
         </CollapsibleContent>
       </Collapsible>
+
+      <div className="-mb-2 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+        <CpuIcon className="size-3.5 shrink-0" />
+        {aiModel ? (
+          <span className="min-w-0 truncate" title={`${PROVIDER_LABELS[aiModel.provider]} · ${aiModel.model}`}>
+            {PROVIDER_LABELS[aiModel.provider]} · <span className="font-mono">{aiModel.model}</span>
+          </span>
+        ) : (
+          <span>No AI provider set</span>
+        )}
+        <Link href="/settings" className="shrink-0 underline-offset-2 hover:text-foreground hover:underline">
+          {aiModel ? "Change" : "Set up"}
+        </Link>
+      </div>
 
       <div className="flex items-center gap-2">
         <Select
@@ -270,6 +314,14 @@ export function Workspace({
             <CopyPlusIcon /> New attempt
           </Button>
         )}
+        {mode === "view" && viewing && (
+          <DeleteAttemptButton
+            key={viewing.id}
+            attempt={viewing}
+            disabled={Boolean(running) || loadingAttempt || IN_PROGRESS.has(viewing.status)}
+            onDeleted={() => void onAttemptDeleted(viewing.id)}
+          />
+        )}
       </div>
 
       <form onSubmit={form.handleSubmit(onProcess)} noValidate className="flex flex-col gap-4">
@@ -282,7 +334,11 @@ export function Workspace({
                 <FieldLabel htmlFor="pseudoCode">Pseudo-code</FieldLabel>
                 {mode === "view" && viewing && (
                   <span className="text-xs text-muted-foreground">
-                    v{viewing.version} · {dateFormat.format(new Date(viewing.createdAt))} · read-only
+                    v{viewing.version} · {dateFormat.format(new Date(viewing.createdAt))}
+                    {viewing.model &&
+                      (viewing.model.provider !== aiModel?.provider || viewing.model.model !== aiModel?.model) &&
+                      ` · ran on ${viewing.model.model}`}{" "}
+                    · read-only
                   </span>
                 )}
               </div>
@@ -363,7 +419,7 @@ export function Workspace({
           </div>
         )}
         {mode === "new" &&
-          (hasProvider ? (
+          (aiModel ? (
             <LoadingButton type="submit" size="lg" loading={Boolean(running)} icon={<PlayIcon />}>
               {running ? "Processing…" : "Process"}
             </LoadingButton>
@@ -444,6 +500,7 @@ export function Workspace({
           <TabsList>
             <TabsTrigger value="viz">Visualization</TabsTrigger>
             <TabsTrigger value="diagnosis">Diagnosis</TabsTrigger>
+            <TabsTrigger value="hints">Hints</TabsTrigger>
           </TabsList>
           <TabsContent value="viz" className="pt-3">
             <Player
@@ -458,6 +515,16 @@ export function Workspace({
           </TabsContent>
           <TabsContent value="diagnosis" className="pt-3">
             <DiagnosisPanel
+              key={`${viewing.id}-${viewing.specVersion}`}
+              spec={spec}
+              onJumpToStep={(i) => {
+                setPlayerIndex(i);
+                setTab("viz");
+              }}
+            />
+          </TabsContent>
+          <TabsContent value="hints" className="pt-3">
+            <HintsPanel
               key={`${viewing.id}-${viewing.specVersion}`}
               spec={spec}
               onJumpToStep={(i) => {

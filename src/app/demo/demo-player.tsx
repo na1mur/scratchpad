@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cn } from "cn";
 import { DiagnosisPanel } from "@/components/viz/DiagnosisPanel";
+import { HintsPanel } from "@/components/viz/HintsPanel";
 import { Player } from "@/components/viz/Player";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatSpecIssues, vizSpecSchema } from "@/lib/ai/schemas/vizSpec";
@@ -54,12 +55,16 @@ export function DemoPlayer() {
         <TabsList>
           <TabsTrigger value="run">Run</TabsTrigger>
           <TabsTrigger value="diagnosis">Diagnosis</TabsTrigger>
+          <TabsTrigger value="hints">Hints</TabsTrigger>
         </TabsList>
         <TabsContent value="run" className="pt-3">
           <Player key={fixture.id} spec={fixture.spec} index={index} onIndexChange={setIndex} layoutId={fixture.id} />
         </TabsContent>
         <TabsContent value="diagnosis" className="pt-3">
           <DiagnosisPanel key={fixture.id} spec={fixture.spec} onJumpToStep={setIndex} />
+        </TabsContent>
+        <TabsContent value="hints" className="pt-3">
+          <HintsPanel key={fixture.id} spec={fixture.spec} onJumpToStep={setIndex} />
         </TabsContent>
       </Tabs>
     </div>

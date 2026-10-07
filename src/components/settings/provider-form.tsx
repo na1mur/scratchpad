@@ -84,9 +84,8 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
     if (!apiKey && !storedUsable) return null;
     try {
       const listing = await api<Listing>("/api/settings/models", { method: "POST", body: { provider, apiKey } });
-      const field = target === "main" ? "model" : "visionModel";
-      const current = form.getValues(field);
-      if (current && !listing.models.some((m) => m.id === current)) form.setValue(field, "");
+      // Never blank the selected model here: the saved one may be missing from a
+      // fallback or differently-named listing. Provider changes reset it themselves.
       return { status: "ready", listing };
     } catch (err) {
       return { status: "error", error: err instanceof Error ? err.message : "Couldn't load models." };

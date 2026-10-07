@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/fetcher";
 import type { ProblemDetail } from "@/lib/problems";
-import { MAX_TEXT, createProblemSchema, suggestTitle, type CreateProblemInput } from "@/lib/schemas/problems";
+import { MAX_TEXT, createProblemSchema, type CreateProblemInput } from "@/lib/schemas/problems";
 import type { Tag } from "@/lib/tags";
 
 export function NewProblemForm() {
@@ -21,7 +21,7 @@ export function NewProblemForm() {
   const [redirecting, setRedirecting] = useState(false);
   const form = useForm<CreateProblemInput>({
     resolver: zodResolver(createProblemSchema),
-    defaultValues: { title: "", statement: "", tags: [] },
+    defaultValues: { statement: "", sourceUrl: "", tags: [] },
   });
 
   async function onSubmit(values: CreateProblemInput) {
@@ -55,33 +55,29 @@ export function NewProblemForm() {
                 placeholder={"Two Sum II\n\nGiven a 1-indexed array of integers numbers that is sorted in non-decreasing order, find two numbers such that they add up to a specific target…"}
                 aria-invalid={fieldState.invalid}
                 className="min-h-56 font-mono text-sm"
-                onChange={(e) => {
-                  field.onChange(e);
-                  // Keep suggesting a title from the first line until the user edits it.
-                  if (!form.getFieldState("title").isDirty) {
-                    form.setValue("title", suggestTitle(e.target.value), { shouldValidate: false });
-                  }
-                }}
               />
               <FieldDescription>
-                Paste it as-is. {field.value.length.toLocaleString()}/{MAX_TEXT.toLocaleString()}
+                Paste it as-is, the title is generated for you. {field.value.length.toLocaleString()}/{MAX_TEXT.toLocaleString()}
               </FieldDescription>
               <FieldError errors={[fieldState.error]} />
             </Field>
           )}
         />
         <Controller
-          name="title"
+          name="sourceUrl"
           control={form.control}
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="title">Title</FieldLabel>
+              <FieldLabel htmlFor="sourceUrl">Problem URL (optional)</FieldLabel>
               <Input
                 {...field}
-                id="title"
+                id="sourceUrl"
+                type="url"
+                inputMode="url"
+                placeholder="https://leetcode.com/problems/two-sum-ii-input-array-is-sorted/"
                 aria-invalid={fieldState.invalid}
               />
-              <FieldDescription>Suggested from the first line. Edit it if you like.</FieldDescription>
+              <FieldDescription>Link back to where the problem came from, e.g. LeetCode.</FieldDescription>
               <FieldError errors={[fieldState.error]} />
             </Field>
           )}

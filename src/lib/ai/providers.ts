@@ -15,7 +15,7 @@ export function createModel(provider: ProviderId, apiKey: string, model: string)
     case "anthropic":
       return createAnthropic({ apiKey })(model);
     case "openrouter":
-      return createOpenRouter({ apiKey, appName: "DSA Buddy" })(model);
+      return createOpenRouter({ apiKey, appName: "Scratchpad" })(model);
   }
 }
 

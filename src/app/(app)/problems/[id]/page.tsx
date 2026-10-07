@@ -42,7 +42,7 @@ export default async function WorkspacePage({ params }: PageProps<"/problems/[id
       problem={serializeProblem(problem)}
       initialAttempts={summaries}
       initialAttempt={latest}
-      hasProvider={Boolean(user.ai)}
+      aiModel={user.ai ? { provider: user.ai.provider, model: user.ai.model } : null}
       uploadsEnabled={r2Enabled}
     />
   );

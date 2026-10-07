@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: { default: "DSA Buddy", template: "%s · DSA Buddy" },
+  title: { default: "Scratchpad", template: "%s · Scratchpad" },
   description:
     "Paste your pseudo-code and reasoning, watch it run step by step, and find out where your approach breaks.",
 };

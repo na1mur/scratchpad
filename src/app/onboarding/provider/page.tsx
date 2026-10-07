@@ -21,7 +21,7 @@ export default async function OnboardingProviderPage() {
       <StepHeader
         step={2}
         title="Bring your own AI key"
-        description="DSA Buddy runs on your own OpenAI, Anthropic or OpenRouter account. You can change this later in Settings."
+        description="Scratchpad runs on your own OpenAI, Anthropic or OpenRouter account. You can change this later in Settings."
       />
       <ProviderForm ai={user.ai} onboarding />
     </>

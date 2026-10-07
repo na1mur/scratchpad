@@ -1,11 +1,12 @@
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Logo } from "@/components/logo";
 import { LogoutButton } from "@/components/logout-button";
 
 export default function OnboardingLayout({ children }: LayoutProps<"/onboarding">) {
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between px-6 py-4">
-        <span className="font-semibold tracking-tight">DSA Buddy</span>
+        <Logo height={36} priority />
         <div className="flex items-center gap-1">
           <ThemeToggle />
           <LogoutButton />

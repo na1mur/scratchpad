@@ -6,17 +6,21 @@ import { cn } from "cn";
 /** Read-only code with the executing line highlighted and kept in view. */
 export function CodePane({
   lines,
+  addedLines,
   activeLine,
   isBug,
   className,
 }: {
   lines: string[];
+  /** Lines the pipeline added to make the learner's fragment runnable. */
+  addedLines?: number[];
   activeLine: number | null;
   /** The current step is where the logic goes wrong. */
   isBug?: boolean;
   className?: string;
 }) {
   const container = useRef<HTMLDivElement>(null);
+  const added = new Set(addedLines);
 
   useEffect(() => {
     const box = container.current;
@@ -38,11 +42,13 @@ export function CodePane({
     >
       {lines.map((line, i) => {
         const active = i === activeLine;
+        const isAdded = added.has(i);
         return (
           <div
             key={i}
             data-line={i}
             aria-current={active ? "step" : undefined}
+            title={isAdded ? "Added to make your code runnable" : undefined}
             className={cn(
               "flex border-l-2 border-transparent pr-3 transition-colors duration-200",
               active && "border-viz-active bg-viz-active/15",
@@ -52,10 +58,22 @@ export function CodePane({
             <span className="w-9 shrink-0 pr-3 text-right text-muted-foreground/70 select-none tabular-nums">
               {i + 1}
             </span>
-            <span className="whitespace-pre">{line || " "}</span>
+            <span className="w-3 shrink-0 text-viz-success select-none" aria-hidden>
+              {isAdded ? "+" : ""}
+            </span>
+            <span className={cn("whitespace-pre", isAdded && !active && "text-muted-foreground italic")}>
+              {line || " "}
+              {isAdded && <span className="sr-only"> (added to make your code runnable)</span>}
+            </span>
           </div>
         );
       })}
+      {added.size > 0 && (
+        <p className="mt-1 border-t px-3 pt-2 font-sans text-xs text-muted-foreground">
+          <span className="font-mono text-viz-success">+</span> Lines added to make your code runnable. Your logic is
+          unchanged.
+        </p>
+      )}
     </div>
   );
 }

@@ -80,7 +80,7 @@ export function LinkedListView({ state, prevState, deco }: RendererProps<"linked
                     <span className="h-3" />
                   </motion.div>
                   {(i < chain.length - 1 || node.next === null || cycleTo) && (
-                    <motion.div layout transition={SPRING} className="mb-5 flex items-center">
+                    <motion.div layout transition={SPRING} className="mb-7 flex items-center">
                       {i < chain.length - 1 ? (
                         <ArrowRightIcon
                           className={cn("size-4 text-muted-foreground", relinked && "text-viz-active")}

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useLogout } from "@/components/logout-button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Logo } from "@/components/logo";
 
 const NAV = [{ href: "/problems", label: "Problems" }];
 
@@ -26,9 +27,7 @@ export function AppHeader({ email, name }: { email: string; name: string | null 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
       <div className="flex h-14 items-center gap-6 px-4 sm:px-6">
-        <Link href="/problems" className="font-semibold tracking-tight">
-          DSA Buddy
-        </Link>
+        <Logo href="/problems" height={28} priority />
         <nav className="flex items-center gap-4 text-sm">
           {NAV.map((item) => (
             <Link

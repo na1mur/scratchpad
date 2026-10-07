@@ -38,12 +38,15 @@ function FieldLegend({
   )
 }
 
+// No `@container/field-group` here on purpose: nothing uses the "responsive"
+// Field orientation, and as a size container the group collapsed to 0px in Chrome
+// (settings provider form) once its siblings re-rendered.
 function FieldGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="field-group"
       className={cn(
-        "group/field-group @container/field-group flex w-full flex-col gap-5 data-[slot=checkbox-group]:gap-3 *:data-[slot=field-group]:gap-4",
+        "group/field-group flex w-full flex-col gap-5 data-[slot=checkbox-group]:gap-3 *:data-[slot=field-group]:gap-4",
         className
       )}
       {...props}

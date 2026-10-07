@@ -20,7 +20,7 @@ There is no test runner configured yet.
 - **React Compiler is enabled** (`reactCompiler: true` in `next.config.ts`). Don't add manual `useMemo`/`useCallback`/`React.memo` for performance.
 - All app code is under `src/`; import alias `@/*` → `src/*`.
 - Route props use Next's global typed helpers (e.g. `LayoutProps<"/">` in `src/app/layout.tsx`) rather than hand-written prop types.
-- The package name is `dsabuddy` (lowercase) because the folder name `DSABuddy` is invalid as an npm name. Scaffolding tools run directly in this folder will fail on that.
+- The package name is `scratchpad` (the app's name is Scratchpad) because the folder name `DSABuddy` is invalid as an npm name. Scaffolding tools run directly in this folder will fail on that.
 
 ## shadcn/ui
 

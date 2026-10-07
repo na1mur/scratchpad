@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TAGS } from "@/lib/tags";
 import { VERDICTS } from "@/lib/verdicts";
-import { EVENTS, STRUCTURE_KINDS, TONES } from "./vizSpec";
+import { EVENTS, RETHINK_SCOPES, STRUCTURE_KINDS, TONES } from "./vizSpec";
 
 /**
  * Model-facing schemas. Kept flat and record-free so every provider's
@@ -37,7 +37,8 @@ export const structureDeclSchema = z.object({
 export const translationSchema = z.object({
   codeLines: z
     .array(z.string())
-    .describe("The learner's pseudo-code, normalized to one statement per line, keeping their logic and bugs."),
+    .describe("The learner's pseudo-code completed into a runnable whole, one statement per line, keeping their logic and bugs."),
+  addedLines: z.array(z.number().int()).describe("0-based indexes of codeLines added to complete their code."),
   structures: z.array(structureDeclSchema).min(1).max(6),
   loops: z.array(z.object({ id: z.string(), label: z.string(), line: z.number().int() })),
   program: z.string().describe("JavaScript source defining function run(input). No imports, no async."),
@@ -58,38 +59,42 @@ export const narrationSchema = z.object({
 const wireScalar = z.union([z.string(), z.number(), z.null()]);
 const wireValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 
-/** One structure snapshot in a flat, record-free shape. */
+/**
+ * One structure snapshot in a flat, record-free shape. Unused fields are
+ * null rather than optional: OpenAI strict mode requires every key.
+ */
 export const wireStateSchema = z.object({
   structureId: z.string(),
   kind: z.enum(STRUCTURE_KINDS),
   values: z
     .array(wireScalar)
-    .optional()
+    .nullable()
     .describe("array, string (one char per entry), set, stack (bottom first), queue (front first)"),
-  entries: z.array(z.object({ key: z.string(), value: wireValue })).optional().describe("hashmap"),
-  vars: z.array(z.object({ name: z.string(), value: wireValue })).optional().describe("variables"),
-  rows: z.array(z.array(wireScalar)).optional().describe("matrix"),
+  entries: z.array(z.object({ key: z.string(), value: wireValue })).nullable().describe("hashmap"),
+  vars: z.array(z.object({ name: z.string(), value: wireValue })).nullable().describe("variables"),
+  rows: z.array(z.array(wireScalar)).nullable().describe("matrix"),
   nodes: z
     .array(
       z.object({
         id: z.string(),
         value: wireScalar,
-        next: z.string().nullable().optional(),
-        left: z.string().nullable().optional(),
-        right: z.string().nullable().optional(),
-        children: z.array(z.string()).optional(),
+        next: z.string().nullable(),
+        left: z.string().nullable(),
+        right: z.string().nullable(),
+        children: z.array(z.string()).nullable(),
       }),
     )
-    .optional()
+    .nullable()
     .describe("linkedList (value+next), tree (value+left/right or children), graph (value is the label)"),
-  edges: z.array(z.object({ from: z.string(), to: z.string(), weight: z.number().optional() })).optional(),
-  rootId: z.string().nullable().optional().describe("tree root, or linked list head"),
-  directed: z.boolean().optional(),
+  edges: z.array(z.object({ from: z.string(), to: z.string(), weight: z.number().nullable() })).nullable(),
+  rootId: z.string().nullable().describe("tree root, or linked list head"),
+  directed: z.boolean().nullable(),
 });
 export type WireState = z.infer<typeof wireStateSchema>;
 
 export const simulationSchema = z.object({
   codeLines: z.array(z.string()),
+  addedLines: z.array(z.number().int()).describe("0-based indexes of codeLines added to complete their code."),
   structures: z.array(structureDeclSchema).min(1).max(6),
   loops: z.array(z.object({ id: z.string(), label: z.string(), line: z.number().int() })),
   steps: z
@@ -126,6 +131,13 @@ export const diagnosisOutputSchema = z.object({
     .array(z.string())
     .max(4)
     .describe("Progressive, vague to more specific. Questions and properties to notice. Never the fix."),
+  rethinkScope: z
+    .enum(["none", ...RETHINK_SCOPES])
+    .describe("'none' if the approach works; otherwise whether the idea is sound but slips on details, or the strategy itself can't work."),
+  brokenAssumption: z.string().describe("The assumption their approach relies on that the problem breaks. Empty string if it works."),
+  shiftInThinking: z
+    .string()
+    .describe("A different way to look at the problem, as a question or property to notice. Never names the technique. Empty string if it works."),
 });
 export type DiagnosisOutput = z.infer<typeof diagnosisOutputSchema>;
 

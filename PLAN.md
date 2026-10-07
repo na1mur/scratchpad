@@ -1,4 +1,4 @@
-## DSA Buddy: Build Plan
+## Scratchpad: Build Plan
 
 ### 1. Product summary
 
@@ -167,7 +167,8 @@ VizSpec = {
     expectedOutput: string,
     actualOutput: string,
   },
-  codeLines: string[],               // normalized user pseudo-code, 1 line per entry
+  codeLines: string[],               // user pseudo-code completed into a runnable whole (header, return…), 1 line per entry
+  addedLines?: number[],             // indexes of lines the AI added to complete it; logic is never changed
   structures: Array<{
     id: string, label: string,
     kind: 'array'|'string'|'hashmap'|'set'|'stack'|'queue'|'linkedList'
@@ -194,6 +195,11 @@ VizSpec = {
     bugStepIds: string[],
     failingInputs?: string[],
     thinkingHints: string[],         // progressive: vague → more specific, NEVER the solution
+    rethink?: {                      // absent when the approach works (and on older specs)
+      scope: 'fix-the-details'|'rethink-the-approach',
+      brokenAssumption: string,      // the belief the approach relies on that the problem breaks
+      shiftInThinking: string,       // a new angle as a question; never names the technique
+    },
   },
   autoTags?: string[],
 }
@@ -289,7 +295,8 @@ Images are displayed through short-lived presigned GET URLs, and the bucket stay
     - The **CodePane** highlights the current line.
     - Structure renderers animate the state changes.
     - The **ExplanationPanel** shows the step title, explanation, and an "Iteration 3 of loop `i`" badge.
-    - A "Diagnosis" tab shows the verdict, what and why, links that jump to bug steps, and progressive hints.
+    - A "Diagnosis" tab shows the verdict, what and why, and links that jump to bug steps.
+    - A "Hints" tab shows whether to fix details or rethink the strategy, the broken assumption, a different way to look at the problem, and progressive hints revealed one at a time.
     - A chat panel for follow-ups.
 - `/settings`: language, provider, model, key rotation (re-entering a key replaces it), vision model, and logout.
 - Every form uses React Hook Form with a Zod resolver, sharing schemas with the server from `lib/schemas`. Use toasts for errors, skeletons for loading, and support dark mode.

@@ -121,6 +121,13 @@ export function twoPointersFixture(): VizSpec {
         "In a sorted array, which direction does each pointer's value change when it moves inward?",
         "For each branch, ask: does this move make the sum smaller, larger, or either?",
       ],
+      rethink: {
+        scope: "fix-the-details",
+        brokenAssumption:
+          "Your loop assumes that moving either pointer inward gets you closer to the target. On [1, 3, 4, 6, 8, 11] with target 10, the first sum is 12, and moving left only pushes it higher.",
+        shiftInThinking:
+          "Instead of asking \"which pointer should I move?\", ask \"what do I need the sum to do next, and which move is guaranteed to do that?\"",
+      },
     },
   };
 }

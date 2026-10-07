@@ -28,6 +28,10 @@ export type StructureKind = (typeof STRUCTURE_KINDS)[number];
 export const TONES = ["active", "compare", "success", "error", "visited"] as const;
 export type Tone = (typeof TONES)[number];
 
+/** Whether the learner's idea is sound but slipping on details, or the strategy itself can't work. */
+export const RETHINK_SCOPES = ["fix-the-details", "rethink-the-approach"] as const;
+export type RethinkScope = (typeof RETHINK_SCOPES)[number];
+
 export const EVENTS = [
   "init",
   "compare",
@@ -195,6 +199,16 @@ export const diagnosisSchema = z.object({
   failingInputs: z.array(z.string().max(300)).max(5).optional(),
   /** Progressive: vague first, more specific later. Never the solution. */
   thinkingHints: z.array(z.string().max(500)).max(6),
+  /** How to think differently. Absent on specs made before it existed, and when the approach works. */
+  rethink: z
+    .object({
+      scope: z.enum(RETHINK_SCOPES),
+      /** The assumption the approach relies on that the problem breaks. */
+      brokenAssumption: z.string().max(1500),
+      /** What to look at instead, as a question or observation. Never the technique. May be empty if dropped by the guardrail. */
+      shiftInThinking: z.string().max(1500),
+    })
+    .optional(),
 });
 export type Diagnosis = z.infer<typeof diagnosisSchema>;
 
@@ -202,6 +216,8 @@ const vizSpecBaseSchema = z.object({
   version: z.literal(1),
   summary: summarySchema,
   codeLines: z.array(z.string().max(300)).min(1).max(200),
+  /** 0-based indexes of codeLines the pipeline added to make the learner's fragment runnable. */
+  addedLines: z.array(z.number().int().min(0)).optional(),
   structures: z.array(structureSchema).min(1).max(8),
   loops: z.array(loopSchema).max(10),
   steps: z.array(stepSchema).min(1).max(MAX_STEPS_HARD),
@@ -215,6 +231,11 @@ export const vizSpecSchema = vizSpecBaseSchema.superRefine((spec, ctx) => {
   if (kinds.size !== spec.structures.length) {
     ctx.addIssue({ code: "custom", path: ["structures"], message: "Structure ids must be unique" });
   }
+  spec.addedLines?.forEach((line, i) => {
+    if (line >= spec.codeLines.length) {
+      ctx.addIssue({ code: "custom", path: ["addedLines", i], message: `line ${line} is outside codeLines` });
+    }
+  });
   const loopIds = new Set(spec.loops.map((l) => l.id));
   const stepIds = new Set<string>();
 

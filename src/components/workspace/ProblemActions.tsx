@@ -23,19 +23,19 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/fetcher";
 import type { ProblemDetail } from "@/lib/problems";
-import { MAX_TEXT, createProblemSchema, type CreateProblemInput } from "@/lib/schemas/problems";
+import { MAX_TEXT, editProblemSchema, type EditProblemInput } from "@/lib/schemas/problems";
 import type { Tag } from "@/lib/tags";
 
 export function ProblemActions({ problem }: { problem: ProblemDetail }) {
   const router = useRouter();
   const [dialog, setDialog] = useState<"edit" | "delete" | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const form = useForm<CreateProblemInput>({
-    resolver: zodResolver(createProblemSchema),
-    defaultValues: { title: problem.title, statement: problem.statement, tags: problem.tags },
+  const form = useForm<EditProblemInput>({
+    resolver: zodResolver(editProblemSchema),
+    defaultValues: { title: problem.title, statement: problem.statement, sourceUrl: problem.sourceUrl ?? "", tags: problem.tags },
   });
 
-  async function onSave(values: CreateProblemInput) {
+  async function onSave(values: EditProblemInput) {
     try {
       await api(`/api/problems/${problem.id}`, { method: "PATCH", body: values });
       toast.success("Problem updated");
@@ -68,7 +68,7 @@ export function ProblemActions({ problem }: { problem: ProblemDetail }) {
         <DropdownMenuContent align="end">
           <DropdownMenuItem
             onClick={() => {
-              form.reset({ title: problem.title, statement: problem.statement, tags: problem.tags });
+              form.reset({ title: problem.title, statement: problem.statement, sourceUrl: problem.sourceUrl ?? "", tags: problem.tags });
               setDialog("edit");
             }}
           >
@@ -112,6 +112,24 @@ export function ProblemActions({ problem }: { problem: ProblemDetail }) {
                       rows={8}
                       maxLength={MAX_TEXT}
                       className="max-h-72 font-mono text-sm"
+                      aria-invalid={fieldState.invalid}
+                    />
+                    <FieldError errors={[fieldState.error]} />
+                  </Field>
+                )}
+              />
+              <Controller
+                name="sourceUrl"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor="edit-source-url">Problem URL (optional)</FieldLabel>
+                    <Input
+                      {...field}
+                      id="edit-source-url"
+                      type="url"
+                      inputMode="url"
+                      placeholder="https://leetcode.com/problems/…"
                       aria-invalid={fieldState.invalid}
                     />
                     <FieldError errors={[fieldState.error]} />

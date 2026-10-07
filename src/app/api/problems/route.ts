@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { handle, parseJson, parseWith, requireUser } from "@/lib/api";
+import { getModel } from "@/lib/ai/providers";
+import { generateProblemTitle } from "@/lib/ai/pipeline/title";
 import { distinctTags, listProblems, serializeProblem } from "@/lib/problems";
 import { createProblemSchema, listProblemsQuerySchema } from "@/lib/schemas/problems";
 import { loadUser } from "@/lib/users";
@@ -19,10 +21,12 @@ export function POST(req: NextRequest) {
     const session = await requireUser({ onboarded: true });
     const input = await parseJson(req, createProblemSchema);
     const user = await loadUser(session);
+    const { model } = getModel(user, "reasoning");
     const problem = await Problem.create({
       userId: user._id,
-      title: input.title,
+      title: await generateProblemTitle(model, input.statement),
       statement: input.statement,
+      sourceUrl: input.sourceUrl || undefined,
       tags: input.tags,
       tagsSource: input.tags.length ? "user" : "none",
       language: user.preferredLanguage ?? "pseudocode",

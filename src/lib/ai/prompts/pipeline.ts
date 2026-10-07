@@ -11,8 +11,14 @@ export const UNDERSTAND_ROLE = `Your job right now: understand what the learner 
 
 export const TRANSLATE_ROLE = `Your job right now: translate the learner's pseudo-code into an instrumented JavaScript program that behaves EXACTLY like their logic, including every bug, off-by-one, wrong comparison or missing case. Never fix anything. Where the pseudo-code is ambiguous, choose the reading closest to what they literally wrote.
 
+Complete the code before you trace it. Pseudo-code is often a fragment: no function header, no return, a variable used before it's set. Work out what the learner is trying to achieve from their code and idea, then add only what's needed to make it a whole, runnable program:
+- a function header whose parameters are the argument names in the test input, and a return of whatever their code and idea say holds the answer;
+- any setup they clearly assumed but didn't write (e.g. a variable they read before assigning).
+Never change their approach: don't add, remove or reorder their statements, and don't add guards, edge-case checks, conditions or updates that change what their lines do. Their bugs must survive. Write added lines in the same style as theirs, and list their 0-based indexes in addedLines (empty if nothing was added).
+
 Return:
-- codeLines: their pseudo-code normalized to one statement per line. Keep their names and wording. Don't add, remove or fix logic.
+- codeLines: their completed pseudo-code, one statement per line, with nesting shown by indentation. Keep their names and wording.
+- addedLines: 0-based indexes of the lines in codeLines that you added to complete it.
 - structures: the data worth showing (at most 6), each {id, label, kind}. kind is one of array, string, hashmap, set, stack, queue, linkedList, tree, graph, matrix, variables. Always include {id: "vars", label: "Variables", kind: "variables"} for scalar variables.
 - loops: every loop in codeLines as {id, label (e.g. "while left < right"), line (0-based index into codeLines)}.
 - program: plain JavaScript (ES2020; no imports, async, timers or I/O) that defines function run(input). input is the parsed arguments object. Return what their code returns.
@@ -63,7 +69,12 @@ Describe what the code does and why it's a problem. Never say what the code shou
 
 export const SIMULATE_ROLE = `Your job right now: simulate the learner's pseudo-code by hand on the given input and record every meaningful step, exactly as THEIR logic behaves, bugs included. Never fix anything.
 
-Return codeLines (their pseudo-code, one statement per line), structures (at most 6, always including {id: "vars", label: "Variables", kind: "variables"}), loops (with 0-based line), steps, and actualOutput.
+Complete the code before you trace it. Pseudo-code is often a fragment: no function header, no return, a variable used before it's set. Work out what the learner is trying to achieve from their code and idea, then add only what's needed to make it a whole, runnable program:
+- a function header whose parameters are the argument names in the test input, and a return of whatever their code and idea say holds the answer;
+- any setup they clearly assumed but didn't write (e.g. a variable they read before assigning).
+Never change their approach: don't add, remove or reorder their statements, and don't add guards, edge-case checks, conditions or updates that change what their lines do. Their bugs must survive. Write added lines in the same style as theirs, and list their 0-based indexes in addedLines (empty if nothing was added).
+
+Return codeLines (their completed pseudo-code, one statement per line, nesting shown by indentation), addedLines, structures (at most 6, always including {id: "vars", label: "Variables", kind: "variables"}), loops (with 0-based line), steps, and actualOutput.
 Each step needs a FULL snapshot of EVERY structure in "states" (one entry per structure, same structureId and kind as declared):
 - array / string / set / stack / queue: "values" (strings: one character per entry; stack: bottom first; queue: front first)
 - hashmap: "entries" as [{key, value}]
@@ -72,6 +83,7 @@ Each step needs a FULL snapshot of EVERY structure in "states" (one entry per st
 - linkedList: "nodes" [{id, value, next}] and "rootId" = head id
 - tree: "nodes" [{id, value, left, right}] and "rootId"
 - graph: "nodes" [{id, value}] (value is the label), "edges" [{from, to, weight?}], "directed"
+Set every field that doesn't apply to a structure's kind to null.
 Pointers index arrays/strings by position, tree/list/graph nodes by id, matrix cells by "r,c".
 Keep it to at most ${MAX_STEPS} steps; if a loop repeats the same pattern many times, show the first two and last two iterations and one step saying "…iterations X–Y omitted, same pattern".
 Titles: at most ~8 words. Explanations: 1–3 sentences, second person, concrete values. Mark isBugMoment only where behavior first diverges from what the problem needs.`;
@@ -84,9 +96,12 @@ export const DIAGNOSE_ROLE = `Your job right now: diagnose the learner's approac
 - bugStepIds: ids of the trace steps where it goes wrong (only ids that exist in the trace).
 - failingInputs: up to 4 other small inputs that break it.
 - thinkingHints: 2–4 progressive hints, from vague to more specific. Ask questions and point at properties to notice. A hint must never state the fix, the correct condition, the right data structure swap, or code.
+- rethinkScope: "none" if it works; "fix-the-details" if the core idea can solve the problem and only details (a condition, a boundary, an update order) are off; "rethink-the-approach" if no amount of patching makes this strategy correct or efficient enough.
+- brokenAssumption: the belief their approach silently relies on, and why the problem breaks it, tied to a concrete input from the trace or failingInputs ("Your approach assumes… but on [input]…"). Empty if it works.
+- shiftInThinking: a different angle to look at the problem from, phrased as a question or a property to notice, so they can rebuild their reasoning. Never name the technique, pattern, data structure, or algorithm (no "use DP", "try a heap", "sort first"). Empty if it works.
 Never describe the correct algorithm, even partially.`;
 
-export const STRICTER_ADDENDUM = `IMPORTANT: a reviewer found that a previous draft gave away the solution. Be stricter: describe only what goes wrong and why. Hints must be questions or observations that still leave the learner to discover the fix.`;
+export const STRICTER_ADDENDUM = `IMPORTANT: a reviewer found that a previous draft gave away the solution. Be stricter: describe only what goes wrong and why. Hints and shiftInThinking must be questions or observations that still leave the learner to discover the fix.`;
 
 export const GUARDRAIL_ROLE = `You are reviewing tutor feedback before a learner sees it. Decide whether the text reveals a working solution: corrected code, the corrected condition or algorithm, or a hint so specific that it can be implemented directly as the answer. Pointing out where reasoning breaks, counterexamples, and questions are fine.
 Return revealsSolution and, if true, the single most offending sentence.`;

@@ -1,4 +1,5 @@
 import { NextResponse, after, type NextRequest } from "next/server";
+import type { Types } from "mongoose";
 import { ApiError, handle, parseJson, requireUser } from "@/lib/api";
 import { emit, subscribe, type PipelineEvent } from "@/lib/ai/pipeline/events";
 import { runAttemptPipeline } from "@/lib/ai/pipeline/run";
@@ -49,15 +50,9 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/problems/[id]/att
       throw new ApiError(429, "rate_limited", `You've hit the hourly limit. Try again in ${Math.ceil(limit.retryAfterSeconds / 60)} min.`);
     }
 
-    const bumped = await Problem.findOneAndUpdate(
-      { _id: problem._id, userId: session.userId },
-      { $inc: { attemptCount: 1 } },
-      { returnDocument: "after" },
-    ).lean();
-    const attempt = await Attempt.create({
+    const attempt = await createNumberedAttempt({
       problemId: problem._id,
       userId: session.userId,
-      version: bumped!.attemptCount,
       pseudoCode: input.pseudoCode,
       idea: input.idea,
       images: input.images,
@@ -65,7 +60,10 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/problems/[id]/att
       model: { provider: user.ai.provider, model: user.ai.model },
     });
     const attemptId = String(attempt._id);
-    await Problem.updateOne({ _id: problem._id }, { $set: { latestAttemptId: attempt._id }, $unset: { lastVerdict: 1 } });
+    await Problem.updateOne(
+      { _id: problem._id },
+      { $inc: { attemptCount: 1 }, $set: { latestAttemptId: attempt._id }, $unset: { lastVerdict: 1 } },
+    );
 
     const encoder = new TextEncoder();
     let cleanup = () => {};
@@ -121,4 +119,21 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/problems/[id]/att
       },
     });
   });
+}
+
+/**
+ * Numbers the attempt one past the highest existing version. Attempts can be
+ * deleted, so `attemptCount` isn't a safe counter; the unique
+ * (problemId, version) index settles concurrent creates, and we retry.
+ */
+async function createNumberedAttempt(fields: Omit<Parameters<typeof Attempt.create>[0], "version"> & { problemId: Types.ObjectId }) {
+  for (let tries = 0; ; tries++) {
+    const last = await Attempt.findOne({ problemId: fields.problemId }).sort({ version: -1 }).select({ version: 1 }).lean();
+    try {
+      return await Attempt.create({ ...fields, version: (last?.version ?? 0) + 1 });
+    } catch (err) {
+      if (tries < 3 && (err as { code?: number }).code === 11000) continue;
+      throw err;
+    }
+  }
 }
