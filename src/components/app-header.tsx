@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOutIcon, SettingsIcon, UserIcon } from "lucide-react";
+import { CircleUserRoundIcon, LogOutIcon, SettingsIcon } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,10 +17,11 @@ import {
 import { useLogout } from "@/components/logout-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Logo } from "@/components/logo";
+import { UserAvatar } from "@/components/user-avatar";
 
 const NAV = [{ href: "/problems", label: "Problems" }];
 
-export function AppHeader({ email, name }: { email: string; name: string | null }) {
+export function AppHeader({ email, name, avatarUrl }: { email: string; name: string | null; avatarUrl: string | null }) {
   const pathname = usePathname();
   const router = useRouter();
   const { logout, pending } = useLogout();
@@ -46,17 +47,23 @@ export function AppHeader({ email, name }: { email: string; name: string | null 
           <ThemeToggle />
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button variant="ghost" className="gap-2 px-2" aria-label="Account" />}>
-              <UserIcon />
+              <UserAvatar src={avatarUrl} size="sm" />
               {name && <span className="hidden max-w-32 truncate sm:inline">{name.split(/\s+/)[0]}</span>}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuGroup>
-                <DropdownMenuLabel className="flex flex-col">
-                  {name && <span className="truncate font-medium text-foreground">{name}</span>}
-                  <span className="truncate">{email}</span>
+                <DropdownMenuLabel className="flex items-center gap-3">
+                  <UserAvatar src={avatarUrl} size="lg" />
+                  <span className="flex min-w-0 flex-col">
+                    {name && <span className="truncate font-medium text-foreground">{name}</span>}
+                    <span className="truncate">{email}</span>
+                  </span>
                 </DropdownMenuLabel>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push("/profile")}>
+                <CircleUserRoundIcon /> Profile
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push("/settings")}>
                 <SettingsIcon /> Settings
               </DropdownMenuItem>

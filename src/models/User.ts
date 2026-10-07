@@ -49,6 +49,10 @@ const userSchema = new Schema(
     emailVerified: { type: Boolean, required: false },
     // Google's stable account id (the `sub` claim).
     googleId: { type: String, required: false, unique: true, sparse: true },
+    // Google's profile picture URL, refreshed on every Google login.
+    googlePicture: { type: String, required: false },
+    // R2 key of a photo the user uploaded themselves; wins over `googlePicture`.
+    avatarKey: { type: String, required: false },
     preferredLanguage: { type: String, enum: LANGUAGES.map((l) => l.id), required: false },
     onboardingStep: { type: String, enum: ONBOARDING_STEPS, default: "language", required: true },
     ai: { type: aiSchema, required: false },
@@ -61,6 +65,10 @@ export const isUnverified = (user: Pick<UserDoc, "emailVerified">) => user.email
 
 export type UserDoc = InferSchemaType<typeof userSchema> & { _id: mongoose.Types.ObjectId };
 export type EncryptedField = InferSchemaType<typeof encryptedFieldSchema>;
+
+// In dev, hot reloads keep the old registered model, whose stale schema silently
+// strips any field added since (strict mode). Re-register so schema edits apply.
+if (process.env.NODE_ENV !== "production" && mongoose.models.User) mongoose.deleteModel("User");
 
 export const User: Model<UserDoc> =
   (mongoose.models.User as Model<UserDoc>) ?? mongoose.model<UserDoc>("User", userSchema);

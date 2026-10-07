@@ -15,7 +15,17 @@ import { connectDB } from "@/lib/db";
 import { safeNextPath } from "@/lib/schemas/auth";
 import { User, isUnverified, type UserDoc } from "@/models/User";
 
-type GoogleClaims = { sub?: string; email?: string; email_verified?: boolean; name?: string };
+type GoogleClaims = { sub?: string; email?: string; email_verified?: boolean; name?: string; picture?: string };
+
+/** Google's picture claim, kept only when it's a plain https URL. */
+function safePicture(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    return new URL(url).protocol === "https:" ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 class GoogleLoginError extends Error {
   constructor(public code: GoogleErrorCode) {
@@ -28,9 +38,20 @@ class GoogleLoginError extends Error {
  * email-and-password account with the same address, or creating a new one.
  * Callers have already checked that Google says the email is verified.
  */
-async function resolveUser(sub: string, email: string, name: string | undefined): Promise<UserDoc> {
+async function resolveUser(
+  sub: string,
+  email: string,
+  name: string | undefined,
+  picture: string | undefined,
+): Promise<UserDoc> {
   const byGoogleId = await User.findOne({ googleId: sub }).lean();
-  if (byGoogleId) return byGoogleId;
+  if (byGoogleId) {
+    // Keep the picture in step with what the user has on Google.
+    if (picture && picture !== byGoogleId.googlePicture) {
+      await User.updateOne({ _id: byGoogleId._id }, { $set: { googlePicture: picture } });
+    }
+    return byGoogleId;
+  }
 
   const byEmail = await User.findOne({ email });
   if (byEmail) {
@@ -44,6 +65,7 @@ async function resolveUser(sub: string, email: string, name: string | undefined)
     }
     byEmail.emailVerified = true;
     byEmail.name ||= name;
+    if (picture) byEmail.googlePicture = picture;
     await byEmail.save();
     return byEmail.toObject();
   }
@@ -53,6 +75,7 @@ async function resolveUser(sub: string, email: string, name: string | undefined)
       email,
       googleId: sub,
       emailVerified: true,
+      googlePicture: picture,
       name: (name || email.split("@")[0]).slice(0, 60),
     });
     return created.toObject();
@@ -94,7 +117,10 @@ export async function GET(req: NextRequest) {
     if (claims.email_verified !== true) return fail("google_unverified");
 
     await connectDB();
-    const user = await resolveUser(claims.sub, claims.email.trim().toLowerCase(), claims.name?.trim());
+    const user = await resolveUser(claims.sub, claims.email.trim().toLowerCase(),
+      claims.name?.trim(),
+      safePicture(claims.picture),
+    );
 
     const issued = await issueTokenPair(String(user._id), user.onboardingStep);
     // `next` only matters once onboarding is done; otherwise onboarding wins.

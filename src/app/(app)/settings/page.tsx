@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import { LogoutButton } from "@/components/logout-button";
 import { LanguageForm } from "@/components/settings/language-form";
-import { ProfileForm } from "@/components/settings/profile-form";
 import { ProviderForm } from "@/components/settings/provider-form";
 import { ProviderSummary } from "@/components/settings/provider-summary";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,18 +33,6 @@ export default async function SettingsPage() {
         <CardContent className="flex flex-col gap-6">
           <ProviderSummary ai={user.ai} />
           <ProviderForm ai={user.ai} />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Account</CardTitle>
-          <CardDescription>Signed in as {user.email}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <ProfileForm name={user.name} />
-          <div>
-            <LogoutButton withLabel />
-          </div>
         </CardContent>
       </Card>
     </main>
