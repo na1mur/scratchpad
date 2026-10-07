@@ -11,18 +11,16 @@ import { LoadingButton } from "@/components/loading-button";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ModelPicker, type ModelOption } from "@/components/settings/model-picker";
+import { ProviderPicker } from "@/components/settings/provider-picker";
 import { api } from "@/lib/fetcher";
-import { PROVIDERS, PROVIDER_LABELS, type ProviderId } from "@/lib/providers";
+import type { ProviderId } from "@/lib/providers";
 import { providerFormSchema, type ProviderFormValues, type ProviderSettingsInput } from "@/lib/schemas/settings";
 import type { PublicUser } from "@/lib/serializers";
 
 type Listing = { models: ModelOption[]; source: "live" | "fallback" };
 type LoadState = { status: "idle" | "loading" | "ready" | "error"; listing?: Listing; error?: string };
 type TestState = { status: "idle" | "testing" | "ok" | "error"; message?: string };
-
-const providerItems = PROVIDERS.map((p) => ({ value: p, label: PROVIDER_LABELS[p] }));
 
 // Only prefixes that are known to be stable; the rest just get a generic prompt.
 const KEY_HINTS: Record<ProviderId, string> = {
@@ -215,27 +213,16 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
           render={({ field }) => (
             <Field>
               <FieldLabel htmlFor="provider">Provider</FieldLabel>
-              <Select
-                items={providerItems}
+              <ProviderPicker
+                id="provider"
                 value={field.value}
-                onValueChange={(value) => {
+                onChange={(value) => {
                   field.onChange(value);
                   form.setValue("model", "");
                   setTest({ status: "idle" });
                   void loadModels("main");
                 }}
-              >
-                <SelectTrigger id="provider" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {providerItems.map((p) => (
-                    <SelectItem key={p.value} value={p.value}>
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
             </Field>
           )}
         />
@@ -390,26 +377,15 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
               render={({ field }) => (
                 <Field>
                   <FieldLabel htmlFor="visionProvider">Provider</FieldLabel>
-                  <Select
-                    items={providerItems}
+                  <ProviderPicker
+                    id="visionProvider"
                     value={field.value}
-                    onValueChange={(value) => {
+                    onChange={(value) => {
                       field.onChange(value);
                       form.setValue("visionModel", "");
                       void loadModels("vision");
                     }}
-                  >
-                    <SelectTrigger id="visionProvider" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {providerItems.map((p) => (
-                        <SelectItem key={p.value} value={p.value}>
-                          {p.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  />
                 </Field>
               )}
             />
