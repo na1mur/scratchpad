@@ -38,6 +38,19 @@ function isProviderFailure(err: unknown) {
   return APICallError.isInstance(err) || RetryError.isInstance(err);
 }
 
+/** OpenAI rejects schema names outside ^[a-zA-Z0-9_-]+$ with a 400. */
+function schemaName(name: string) {
+  return name.replace(/[^a-zA-Z0-9_-]+/g, "_");
+}
+
+/** True when the provider refused the requested output-token limit as too high for the model. */
+function isOutputLimitRejected(err: unknown) {
+  const e = RetryError.isInstance(err) ? err.lastError : err;
+  if (!APICallError.isInstance(e) || e.statusCode !== 400) return false;
+  const body = (e.responseBody ?? "").toLowerCase();
+  return /max_(output_|completion_)?tokens/.test(body);
+}
+
 /**
  * Structured output with validation-driven retries. `check` adds rules the
  * schema can't express; its issues are fed back to the model verbatim.
@@ -51,10 +64,13 @@ export async function generateStructured<S extends z.ZodType, R = z.infer<S>>(op
   meter: UsageMeter;
   check?: Check<z.infer<S>, R>;
   maxOutputTokens?: number;
+  /** Per-call timeout; defaults to the long pipeline timeout. */
+  timeoutMs?: number;
   /** Images sent alongside the prompt (vision calls). */
   images?: { data: Uint8Array; mediaType: string }[];
 }): Promise<R> {
   let feedback = "";
+  let maxOutputTokens = opts.maxOutputTokens;
   for (let attempt = 0; attempt <= MAX_FIX_RETRIES; attempt++) {
     const prompt = feedback
       ? `${opts.prompt}\n\n<previous_attempt_problems>\nYour previous answer was rejected:\n${feedback}\nFix every problem listed and answer again in full.\n</previous_attempt_problems>`
@@ -77,10 +93,10 @@ export async function generateStructured<S extends z.ZodType, R = z.infer<S>>(op
         model: opts.model,
         instructions: opts.instructions,
         ...input,
-        output: Output.object({ schema: opts.schema, name: opts.name }),
-        maxOutputTokens: opts.maxOutputTokens,
+        output: Output.object({ schema: opts.schema, name: schemaName(opts.name) }),
+        maxOutputTokens,
         maxRetries: 1,
-        abortSignal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+        abortSignal: AbortSignal.timeout(opts.timeoutMs ?? CALL_TIMEOUT_MS),
       });
       opts.meter.add(result.usage);
       const value = result.output as z.infer<S>;
@@ -93,6 +109,12 @@ export async function generateStructured<S extends z.ZodType, R = z.infer<S>>(op
         opts.meter.add(err.usage);
         const cause = err.cause instanceof Error ? err.cause.message : String(err.cause ?? "unparseable output");
         feedback = `The output did not match the required JSON schema: ${cause.slice(0, 1500)}`;
+        continue;
+      }
+      // Smaller models (e.g. gpt-4o caps at 16k) reject our larger limits; fall back to the model's own maximum.
+      if (maxOutputTokens !== undefined && isOutputLimitRejected(err)) {
+        maxOutputTokens = undefined;
+        attempt--;
         continue;
       }
       if (isProviderFailure(err)) throw toFriendlyProviderError(err);
