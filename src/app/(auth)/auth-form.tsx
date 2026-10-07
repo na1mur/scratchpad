@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { GoogleButton } from "@/components/google-button";
 import { LoadingButton } from "@/components/loading-button";
 import { Logo } from "@/components/logo";
+import { PasswordRules } from "@/components/password-rules";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -42,7 +43,7 @@ export function AuthForm({ mode, googleEnabled }: { mode: Mode; googleEnabled: b
   const [redirecting, setRedirecting] = useState(false);
   const form = useForm<SignupInput>({
     resolver: zodResolver(mode === "signup" ? signupSchema : (loginSchema as unknown as typeof signupSchema)),
-    defaultValues: { name: "", email: "", password: "" },
+    defaultValues: { name: "", email: "", password: "", confirmPassword: "" },
   });
   const busy = form.formState.isSubmitting || redirecting;
 
@@ -164,13 +165,34 @@ export function AuthForm({ mode, googleEnabled }: { mode: Mode; googleEnabled: b
                       id="password"
                       type="password"
                       autoComplete={mode === "login" ? "current-password" : "new-password"}
-                      placeholder={mode === "login" ? "Your password" : "At least 8 characters"}
+                      placeholder={mode === "login" ? "Your password" : "Choose a password"}
                       aria-invalid={fieldState.invalid}
                     />
                     <FieldError errors={[fieldState.error]} />
+                    {mode === "signup" && <PasswordRules />}
                   </Field>
                 )}
               />
+              {mode === "signup" && (
+                <Controller
+                  name="confirmPassword"
+                  control={form.control}
+                  render={({ field, fieldState }) => (
+                    <Field data-invalid={fieldState.invalid}>
+                      <FieldLabel htmlFor="confirmPassword">Repeat password</FieldLabel>
+                      <Input
+                        {...field}
+                        id="confirmPassword"
+                        type="password"
+                        autoComplete="new-password"
+                        placeholder="Type it again"
+                        aria-invalid={fieldState.invalid}
+                      />
+                      <FieldError errors={[fieldState.error]} />
+                    </Field>
+                  )}
+                />
+              )}
             </FieldGroup>
           </fieldset>
           <LoadingButton type="submit" size="lg" className="mt-6 w-full" loading={busy}>

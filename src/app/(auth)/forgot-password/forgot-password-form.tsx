@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { CodeInput } from "@/components/code-input";
 import { LoadingButton } from "@/components/loading-button";
 import { Logo } from "@/components/logo";
+import { PasswordRules } from "@/components/password-rules";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -130,7 +131,7 @@ function ResetStep({
   const [resending, setResending] = useState(false);
   const form = useForm<ResetPasswordInput>({
     resolver: zodResolver(resetPasswordSchema),
-    defaultValues: { email, code: "", password: "" },
+    defaultValues: { email, code: "", password: "", confirmPassword: "" },
   });
   const busy = form.formState.isSubmitting || done;
 
@@ -188,7 +189,26 @@ function ResetStep({
                       id="password"
                       type="password"
                       autoComplete="new-password"
-                      placeholder="At least 8 characters"
+                      placeholder="Choose a password"
+                      aria-invalid={fieldState.invalid}
+                    />
+                    <FieldError errors={[fieldState.error]} />
+                    <PasswordRules />
+                  </Field>
+                )}
+              />
+              <Controller
+                name="confirmPassword"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor="confirmPassword">Repeat new password</FieldLabel>
+                    <Input
+                      {...field}
+                      id="confirmPassword"
+                      type="password"
+                      autoComplete="new-password"
+                      placeholder="Type it again"
                       aria-invalid={fieldState.invalid}
                     />
                     <FieldError errors={[fieldState.error]} />
