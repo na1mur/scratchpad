@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { CheckIcon } from "lucide-react";
 import { cn } from "cn";
+import { LanguageIcon } from "@/components/language-icon";
 import { LoadingButton } from "@/components/loading-button";
 import { FieldError } from "@/components/ui/field";
 import { api } from "@/lib/fetcher";
@@ -74,7 +75,10 @@ export function LanguageForm({
                       lang.id === "pseudocode" && "sm:col-span-2",
                     )}
                   >
-                    {lang.label}
+                    <span className="flex items-center gap-3">
+                      <LanguageIcon id={lang.id} />
+                      {lang.label}
+                    </span>
                     {selected && <CheckIcon className="size-4" />}
                   </button>
                 );
