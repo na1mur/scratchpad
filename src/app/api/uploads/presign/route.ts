@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { ApiError, handle, parseJson, requireUser } from "@/lib/api";
 import { getOwnedProblem } from "@/lib/problems";
-import { presignGet, presignPut, r2Enabled } from "@/lib/r2";
+import { presignPut, r2Enabled, viewUrl } from "@/lib/r2";
 import { rateLimits } from "@/lib/rateLimit";
 import { EXTENSIONS, presignSchema } from "@/lib/schemas/uploads";
 
@@ -16,7 +16,7 @@ export function POST(req: NextRequest) {
     if (!limit.ok) throw new ApiError(429, "rate_limited", "Too many uploads. Try again later.");
 
     const key = `users/${session.userId}/problems/${problemId}/${randomUUID()}.${EXTENSIONS[mimeType]}`;
-    const [uploadUrl, viewUrl] = await Promise.all([presignPut(key, mimeType, size), presignGet(key)]);
-    return NextResponse.json({ key, uploadUrl, viewUrl, headers: { "Content-Type": mimeType } });
+    const [uploadUrl, publicUrl] = await Promise.all([presignPut(key, mimeType, size), viewUrl(key)]);
+    return NextResponse.json({ key, uploadUrl, viewUrl: publicUrl, headers: { "Content-Type": mimeType } });
   });
 }

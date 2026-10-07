@@ -3,7 +3,7 @@ import { Types } from "mongoose";
 import { ApiError } from "@/lib/api";
 import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
 import { connectDB } from "@/lib/db";
-import { presignGet, r2Enabled } from "@/lib/r2";
+import { r2Enabled, viewUrl } from "@/lib/r2";
 import { loadSpec } from "@/lib/specStorage";
 import type { Verdict } from "@/lib/verdicts";
 import { Attempt, type AttemptDoc, type AttemptStatus } from "@/models/Attempt";
@@ -60,8 +60,7 @@ export async function serializeAttempt(a: AttemptDoc, specVersion?: number) {
       (a.images ?? []).map(async (img) => ({
         r2Key: img.r2Key,
         mimeType: img.mimeType,
-        // Short-lived link; the bucket itself stays private.
-        url: r2Enabled ? await presignGet(img.r2Key).catch(() => null) : null,
+        url: r2Enabled ? await viewUrl(img.r2Key).catch(() => null) : null,
       })),
     ),
     vizSpec,

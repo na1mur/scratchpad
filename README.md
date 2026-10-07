@@ -31,14 +31,17 @@ Without signing up you can see the visualizer at `/demo`, which plays four hand-
 | `ENCRYPTION_KEY` | 32 random bytes, base64: `openssl rand -base64 32`. Encrypts users' API keys (AES-256-GCM). |
 | `ENCRYPTION_KEY_VERSION` | Stored with each encrypted value so the key can be rotated later. |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | Cloudflare R2, for notebook photos. Optional: leave empty and uploads are disabled. |
+| `R2_PUBLIC_URL` | Optional public base URL of the bucket (`https://pub-….r2.dev` or a custom domain). When set, images are served from it; otherwise through short-lived presigned links. |
 | `APP_URL` | The public origin, e.g. `http://localhost:3000`. Mutating requests must come from this origin. |
 
 The server validates all of these at startup and refuses to start if any required one is missing.
 
 ### Cloudflare R2 (optional)
 
-The bucket stays private: browsers upload with presigned PUT URLs and view with short-lived presigned GET URLs. The
-bucket needs a CORS rule allowing your app origin to PUT:
+Browsers upload with presigned PUT URLs. For viewing, either enable public access on the bucket and set
+`R2_PUBLIC_URL` (objects are then readable by anyone with the link; keys contain random UUIDs, and the `r2.dev` domain
+is rate-limited, so use a custom domain in production), or leave it unset and the app hands out short-lived presigned
+GET URLs from a private bucket. Either way the bucket needs a CORS rule allowing your app origin to PUT:
 
 ```json
 [

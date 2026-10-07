@@ -21,6 +21,12 @@ const envSchema = z.object({
   R2_ACCESS_KEY_ID: z.string().optional().default(""),
   R2_SECRET_ACCESS_KEY: z.string().optional().default(""),
   R2_BUCKET: z.string().optional().default(""),
+  // Public base URL of the bucket (r2.dev subdomain or custom domain). When
+  // set, images are served from it; otherwise via short-lived presigned GETs.
+  R2_PUBLIC_URL: z
+    .union([z.url().transform((u) => u.replace(/\/+$/, "")), z.literal("")])
+    .optional()
+    .default(""),
   APP_URL: z.url(),
 });
 

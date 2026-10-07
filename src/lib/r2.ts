@@ -39,6 +39,12 @@ export function presignGet(key: string, expiresIn = 10 * 60): Promise<string> {
   return getSignedUrl(r2(), new GetObjectCommand({ Bucket: env.R2_BUCKET, Key: key }), { expiresIn });
 }
 
+/** Where the browser loads an object from: the public bucket URL if configured, else a presigned GET. */
+export async function viewUrl(key: string): Promise<string> {
+  if (env.R2_PUBLIC_URL) return `${env.R2_PUBLIC_URL}/${key.split("/").map(encodeURIComponent).join("/")}`;
+  return presignGet(key);
+}
+
 export async function headObject(key: string): Promise<{ size: number; contentType: string | undefined } | null> {
   try {
     const res = await r2().send(new HeadObjectCommand({ Bucket: env.R2_BUCKET, Key: key }));
