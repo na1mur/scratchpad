@@ -60,7 +60,8 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
   const [vision, setVision] = useState<LoadState>({ status: initialVisionCustom ? "loading" : "idle" });
   const [test, setTest] = useState<TestState>({ status: "idle" });
   const [redirecting, setRedirecting] = useState(false);
-  const busy = form.formState.isSubmitting || redirecting;
+  const [skipping, setSkipping] = useState(false);
+  const busy = form.formState.isSubmitting || redirecting || skipping;
 
   const canUseStoredMain = ai?.provider === v.provider;
   const canUseStoredVision =
@@ -162,6 +163,21 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't save settings.");
+    }
+  }
+
+  async function skip() {
+    setSkipping(true);
+    try {
+      const { redirectTo } = await api<{ redirectTo: string }>("/api/settings/provider/skip", { method: "POST" });
+      setRedirecting(true);
+      toast.success("Skipped for now. Add your key any time in Settings.");
+      router.push(redirectTo);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't skip this step.");
+    } finally {
+      setSkipping(false);
     }
   }
 
@@ -425,9 +441,16 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
       </FieldSet>
 
       </fieldset>
-      <LoadingButton type="submit" className="self-end" loading={busy}>
-        {busy ? "Saving…" : onboarding ? "Finish setup" : "Save provider"}
-      </LoadingButton>
+      <div className="flex items-center justify-end gap-2">
+        {onboarding && (
+          <LoadingButton type="button" variant="ghost" onClick={skip} loading={skipping} disabled={busy}>
+            {skipping ? "Skipping…" : "Skip for now"}
+          </LoadingButton>
+        )}
+        <LoadingButton type="submit" loading={form.formState.isSubmitting || redirecting}>
+          {form.formState.isSubmitting || redirecting ? "Saving…" : onboarding ? "Finish setup" : "Save provider"}
+        </LoadingButton>
+      </div>
     </form>
   );
 }
