@@ -1,25 +1,38 @@
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+"use client";
 
-/** One-time-code field: digits only, big and spaced, and offered by mobile keyboards' autofill. */
+import { REGEXP_ONLY_DIGITS } from "input-otp";
+import { InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot } from "@/components/ui/input-otp";
+
+const LENGTH = 6;
+
+/** One-time-code field: six digit boxes, digits only, and offered by mobile keyboards' autofill. */
 export function CodeInput({
-  className,
-  onChange,
+  invalid,
   ...props
-}: Omit<React.ComponentProps<typeof Input>, "type" | "inputMode" | "maxLength">) {
+}: Omit<React.ComponentProps<typeof InputOTP>, "maxLength" | "pattern" | "children" | "render"> & {
+  invalid?: boolean;
+}) {
+  const slot = "size-11 text-xl font-mono sm:size-12";
   return (
-    <Input
+    <InputOTP
       {...props}
-      type="text"
-      inputMode="numeric"
+      maxLength={LENGTH}
+      pattern={REGEXP_ONLY_DIGITS}
       autoComplete="one-time-code"
-      maxLength={6}
-      placeholder="000000"
-      onChange={(e) => {
-        e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6);
-        onChange?.(e);
-      }}
-      className={cn("h-12 text-center font-mono text-2xl tracking-[0.5em] placeholder:tracking-[0.5em]", className)}
-    />
+      aria-invalid={invalid}
+      containerClassName="justify-center"
+    >
+      <InputOTPGroup>
+        {[0, 1, 2].map((i) => (
+          <InputOTPSlot key={i} index={i} aria-invalid={invalid} className={slot} />
+        ))}
+      </InputOTPGroup>
+      <InputOTPSeparator />
+      <InputOTPGroup>
+        {[3, 4, 5].map((i) => (
+          <InputOTPSlot key={i} index={i} aria-invalid={invalid} className={slot} />
+        ))}
+      </InputOTPGroup>
+    </InputOTP>
   );
 }

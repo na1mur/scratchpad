@@ -172,7 +172,7 @@ function ResetStep({
                 render={({ field, fieldState }) => (
                   <Field data-invalid={fieldState.invalid}>
                     <FieldLabel htmlFor="code">Code</FieldLabel>
-                    <CodeInput {...field} id="code" autoFocus aria-invalid={fieldState.invalid} />
+                    <CodeInput {...field} id="code" autoFocus invalid={fieldState.invalid} />
                     <FieldError errors={[fieldState.error]} />
                   </Field>
                 )}

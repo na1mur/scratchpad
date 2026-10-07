@@ -111,7 +111,7 @@ export function VerifyEmailForm() {
                     <FieldLabel htmlFor="code" className="sr-only">
                       Verification code
                     </FieldLabel>
-                    <CodeInput {...field} id="code" autoFocus aria-invalid={fieldState.invalid} />
+                    <CodeInput {...field} id="code" autoFocus invalid={fieldState.invalid} />
                     <FieldError errors={[fieldState.error]} />
                   </Field>
                 )}
