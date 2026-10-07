@@ -10,6 +10,7 @@ import {
   ChevronDownIcon,
   CopyPlusIcon,
   CpuIcon,
+  EraserIcon,
   ExternalLinkIcon,
   PlayIcon,
   RotateCcwIcon,
@@ -22,12 +23,21 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DiagnosisPanel } from "@/components/viz/DiagnosisPanel";
 import { HintsPanel } from "@/components/viz/HintsPanel";
 import { Player } from "@/components/viz/Player";
@@ -35,7 +45,7 @@ import { LoadingButton } from "@/components/loading-button";
 import { ChatPanel } from "@/components/workspace/ChatPanel";
 import { DeleteAttemptButton } from "@/components/workspace/DeleteAttemptButton";
 import { CodeEditor } from "@/components/workspace/CodeEditor";
-import { ImageDropzone, type UploadedImage } from "@/components/workspace/ImageDropzone";
+import { useNotebookUpload, type UploadedImage } from "@/components/workspace/NotebookUpload";
 import { ProblemActions } from "@/components/workspace/ProblemActions";
 import { ProgressStepper } from "@/components/workspace/ProgressStepper";
 import { UsageBadge } from "@/components/workspace/UsageBadge";
@@ -57,12 +67,24 @@ type StreamEvent =
   | { type: "error"; code: string; message: string };
 
 const IN_PROGRESS = new Set<AttemptStatus>(["queued", "extracting", "understanding", "tracing", "diagnosing"]);
-const NEW = "new";
 
 /** Attempts already use "v1, v2"; regenerated visualizations get their own wording. */
 const specLabel = (version: number) => (version === 1 ? "Original visualization" : `Regenerated #${version - 1}`);
 
 const dateFormat = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+function ClearButton({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<Button type="button" variant="ghost" size="icon-sm" aria-label={label} disabled={disabled} onClick={onClick} />}
+      >
+        <EraserIcon />
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 export function Workspace({
   problem,
@@ -84,6 +106,7 @@ export function Workspace({
   const [viewing, setViewing] = useState<AttemptDetail | null>(initialAttempt);
   const [mode, setMode] = useState<"new" | "view">(initialAttempt ? "view" : "new");
   const [loadingAttempt, setLoadingAttempt] = useState(false);
+  const [confirmingNew, setConfirmingNew] = useState(false);
   const [running, setRunning] = useState<{ attemptId: string | null; status: AttemptStatus } | null>(
     initialAttempt && IN_PROGRESS.has(initialAttempt.status)
       ? { attemptId: initialAttempt.id, status: initialAttempt.status }
@@ -198,10 +221,17 @@ export function Workspace({
     }
   }
 
-  function startNewAttempt(prefill?: AttemptDetail | null) {
-    const source = prefill ?? viewing;
+  /** `clear` starts from a blank slate instead of carrying the source attempt's text over. */
+  function startNewAttempt(prefill?: AttemptDetail | null, clear = false) {
+    const source = clear ? null : (prefill ?? viewing);
     form.reset({ pseudoCode: source?.pseudoCode ?? "", idea: source?.idea ?? "", images: [] });
     setMode("new");
+  }
+
+  /** Asks whether to clear the previous text, unless there's nothing to clear. */
+  function requestNewAttempt() {
+    if (viewing && (viewing.pseudoCode.trim() || viewing.idea.trim())) setConfirmingNew(true);
+    else startNewAttempt();
   }
 
   async function onAttemptDeleted(attemptId: string) {
@@ -220,14 +250,27 @@ export function Workspace({
   const readOnly = mode === "view" || Boolean(running);
   const draftCode = useWatch({ control: form.control, name: "pseudoCode" });
   const shownCode = mode === "view" && viewing ? viewing.pseudoCode : draftCode;
-  const selectValue = mode === "new" ? NEW : (viewing?.id ?? NEW);
-  const attemptItems = [
-    { value: NEW, label: "New attempt" },
-    ...attempts.map((a) => ({
-      value: a.id,
-      label: `v${a.version} · ${a.verdict ? VERDICT_LABELS[a.verdict] : IN_PROGRESS.has(a.status) ? "processing" : a.status === "error" ? "failed" : "…"}`,
-    })),
-  ];
+  const draftIdea = useWatch({ control: form.control, name: "idea" });
+  const draftImages =(useWatch({ control: form.control, name: "images" }) ?? []) as UploadedImage[];
+  const notebook = useNotebookUpload({
+    problemId: problem.id,
+    images: draftImages,
+    onChange: (images) => form.setValue("images", images, { shouldDirty: true }),
+    disabled: Boolean(running),
+    onExtracted: ({ pseudoCode, notes }) => {
+      const { pseudoCode: code, idea } = form.getValues();
+      // Append rather than overwrite: never lose what the learner already typed.
+      const join = (a: string | undefined, b: string) => (a?.trim() ? `${a.trimEnd()}\n\n${b}` : b);
+      if (pseudoCode.trim()) form.setValue("pseudoCode", join(code, pseudoCode), { shouldDirty: true });
+      if (notes.trim()) form.setValue("idea", join(idea, notes), { shouldDirty: true });
+    },
+  });
+  // While drafting a new attempt nothing is selected; the trigger shows a placeholder instead.
+  const selectValue = mode === "new" ? null : (viewing?.id ?? null);
+  const attemptItems = attempts.map((a) => ({
+    value: a.id,
+    label: `v${a.version} · ${a.verdict ? VERDICT_LABELS[a.verdict] : IN_PROGRESS.has(a.status) ? "processing" : a.status === "error" ? "failed" : "…"}`,
+  }));
 
   const left = (
     <div className="flex flex-col gap-4 p-4">
@@ -288,29 +331,29 @@ export function Workspace({
       </div>
 
       <div className="flex items-center gap-2">
-        <Select
-          items={attemptItems}
-          value={selectValue}
-          disabled={loadingAttempt || Boolean(running)}
-          onValueChange={(v) => {
-            if (!v) return;
-            if (v === NEW) startNewAttempt();
-            else void loadAttempt(v);
-          }}
-        >
-          <SelectTrigger className="w-full" aria-label="Attempts">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {attemptItems.map((a) => (
-              <SelectItem key={a.value} value={a.value}>
-                {a.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {attempts.length > 0 ? (
+          <Select
+            items={attemptItems}
+            value={selectValue}
+            disabled={loadingAttempt || Boolean(running)}
+            onValueChange={(v) => v && void loadAttempt(v)}
+          >
+            <SelectTrigger className="w-full" aria-label="Attempts">
+              <SelectValue placeholder="New attempt" />
+            </SelectTrigger>
+            <SelectContent>
+              {attemptItems.map((a) => (
+                <SelectItem key={a.value} value={a.value}>
+                  {a.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <span className="flex-1 px-1 text-sm text-muted-foreground">New attempt</span>
+        )}
         {mode === "view" && viewing && (
-          <Button variant="outline" onClick={() => startNewAttempt(viewing)} disabled={Boolean(running) || loadingAttempt}>
+          <Button variant="outline" onClick={requestNewAttempt} disabled={Boolean(running) || loadingAttempt}>
             <CopyPlusIcon /> New attempt
           </Button>
         )}
@@ -324,14 +367,55 @@ export function Workspace({
         )}
       </div>
 
+      <Dialog open={confirmingNew} onOpenChange={setConfirmingNew}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Start a new attempt?</DialogTitle>
+            <DialogDescription>
+              Clear the pseudo-code and idea, or keep them from {viewing ? `v${viewing.version}` : "this attempt"} as a
+              starting point?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setConfirmingNew(false);
+                startNewAttempt(viewing);
+              }}
+            >
+              Keep them
+            </Button>
+            <Button
+              onClick={() => {
+                setConfirmingNew(false);
+                startNewAttempt(viewing, true);
+              }}
+            >
+              Clear them
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <form onSubmit={form.handleSubmit(onProcess)} noValidate className="flex flex-col gap-4">
         <Controller
           name="pseudoCode"
           control={form.control}
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
-              <div className="flex items-baseline justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <FieldLabel htmlFor="pseudoCode">Pseudo-code</FieldLabel>
+                {mode === "new" && (
+                  <div className="flex items-center">
+                    {uploadsEnabled && notebook.button}
+                    <ClearButton
+                      label="Clear pseudo-code"
+                      disabled={Boolean(running) || !draftCode?.trim()}
+                      onClick={() => form.setValue("pseudoCode", "", { shouldDirty: true })}
+                    />
+                  </div>
+                )}
                 {mode === "view" && viewing && (
                   <span className="text-xs text-muted-foreground">
                     v{viewing.version} · {dateFormat.format(new Date(viewing.createdAt))}
@@ -350,9 +434,10 @@ export function Workspace({
                 readOnly={readOnly}
                 invalid={fieldState.invalid}
                 maxLength={MAX_TEXT}
-                placeholder={"left = 0, right = n - 1\nwhile left < right:\n    ..."}
+                placeholder={"left = 0, right = n - 1\nwhile left < right:\n  ..."}
                 className="h-64"
               />
+              {mode === "new" && uploadsEnabled && notebook.thumbnails}
               <FieldError errors={[fieldState.error]} />
             </Field>
           )}
@@ -362,7 +447,16 @@ export function Workspace({
           control={form.control}
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="idea">Idea / explanation</FieldLabel>
+              <div className="flex items-center justify-between gap-2">
+                <FieldLabel htmlFor="idea">Idea / explanation</FieldLabel>
+                {mode === "new" && (
+                  <ClearButton
+                    label="Clear idea / explanation"
+                    disabled={Boolean(running) || !draftIdea?.trim()}
+                    onClick={() => form.setValue("idea", "", { shouldDirty: true })}
+                  />
+                )}
+              </div>
               <Textarea
                 {...field}
                 id="idea"
@@ -378,31 +472,6 @@ export function Workspace({
             </Field>
           )}
         />
-        {mode === "new" && uploadsEnabled && (
-          <Controller
-            name="images"
-            control={form.control}
-            render={({ field }) => (
-              <Field>
-                <FieldLabel>Notebook photos</FieldLabel>
-                <ImageDropzone
-                  problemId={problem.id}
-                  images={(field.value ?? []) as UploadedImage[]}
-                  onChange={field.onChange}
-                  disabled={Boolean(running)}
-                  onExtracted={({ pseudoCode, notes }) => {
-                    const { pseudoCode: code, idea } = form.getValues();
-                    // Append rather than overwrite: never lose what the learner already typed.
-                    const join = (a: string | undefined, b: string) => (a?.trim() ? `${a.trimEnd()}\n\n${b}` : b);
-                    form.setValue("pseudoCode", join(code, pseudoCode), { shouldDirty: true });
-                    if (notes.trim()) form.setValue("idea", join(idea, notes), { shouldDirty: true });
-                  }}
-                />
-                <FieldDescription>The transcription lands in the editor above so you can fix anything misread.</FieldDescription>
-              </Field>
-            )}
-          />
-        )}
         {mode === "view" && viewing && viewing.images.length > 0 && (
           <div className="flex flex-col gap-2">
             <span className="text-sm font-medium">Notebook photos</span>

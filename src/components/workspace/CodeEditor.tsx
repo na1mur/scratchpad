@@ -3,6 +3,9 @@
 import { useRef } from "react";
 import { cn } from "cn";
 
+/** Two spaces keep indented code readable in the narrow left panel. */
+const INDENT = "  ";
+
 /** Textarea with a line-number gutter that scrolls in sync. Tab inserts spaces. */
 export function CodeEditor({
   id,
@@ -33,9 +36,9 @@ export function CodeEditor({
     e.preventDefault();
     const el = e.currentTarget;
     const { selectionStart: start, selectionEnd: end } = el;
-    const next = `${value.slice(0, start)}    ${value.slice(end)}`;
+    const next = `${value.slice(0, start)}${INDENT}${value.slice(end)}`;
     onChange(next);
-    requestAnimationFrame(() => el.setSelectionRange(start + 4, start + 4));
+    requestAnimationFrame(() => el.setSelectionRange(start + INDENT.length, start + INDENT.length));
   }
 
   return (
@@ -73,6 +76,7 @@ export function CodeEditor({
         onScroll={(e) => {
           if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop;
         }}
+        style={{ tabSize: INDENT.length }}
         className="min-h-0 flex-1 resize-none bg-transparent px-3 py-2 outline-none placeholder:text-muted-foreground/60"
       />
     </div>

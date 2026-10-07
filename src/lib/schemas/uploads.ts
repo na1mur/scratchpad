@@ -22,7 +22,13 @@ export const extractSchema = z.object({
 export const extractionOutputSchema = z.object({
   pseudoCode: z
     .string()
-    .describe("The handwritten code/pseudo-code exactly as written, one line per line, indentation preserved."),
-  notes: z.string().describe("Any prose reasoning or notes on the page, verbatim. Empty if none."),
+    .describe(
+      "Only the handwritten code/pseudo-code, exactly as written, one line per line, indentation preserved. Empty if the page has no code.",
+    ),
+  notes: z
+    .string()
+    .describe(
+      "The idea or explanation: prose reasoning, observations and hand-worked examples, verbatim and not repeated from pseudoCode. Empty if none.",
+    ),
   legible: z.boolean().describe("False if the image doesn't contain readable code or notes."),
 });

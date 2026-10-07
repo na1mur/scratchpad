@@ -11,8 +11,11 @@ import { loadUser } from "@/lib/users";
 
 export const maxDuration = 120;
 
-const EXTRACT_ROLE = `Your job right now: transcribe a photo of the learner's notebook.
-Copy their handwritten pseudo-code and notes faithfully, character for character where legible.
+const EXTRACT_ROLE = `Your job right now: transcribe a photo of the learner's notebook and sort what's on the page into two fields.
+- pseudoCode: the code or step-by-step algorithm (assignments, loops, conditions, returns, function signatures).
+- notes: the idea / explanation: prose about why the approach should work, what it relies on, observations, examples worked by hand. Leave it empty if the page has none.
+Put each piece of text in exactly one field; never repeat it in both. A page may hold only code, only notes, or both.
+Copy their handwriting faithfully, character for character where legible.
 Preserve their mistakes, odd names, off-by-ones and missing cases exactly. Do not fix, complete, reformat into another language, or improve anything.
 Keep their line breaks and indentation. Mark a word you truly can't read as [?].`;
 
@@ -50,7 +53,7 @@ export function POST(req: NextRequest) {
         prompt: "Transcribe this notebook page.",
         images: [{ data, mediaType: mimeType }],
       });
-      if (!out.legible) {
+      if (!out.legible || (!out.pseudoCode.trim() && !out.notes.trim())) {
         throw new ApiError(422, "illegible", "Couldn't find readable code or notes in that image. Try a clearer photo.");
       }
       return NextResponse.json({ pseudoCode: out.pseudoCode, notes: out.notes });
