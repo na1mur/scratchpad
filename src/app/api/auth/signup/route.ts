@@ -1,37 +1,50 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ApiError, handle, parseJson } from "@/lib/api";
-import { setAuthCookies } from "@/lib/auth/cookies";
+import { ApiError, clientIp, handle, parseJson } from "@/lib/api";
 import { hashPassword } from "@/lib/auth/password";
-import { homeFor } from "@/lib/auth/routes";
-import { issueTokenPair } from "@/lib/auth/tokens";
+import { enforceSendLimits, sendOtp } from "@/lib/auth/otp-flow";
 import { connectDB } from "@/lib/db";
+import { rateLimits } from "@/lib/rateLimit";
 import { signupSchema } from "@/lib/schemas/auth";
-import { publicUser } from "@/lib/serializers";
-import { User } from "@/models/User";
+import { User, isUnverified } from "@/models/User";
 
+const emailTaken = () => new ApiError(409, "email_taken", "An account with this email already exists.");
+
+/**
+ * Creates the account unverified and emails a code. No session is issued
+ * until /api/auth/verify-email proves the address is the user's.
+ */
 export function POST(req: NextRequest) {
   return handle(req, async () => {
     const { name, email, password } = await parseJson(req, signupSchema);
+    const limit = await rateLimits.signup().consume(clientIp(req));
+    if (!limit.ok) {
+      throw new ApiError(429, "rate_limited", `Too many sign-ups. Try again in ${limit.retryAfterSeconds}s.`);
+    }
+
     await connectDB();
-    if (await User.exists({ email })) {
-      throw new ApiError(409, "email_taken", "An account with this email already exists.");
-    }
-    let user;
-    try {
-      user = await User.create({ name, email, passwordHash: await hashPassword(password) });
-    } catch (err) {
-      // Lost a race with a concurrent signup for the same email.
-      if ((err as { code?: number }).code === 11000) {
-        throw new ApiError(409, "email_taken", "An account with this email already exists.");
+    const existing = await User.findOne({ email });
+    // A verified account is taken. An unverified one is just somebody's
+    // abandoned (or squatted) attempt, so the new signup replaces it.
+    if (existing && !isUnverified(existing)) throw emailTaken();
+
+    await enforceSendLimits(email, "verify_email");
+    const passwordHash = await hashPassword(password);
+    let user = existing;
+    if (user) {
+      user.name = name;
+      user.passwordHash = passwordHash;
+      await user.save();
+    } else {
+      try {
+        user = await User.create({ name, email, passwordHash, emailVerified: false });
+      } catch (err) {
+        // Lost a race with a concurrent signup for the same email.
+        if ((err as { code?: number }).code === 11000) throw emailTaken();
+        throw err;
       }
-      throw err;
     }
-    const tokens = await issueTokenPair(String(user._id), user.onboardingStep);
-    const res = NextResponse.json(
-      { user: publicUser(user.toObject()), redirectTo: homeFor(user.onboardingStep) },
-      { status: 201 },
-    );
-    setAuthCookies(res, tokens);
-    return res;
+
+    await sendOtp(user, "verify_email");
+    return NextResponse.json({ verificationRequired: true, email }, { status: 201 });
   });
 }

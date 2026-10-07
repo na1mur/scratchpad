@@ -42,13 +42,22 @@ const userSchema = new Schema(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     // Optional only because accounts created before names were collected lack one.
     name: { type: String, required: false, trim: true, maxlength: 60 },
-    passwordHash: { type: String, required: true },
+    // Absent for accounts that only ever signed in with Google.
+    passwordHash: { type: String, required: false },
+    // Set to false at signup and flipped by the emailed code or a verified Google
+    // email. Accounts from before verification existed have no value and count as verified.
+    emailVerified: { type: Boolean, required: false },
+    // Google's stable account id (the `sub` claim).
+    googleId: { type: String, required: false, unique: true, sparse: true },
     preferredLanguage: { type: String, enum: LANGUAGES.map((l) => l.id), required: false },
     onboardingStep: { type: String, enum: ONBOARDING_STEPS, default: "language", required: true },
     ai: { type: aiSchema, required: false },
   },
   { timestamps: true },
 );
+
+/** Only an explicit `false` blocks login; see `emailVerified` above. */
+export const isUnverified = (user: Pick<UserDoc, "emailVerified">) => user.emailVerified === false;
 
 export type UserDoc = InferSchemaType<typeof userSchema> & { _id: mongoose.Types.ObjectId };
 export type EncryptedField = InferSchemaType<typeof encryptedFieldSchema>;

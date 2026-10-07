@@ -49,7 +49,7 @@ src/
     problems/[id]/page.tsx         # workspace
     settings/page.tsx
     api/
-      auth/{signup,login,logout,refresh,me}/route.ts
+      auth/{signup,login,logout,refresh,me,verify-email,verify-email/resend,password/forgot,password/reset,google,google/callback}/route.ts
       settings/{language,provider,provider/test,models}/route.ts
       problems/route.ts, problems/[id]/route.ts
       problems/[id]/attempts/route.ts                # create + process (streams progress)
@@ -71,7 +71,7 @@ src/
 
 ### 5. Authentication and authorization
 
-1. **Signup and login.** Email and password, validated with Zod: a valid email and a password of at least 8 characters. Hash passwords with argon2id or bcrypt (cost 12). There is no email verification for now.
+1. **Signup and login.** Email and password, validated with Zod: a valid email and a password of at least 8 characters. Hash passwords with argon2id or bcrypt (cost 12). New accounts are unverified until they enter a 6-digit code emailed to them (nodemailer over SMTP); no session is issued before that. Password reset uses the same kind of code. "Continue with Google" (OAuth 2.0 + PKCE via `arctic`) is offered on both login and signup and links to an existing account with the same verified email.
 2. **Access token.** A JWT valid for 15 minutes, with payload `{ sub: userId, onboardingStep }`.
 3. **Refresh token.** A JWT valid for 7 days, with payload `{ sub, jti, family }`. Store only a SHA-256 hash of each refresh token in the `RefreshToken` collection, along with `userId`, `family`, `expiresAt`, `revokedAt`, and `replacedBy`. Add a TTL index on `expiresAt`.
 4. **Rotation.** Every call to `/api/auth/refresh` revokes the old token and issues a new pair. If a revoked token is ever presented again (reuse), revoke the entire family. This defends against token theft.
@@ -328,4 +328,4 @@ Images are displayed through short-lived presigned GET URLs, and the bucket stay
 
 ### 16. Out of scope for now (design so these are easy to add later)
 
-Email verification and password reset (SMTP), OAuth, Redis rate limiting, background job queue, sharing a visualization by public link, and exporting a visualization as a GIF or video.
+Redis rate limiting, background job queue, sharing a visualization by public link, and exporting a visualization as a GIF or video.

@@ -46,6 +46,12 @@ function limiter(name: string, limit: number, windowMs: number): RateLimiter {
 
 export const rateLimits = {
   login: () => limiter("login", 10, 15 * 60_000),
+  signup: () => limiter("signup", 10, 60 * 60_000),
+  // Emails sent per address: one a minute, a handful an hour. Keyed by address
+  // alone so the answer doesn't depend on whether an account exists.
+  otpCooldown: () => limiter("otpCooldown", 1, 60_000),
+  otpHourly: () => limiter("otpHourly", 6, 60 * 60_000),
+  otpVerify: () => limiter("otpVerify", 20, 15 * 60_000),
   attempts: () => limiter("attempts", 10, 60 * 60_000),
   messages: () => limiter("messages", 30, 60 * 60_000),
   providerProbe: () => limiter("providerProbe", 30, 15 * 60_000),

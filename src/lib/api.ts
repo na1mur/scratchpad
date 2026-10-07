@@ -43,6 +43,10 @@ export async function handle(req: NextRequest, fn: () => Promise<Response>): Pro
   }
 }
 
+export function clientIp(req: NextRequest): string {
+  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+}
+
 export async function requireUser(opts: { onboarded?: boolean } = {}): Promise<Session> {
   const session = await getSession();
   if (!session) throw new ApiError(401, "unauthorized", "Please log in.");

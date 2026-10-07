@@ -27,6 +27,22 @@ const envSchema = z.object({
     .union([z.url().transform((u) => u.replace(/\/+$/, "")), z.literal("")])
     .optional()
     .default(""),
+  // Outgoing mail (verification and password-reset codes). Without SMTP_USER
+  // and SMTP_PASS the codes are printed to the server console in development
+  // and sending fails in production.
+  SMTP_HOST: z.string().optional().default("smtp.gmail.com"),
+  SMTP_PORT: z.coerce.number().int().positive().default(465),
+  SMTP_USER: z.string().optional().default(""),
+  // Gmail app passwords are displayed in groups separated by spaces.
+  SMTP_PASS: z
+    .string()
+    .optional()
+    .default("")
+    .transform((v) => v.replace(/\s+/g, "")),
+  EMAIL_FROM: z.string().optional().default(""),
+  // "Log in with Google" is hidden unless both are set.
+  GOOGLE_CLIENT_ID: z.string().optional().default(""),
+  GOOGLE_CLIENT_SECRET: z.string().optional().default(""),
   APP_URL: z.url(),
 });
 
@@ -51,3 +67,6 @@ export const env = loadEnv();
 export const r2Enabled = Boolean(
   env.R2_ACCOUNT_ID && env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY && env.R2_BUCKET,
 );
+
+export const emailEnabled = Boolean(env.SMTP_USER && env.SMTP_PASS);
+export const googleEnabled = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);

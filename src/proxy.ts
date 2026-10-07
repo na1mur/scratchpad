@@ -3,7 +3,7 @@ import { ACCESS_COOKIE } from "@/lib/auth/cookies";
 import { verifyAccessToken } from "@/lib/auth/jwt";
 import { ONBOARDING_PATHS, homeFor } from "@/lib/auth/routes";
 
-const GUEST_PAGES = new Set(["/", "/login", "/signup"]);
+const GUEST_PAGES = new Set(["/", "/login", "/signup", "/verify-email", "/forgot-password"]);
 // Open to everyone, logged in or not.
 const PUBLIC_PAGES = new Set(["/demo"]);
 
