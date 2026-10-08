@@ -16,6 +16,15 @@ function transporter(): Transporter {
   }));
 }
 
+// Inboxes show the display name of the From header, so a bare address would
+// appear as just "naeemhasan28". Always attach one; EMAIL_FROM may override it
+// with a full `Name <address>` or a bare address.
+function sender(): string | { name: string; address: string } {
+  const from = env.EMAIL_FROM || env.SMTP_USER;
+  if (from.includes("<")) return from;
+  return { name: "ScratchPad", address: from };
+}
+
 export async function sendMail(mail: Mail): Promise<void> {
   if (!emailEnabled) {
     if (env.NODE_ENV === "production") {
@@ -27,7 +36,7 @@ export async function sendMail(mail: Mail): Promise<void> {
     return;
   }
   try {
-    await transporter().sendMail({ from: env.EMAIL_FROM || env.SMTP_USER, ...mail });
+    await transporter().sendMail({ from: sender(), ...mail });
   } catch (err) {
     console.error("[email] send failed:", err instanceof Error ? err.message : err);
     throw new ApiError(502, "email_failed", "We couldn't send the email. Please try again in a moment.");
