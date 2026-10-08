@@ -162,13 +162,26 @@ function solutionPart(markdown: string): string {
   return fences.length ? fences.join("\n\n") : markdown;
 }
 
-async function fromSearch(
-  problem: Pick<ProblemDoc, "title" | "sourceUrl">,
-  language: string,
-  signal: AbortSignal,
-): Promise<Reference | null> {
+// The search is a nice-to-have, so a run never waits long on it, and after a refusal the next runs skip it for a while
+// instead of each asking again. The free plan has a monthly credit limit (432) and a rate limit (429).
+const SEARCH_TIMEOUT_MS = 6_000;
+const PAUSE_SHORT_MS = 60_000;
+const PAUSE_LONG_MS = 60 * 60 * 1000;
+let searchPausedUntil = 0;
+
+/** The search couldn't be asked (refused, down or paused): not the same as finding nothing, so the miss isn't stored. */
+class SearchUnavailable extends Error {}
+
+function pauseSearch(ms: number, why: string): never {
+  searchPausedUntil = Date.now() + ms;
+  console.warn(`[reference] search ${why}; skipping it for ${Math.round(ms / 60_000)} min`);
+  throw new SearchUnavailable(why);
+}
+
+async function fromSearch(problem: Pick<ProblemDoc, "title" | "sourceUrl">, language: string): Promise<Reference | null> {
   const key = process.env.TAVILY_API_KEY;
   if (!key) return null;
+  if (Date.now() < searchPausedUntil) throw new SearchUnavailable("paused");
   let site = "";
   try {
     if (problem.sourceUrl) site = new URL(problem.sourceUrl).hostname.replace(/^www\./, "");
@@ -176,24 +189,34 @@ async function fromSearch(
   const lang = language === "pseudocode" ? "" : languageLabel(language);
   const query = [problem.title, site, lang, "solution"].filter(Boolean).join(" ").slice(0, 380);
 
-  // api.tavily.com is a fixed public host, so a plain fetch is fine here.
-  const res = await fetch("https://api.tavily.com/search", {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-    body: JSON.stringify({
-      query,
-      search_depth: "basic",
-      max_results: 3,
-      include_raw_content: "markdown",
-      exclude_domains: SEARCH_EXCLUDE,
-    }),
-    signal,
-  });
-  if (!res.ok) {
-    console.warn(`[reference] search failed: ${res.status}`);
-    return null;
+  let results: TavilyResult[];
+  try {
+    // api.tavily.com is a fixed public host, so a plain fetch is fine here.
+    const res = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        query,
+        search_depth: "basic",
+        max_results: 3,
+        include_raw_content: "markdown",
+        exclude_domains: SEARCH_EXCLUDE,
+      }),
+      signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+    });
+    if (res.status === 401 || res.status === 432 || res.status === 433) {
+      pauseSearch(PAUSE_LONG_MS, `refused (${res.status}: invalid key or plan limit reached)`);
+    }
+    if (res.status === 429 || res.status >= 500) pauseSearch(PAUSE_SHORT_MS, `unavailable (${res.status})`);
+    if (!res.ok) {
+      console.warn(`[reference] search failed: ${res.status}`);
+      return null;
+    }
+    results = ((await res.json()) as { results?: TavilyResult[] }).results ?? [];
+  } catch (err) {
+    if (err instanceof SearchUnavailable) throw err;
+    pauseSearch(PAUSE_SHORT_MS, `unreachable or too slow (${err instanceof Error ? err.name : "error"})`);
   }
-  const results = ((await res.json()) as { results?: TavilyResult[] }).results ?? [];
   // The URLs end up as links on the solution page, so only plain web links.
   const usable = results.filter((r) => r.url && /^https?:\/\//i.test(r.url) && (r.raw_content || r.content));
   if (!usable.length) return null;
@@ -220,19 +243,22 @@ function leetCodeSlug(sourceUrl: string | null | undefined): string | null {
   }
 }
 
-/** Best-effort lookup: doocs/leetcode for LeetCode links, then web search. Never throws. */
+/**
+ * Best-effort lookup: doocs/leetcode for LeetCode links, then web search.
+ * `final` is false when the search couldn't be asked, so a later run should try again.
+ */
 export async function findReference(
   problem: Pick<ProblemDoc, "title" | "sourceUrl">,
   language: string,
-): Promise<Reference | null> {
-  const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+): Promise<{ reference: Reference | null; final: boolean }> {
   try {
     const slug = leetCodeSlug(problem.sourceUrl);
-    const fromRepo = slug ? await fromDoocs(slug, language, signal).catch(() => null) : null;
-    return fromRepo ?? (await fromSearch(problem, language, signal));
+    const fromRepo = slug ? await fromDoocs(slug, language, AbortSignal.timeout(FETCH_TIMEOUT_MS)).catch(() => null) : null;
+    return { reference: fromRepo ?? (await fromSearch(problem, language)), final: true };
   } catch (err) {
+    if (err instanceof SearchUnavailable) return { reference: null, final: false };
     console.warn(`[reference] lookup for "${problem.title}" failed:`, err instanceof Error ? err.message : err);
-    return null;
+    return { reference: null, final: true };
   }
 }
 
@@ -255,8 +281,9 @@ export function storedReference(problem: Pick<ProblemDoc, "references">, languag
 /**
  * The reference for this language, looking it up first if that hasn't been
  * done (or found nothing a day ago). The result is stored on the problem, and
- * an empty one is recorded too so it isn't searched on every run. Editing the
- * title or link clears them all.
+ * an empty one is recorded too so it isn't searched on every run. A search
+ * that was refused or down isn't recorded: the run goes on without a
+ * reference and the next one asks again. Editing the title or link clears them all.
  */
 export async function ensureProblemReference(problem: ReferenceProblem, language: string): Promise<Reference | null> {
   const entry = problem.references?.find((r) => r.language === language);
@@ -264,7 +291,8 @@ export async function ensureProblemReference(problem: ReferenceProblem, language
     return fromEntry(entry);
   }
 
-  const found = await findReference(problem, language);
+  const { reference: found, final } = await findReference(problem, language);
+  if (!final) return null;
   // Skip the write if the title or link changed in the meantime.
   const unchanged = {
     _id: problem._id,
