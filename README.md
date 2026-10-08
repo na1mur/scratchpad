@@ -28,6 +28,7 @@ Without signing up you can see the visualizer at `/demo`, which plays four hand-
 | --- | --- |
 | `MONGODB_URI` | e.g. `mongodb://127.0.0.1:27017/dsa-viz` |
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | Two different random strings, 32+ chars: `openssl rand -base64 48` |
+| `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL` | Optional token lifetimes as durations: a number plus `s`, `m`, `h`, `d` or `w` (e.g. `15m`, `30d`; a bare number is seconds). Defaults: `15m` and `7d`. The refresh token is renewed on every refresh, so its lifetime is how long someone can stay away before logging in again. |
 | `ENCRYPTION_KEY` | 32 random bytes, base64: `openssl rand -base64 32`. Encrypts users' API keys (AES-256-GCM). |
 | `ENCRYPTION_KEY_VERSION` | Stored with each encrypted value so the key can be rotated later. |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | Cloudflare R2, for notebook photos. Optional: leave empty and uploads are disabled. |

@@ -2,8 +2,8 @@ import { SignJWT, jwtVerify } from "jose";
 import { env } from "@/lib/env";
 import type { OnboardingStep } from "@/models/User";
 
-export const ACCESS_TTL_SECONDS = 15 * 60;
-export const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60;
+export const ACCESS_TTL_SECONDS = env.ACCESS_TOKEN_TTL;
+export const REFRESH_TTL_SECONDS = env.REFRESH_TOKEN_TTL;
 
 const accessKey = new TextEncoder().encode(env.JWT_ACCESS_SECRET);
 const refreshKey = new TextEncoder().encode(env.JWT_REFRESH_SECRET);

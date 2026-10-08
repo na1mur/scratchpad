@@ -8,11 +8,36 @@ const base64Key = z
     message: "must be 32 bytes encoded as base64",
   });
 
+const DURATION_UNIT_SECONDS = { s: 1, m: 60, h: 3600, d: 86_400, w: 604_800 } as const;
+
+// A duration like `15m`, `12h`, `30d` or `2w` (s, m, h, d, w), parsed to
+// seconds. A bare number is seconds. An empty value (`KEY=`) counts as unset.
+const duration = (fallbackSeconds: number) =>
+  z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z
+      .string()
+      .trim()
+      .toLowerCase()
+      .regex(/^\d+\s*[smhdw]?$/, "must look like 15m, 12h, 30d or 2w (s, m, h, d, w)")
+      .transform((v) => {
+        const unit = (v.match(/[smhdw]$/)?.[0] ?? "s") as keyof typeof DURATION_UNIT_SECONDS;
+        return parseInt(v, 10) * DURATION_UNIT_SECONDS[unit];
+      })
+      .refine((s) => s > 0, "must be greater than zero")
+      .default(fallbackSeconds),
+  );
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   MONGODB_URI: z.string().min(1),
   JWT_ACCESS_SECRET: z.string().min(32, "must be at least 32 characters"),
   JWT_REFRESH_SECRET: z.string().min(32, "must be at least 32 characters"),
+  // How long each token is valid, as a duration (e.g. 15m, 30d); the parsed
+  // value is in seconds. The refresh token is renewed on every refresh, so its
+  // TTL is how long a user can stay away before having to log in again.
+  ACCESS_TOKEN_TTL: duration(15 * 60),
+  REFRESH_TOKEN_TTL: duration(7 * 24 * 60 * 60),
   ENCRYPTION_KEY: base64Key,
   ENCRYPTION_KEY_VERSION: z.coerce.number().int().positive().default(1),
   // R2 is only needed for notebook image uploads. Leaving these empty disables
