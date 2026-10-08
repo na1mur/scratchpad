@@ -54,6 +54,7 @@ export const rateLimits = {
   otpVerify: () => limiter("otpVerify", 20, 15 * 60_000),
   attempts: () => limiter("attempts", 10, 60 * 60_000),
   messages: () => limiter("messages", 30, 60 * 60_000),
+  solutions: () => limiter("solutions", 6, 60 * 60_000),
   providerProbe: () => limiter("providerProbe", 30, 15 * 60_000),
   uploads: () => limiter("uploads", 30, 60 * 60_000),
 };

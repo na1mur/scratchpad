@@ -9,6 +9,42 @@ export const UNDERSTAND_ROLE = `Your job right now: understand what the learner 
 - expectedOutput is the CORRECT answer for that input, not what their code returns.
 - suggestedTags: up to 4 from this list only: ${TAGS.join(", ")}.`;
 
+/** How an instrumented program reports steps. Shared by the attempt and solution translators. */
+export const TRACE_API = `Inside run(), call trace({...}) at each meaningful moment: after initialization, at each comparison or decision, after each mutation, and at each return:
+trace({
+  line: 0-based index into codeLines of the statement just executed,
+  loop: { id: "<loop id>", index: <0-based iteration> },   // only inside a loop; use the innermost loop
+  event: "init" | "compare" | "swap" | "insert" | "remove" | "push" | "pop" | "visit" | "recurse" | "return" | "update" | "output",
+  states: { <structureId>: S.<helper>(value), ... },    // structures you omit keep their previous snapshot
+  pointers: [{ structureId, name, index }],             // array/string index; nodeId(node) for tree or list nodes; node id for graphs; "r,c" for matrix cells
+  highlights: [{ structureId, targets: [...], tone: "active" | "compare" | "success" | "error" | "visited" }]
+})
+
+Snapshot helpers already exist in scope and copy their argument:
+S.array(arr), S.string(str), S.hashmap(mapOrPlainObject), S.set(setOrArray), S.stack(arrBottomFirst), S.queue(arrFrontFirst),
+S.linkedList(headNode, { value: "val", next: "next" }), S.tree(rootNode, { value: "val", left: "left", right: "right" }) or S.tree(root, { value: "val", children: "children" }),
+S.graph(adjacency, directed) where adjacency is { node: [neighbor or [neighbor, weight], ...] } or a Map, S.matrix(rows), S.vars({ name: value, ... }).
+nodeId(nodeObject) gives the id a tree/list node has in snapshots.`;
+
+export const TRACE_RULES = `- Aim for 15–60 trace() calls on the given input. Trace every loop iteration at least once. Never exceed 400.
+- Build trees, lists and graphs from the arguments inside run().
+- For recursion, keep an array of call labels like "dfs(3)", push/pop it around calls, and snapshot it with S.stack(...) under a structure of kind "stack" (e.g. id "calls").`;
+
+export const TRACE_EXAMPLE = `Example:
+function run(input) {
+  var nums = input.nums, left = 0, right = nums.length - 1;
+  trace({ line: 0, event: "init", states: { nums: S.array(nums), vars: S.vars({ left: left, right: right }) },
+          pointers: [{ structureId: "nums", name: "left", index: left }, { structureId: "nums", name: "right", index: right }] });
+  var it = 0;
+  while (left < right) {
+    var sum = nums[left] + nums[right];
+    trace({ line: 2, loop: { id: "while", index: it }, event: "compare", states: { vars: S.vars({ left: left, right: right, sum: sum }) },
+            highlights: [{ structureId: "nums", targets: [left, right], tone: "compare" }] });
+    // ...
+    it++;
+  }
+}`;
+
 export const TRANSLATE_ROLE = `Your job right now: translate the learner's pseudo-code into an instrumented JavaScript program that behaves EXACTLY like their logic, including every bug, off-by-one, wrong comparison or missing case. Never fix anything. Where the pseudo-code is ambiguous, choose the reading closest to what they literally wrote.
 
 Complete the code before you trace it. Pseudo-code is often a fragment: no function header, no return, a variable used before it's set. Work out what the learner is trying to achieve from their code and idea, then add only what's needed to make it a whole, runnable program:
@@ -23,42 +59,13 @@ Return:
 - loops: every loop in codeLines as {id, label (e.g. "while left < right"), line (0-based index into codeLines)}.
 - program: plain JavaScript (ES2020; no imports, async, timers or I/O) that defines function run(input). input is the parsed arguments object. Return what their code returns.
 
-Inside run(), call trace({...}) at each meaningful moment: after initialization, at each comparison or decision, after each mutation, and at each return:
-trace({
-  line: 0-based index into codeLines of the statement just executed,
-  loop: { id: "<loop id>", index: <0-based iteration> },   // only inside a loop; use the innermost loop
-  event: "init" | "compare" | "swap" | "insert" | "remove" | "push" | "pop" | "visit" | "recurse" | "return" | "update" | "output",
-  states: { <structureId>: S.<helper>(value), ... },    // structures you omit keep their previous snapshot
-  pointers: [{ structureId, name, index }],             // array/string index; nodeId(node) for tree or list nodes; node id for graphs; "r,c" for matrix cells
-  highlights: [{ structureId, targets: [...], tone: "active" | "compare" | "success" | "error" | "visited" }]
-})
-
-Snapshot helpers already exist in scope and copy their argument:
-S.array(arr), S.string(str), S.hashmap(mapOrPlainObject), S.set(setOrArray), S.stack(arrBottomFirst), S.queue(arrFrontFirst),
-S.linkedList(headNode, { value: "val", next: "next" }), S.tree(rootNode, { value: "val", left: "left", right: "right" }) or S.tree(root, { value: "val", children: "children" }),
-S.graph(adjacency, directed) where adjacency is { node: [neighbor or [neighbor, weight], ...] } or a Map, S.matrix(rows), S.vars({ name: value, ... }).
-nodeId(nodeObject) gives the id a tree/list node has in snapshots.
+${TRACE_API}
 
 Rules:
-- Aim for 15–60 trace() calls on the given input. Trace every loop iteration at least once. Never exceed 400.
-- Build trees, lists and graphs from the arguments inside run().
-- For recursion, keep an array of call labels like "dfs(3)", push/pop it around calls, and snapshot it with S.stack(...) under a structure of kind "stack" (e.g. id "calls").
+${TRACE_RULES}
 - Highlight with tone "error" only where values are clearly wrong; you don't decide bugs here.
 
-Example:
-function run(input) {
-  var nums = input.nums, left = 0, right = nums.length - 1;
-  trace({ line: 0, event: "init", states: { nums: S.array(nums), vars: S.vars({ left: left, right: right }) },
-          pointers: [{ structureId: "nums", name: "left", index: left }, { structureId: "nums", name: "right", index: right }] });
-  var it = 0;
-  while (left < right) {
-    var sum = nums[left] + nums[right];
-    trace({ line: 2, loop: { id: "while", index: it }, event: "compare", states: { vars: S.vars({ left: left, right: right, sum: sum }) },
-            highlights: [{ structureId: "nums", targets: [left, right], tone: "compare" }] });
-    // ...
-    it++;
-  }
-}`;
+${TRACE_EXAMPLE}`;
 
 export const NARRATE_ROLE = `Your job right now: narrate an execution trace of the learner's code for them.
 For every step id you're given, write:
