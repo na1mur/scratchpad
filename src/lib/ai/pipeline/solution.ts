@@ -9,6 +9,7 @@ import {
   SOLVE_ROLE,
   solutionInstructions,
 } from "@/lib/ai/prompts/solution";
+import { sourceBlock } from "@/lib/ai/prompts/system";
 import { narrationSchema, simulationSchema } from "@/lib/ai/schemas/pipeline";
 import {
   SOLUTION_REQUEST_LABELS,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/ai/schemas/solution";
 import { formatSpecIssues, vizSpecSchema, type Loop, type Step, type Structure, type VizSpec } from "@/lib/ai/schemas/vizSpec";
 import { connectDB } from "@/lib/db";
+import { ensureProblemSource } from "@/lib/problemSource";
 import { loadSpec, storeSpec } from "@/lib/specStorage";
 import { Attempt } from "@/models/Attempt";
 import { Problem } from "@/models/Problem";
@@ -32,7 +34,8 @@ import { runInSandbox, type SandboxResult } from "./sandbox";
 import { checkDeclarations, runNoteFor, simulationToSteps } from "./stages";
 import { collapseSteps, describeSteps, eventsToSteps } from "./steps";
 
-type SolveCtx = { model: LanguageModel; meter: UsageMeter; language: string; statement: string };
+/** `source` (the linked page's text) only goes to the solve stage; later stages work from the plan. */
+type SolveCtx = { model: LanguageModel; meter: UsageMeter; language: string; statement: string; source: string };
 
 type Trace = {
   mode: "execution" | "simulation";
@@ -74,7 +77,7 @@ type PlanContext = {
 };
 
 function planPrompt(ctx: SolveCtx, pc: PlanContext): string {
-  const parts = [`<problem>\n${ctx.statement}\n</problem>`];
+  const parts = [`<problem>\n${ctx.statement}\n</problem>`, sourceBlock(ctx.source)].filter(Boolean);
   if (pc.attempt) {
     const d = pc.attempt.spec?.diagnosis;
     parts.push(
@@ -354,7 +357,13 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
     if (!problem || !user) throw new PipelineError("not_found", "This problem no longer exists.");
 
     const { model } = getModel(user, "reasoning");
-    const ctx: SolveCtx = { model, meter, language: solution.language, statement: problem.statement };
+    const ctx: SolveCtx = {
+      model,
+      meter,
+      language: solution.language,
+      statement: problem.statement,
+      source: await ensureProblemSource(problem),
+    };
     const pc: PlanContext = {
       attempt: attempt
         ? {

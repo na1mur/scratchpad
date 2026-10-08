@@ -115,6 +115,7 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/attempts/[id]/mes
 
     const learner = {
       statement: problem.statement,
+      source: problem.sourceText ?? "",
       pseudoCode: attempt.pseudoCode,
       idea: attempt.idea ?? "",
       language: problem.language,
@@ -178,6 +179,7 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/attempts/[id]/mes
                         model,
                         language: problem.language,
                         statement: problem.statement,
+                        source: problem.sourceText ?? "",
                         guidance: { reason, newTestInput },
                         focusDescription: focusSteps.length
                           ? `the steps titled: ${focusSteps.map((s) => `"${s.title}"`).join(", ")}`

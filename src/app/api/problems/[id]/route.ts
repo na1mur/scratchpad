@@ -1,6 +1,7 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, after, type NextRequest } from "next/server";
 import { handle, parseJson, requireUser } from "@/lib/api";
 import { deleteProblemCascade } from "@/lib/cascade";
+import { refreshProblemSource } from "@/lib/problemSource";
 import { getOwnedProblem, serializeProblem } from "@/lib/problems";
 import { updateProblemSchema } from "@/lib/schemas/problems";
 import { Problem } from "@/models/Problem";
@@ -28,15 +29,19 @@ export function PATCH(req: NextRequest, ctx: RouteContext<"/api/problems/[id]">)
       set.tagsSource = input.tags.length ? "user" : "none";
     }
     const update: Record<string, Record<string, unknown>> = { $set: set };
-    if (input.sourceUrl !== undefined) {
+    const urlChanged = input.sourceUrl !== undefined && input.sourceUrl !== (existing.sourceUrl ?? "");
+    if (urlChanged) {
+      // The old page's text no longer applies; a new link is fetched after responding.
+      update.$unset = { sourceText: "", sourceFetchedAt: "" };
       if (input.sourceUrl) set.sourceUrl = input.sourceUrl;
-      else update.$unset = { sourceUrl: "" };
+      else update.$unset.sourceUrl = "";
     }
     const updated = await Problem.findOneAndUpdate(
       { _id: existing._id, userId: session.userId },
       update,
       { returnDocument: "after" },
     ).lean();
+    if (urlChanged && input.sourceUrl) after(() => refreshProblemSource(existing._id, input.sourceUrl!));
     return NextResponse.json({ problem: serializeProblem(updated!) });
   });
 }

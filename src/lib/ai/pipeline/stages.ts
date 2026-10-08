@@ -37,7 +37,8 @@ import { PipelineError, generateStructured, type UsageMeter } from "./llm";
 import { runInSandbox, type SandboxResult } from "./sandbox";
 import { collapseSteps, describeSteps, eventsToSteps } from "./steps";
 
-export type LearnerInput = { statement: string; pseudoCode: string; idea: string; language: string };
+/** `source` is the linked page's text (src/lib/problemSource.ts), "" if there's none. */
+export type LearnerInput = { statement: string; source?: string; pseudoCode: string; idea: string; language: string };
 
 export type Ctx = { model: LanguageModel; meter: UsageMeter; learner: LearnerInput };
 

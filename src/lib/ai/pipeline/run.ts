@@ -6,6 +6,7 @@ import { formatSpecIssues, vizSpecSchema, type VizSpec } from "@/lib/ai/schemas/
 import { deleteAttemptCascade } from "@/lib/cascade";
 import { connectDB } from "@/lib/db";
 import { storeSpec } from "@/lib/specStorage";
+import { ensureProblemSource } from "@/lib/problemSource";
 import { normalizeTags } from "@/lib/tags";
 import { Attempt, type AttemptStatus } from "@/models/Attempt";
 import { Problem } from "@/models/Problem";
@@ -81,6 +82,7 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
       meter,
       learner: {
         statement: problem.statement,
+        source: await ensureProblemSource(problem),
         pseudoCode: attempt.pseudoCode,
         idea: attempt.idea ?? "",
         language: problem.language,
