@@ -21,6 +21,7 @@ const FILL_WEIGHTS = [3, 2, 3, 2, 2, 1];
 const FADE = {
   down: "[mask-image:linear-gradient(to_bottom,black_55%,transparent)]",
   up: "[mask-image:linear-gradient(to_top,black_40%,transparent)]",
+  none: "",
 };
 
 /** Small seeded PRNG so server and client render the same cells. */

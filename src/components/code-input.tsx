@@ -12,15 +12,17 @@ export function CodeInput({
 }: Omit<React.ComponentProps<typeof InputOTP>, "maxLength" | "pattern" | "children" | "render"> & {
   invalid?: boolean;
 }) {
-  const slot = "size-11 text-xl font-mono sm:size-12";
+  const slot =
+    "h-12 w-10 bg-sheet text-xl font-mono sm:w-11 data-[active=true]:border-pen-blue data-[active=true]:ring-pen-blue/30";
   return (
     <InputOTP
       {...props}
       maxLength={LENGTH}
       pattern={REGEXP_ONLY_DIGITS}
       autoComplete="one-time-code"
+      inputMode="numeric"
       aria-invalid={invalid}
-      containerClassName="justify-center"
+      containerClassName="justify-start"
     >
       <InputOTPGroup>
         {[0, 1, 2].map((i) => (

@@ -9,11 +9,16 @@ export const nameSchema = z
 const emailSchema = z.email("Enter a valid email").trim().toLowerCase().max(254);
 export const otpCodeSchema = z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code");
 
-/** Rules for choosing a password (signup, reset). Shown under the field via `PASSWORD_RULES`. */
-export const PASSWORD_RULES = ["8–32 characters", "At least 1 letter", "At least 1 special character"] as const;
 const PASSWORD_LENGTH = /^[\s\S]{8,32}$/;
 const PASSWORD_LETTER = /[A-Za-z]/;
 const PASSWORD_SPECIAL = /[^A-Za-z0-9\s]/;
+
+/** Rules for choosing a password (signup, reset), shown under the field with live pass/fail from `test`. */
+export const PASSWORD_CHECKS = [
+  { label: "8–32 characters", test: (v: string) => PASSWORD_LENGTH.test(v) },
+  { label: "At least 1 letter", test: (v: string) => PASSWORD_LETTER.test(v) },
+  { label: "At least 1 special character", test: (v: string) => PASSWORD_SPECIAL.test(v) },
+] as const;
 
 const newPasswordSchema = z
   .string()

@@ -32,7 +32,15 @@ function GoogleMark() {
  * A plain link: Google sign-in is a full-page redirect, so this isn't a fetch.
  * Used on both login and signup; the server links or creates the account.
  */
-export function GoogleButton({ next, disabled }: { next?: string | null; disabled?: boolean }) {
+export function GoogleButton({
+  next,
+  disabled,
+  className,
+}: {
+  next?: string | null;
+  disabled?: boolean;
+  className?: string;
+}) {
   const [leaving, setLeaving] = useState(false);
   // Coming back with the browser's back button restores this page from cache, spinner and all.
   useEffect(() => {
@@ -52,6 +60,7 @@ export function GoogleButton({ next, disabled }: { next?: string | null; disable
       className={cn(
         buttonVariants({ variant: "outline", size: "lg" }),
         "w-full",
+        className,
         (disabled || leaving) && "pointer-events-none opacity-50",
       )}
     >
