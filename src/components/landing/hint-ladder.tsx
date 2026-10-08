@@ -13,6 +13,8 @@ const HINTS = [
 
 export function HintLadder() {
   const [shown, setShown] = useState(1);
+  // Revealing a hint unmounts the button that was focused, so hand focus to the new hint.
+  const [interacted, setInteracted] = useState(false);
   const done = shown === HINTS.length;
 
   return (
@@ -28,7 +30,13 @@ export function HintLadder() {
               {i + 1}
             </span>
             {revealed ? (
-              <p className="text-lg leading-7 animate-in duration-500 fade-in slide-in-from-top-1 motion-reduce:animate-none">
+              <p
+                ref={(el) => {
+                  if (el && interacted && i === shown - 1) el.focus({ preventScroll: true });
+                }}
+                tabIndex={-1}
+                className="text-lg leading-7 outline-none animate-in duration-500 fade-in slide-in-from-top-1 motion-reduce:animate-none"
+              >
                 <span className="sr-only">Hint {i + 1}: </span>
                 {hint}
               </p>
@@ -38,7 +46,10 @@ export function HintLadder() {
                 <div aria-hidden className="h-2.5 w-full rounded-full bg-ink/10" />
                 <div aria-hidden className="h-2.5 w-2/3 rounded-full bg-ink/10" />
                 {i === shown && (
-                  <Button variant="outline" size="sm" className="mt-1.5" onClick={() => setShown(i + 1)}>
+                  <Button variant="outline" size="sm" className="mt-1.5" onClick={() => {
+                      setInteracted(true);
+                      setShown(i + 1);
+                    }}>
                     Show hint {i + 1}
                   </Button>
                 )}
@@ -49,7 +60,7 @@ export function HintLadder() {
       })}
       <li className="flex items-center gap-5 py-5 text-ink/65">
         <LockIcon aria-hidden className="mx-1 size-5 shrink-0" />
-        <p className={cn("font-hand text-2xl leading-6", !done && "text-ink/45")}>
+        <p className={cn("font-hand text-2xl leading-6", done && "text-ink")}>
           There is no fourth hint that writes the code for you.
         </p>
       </li>

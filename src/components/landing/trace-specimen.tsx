@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent } from "react";
-import { ChevronLeftIcon, ChevronRightIcon, RotateCcwIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, PauseIcon, PlayIcon, RotateCcwIcon } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 
@@ -164,10 +164,22 @@ export function TraceSpecimen() {
   const reducedMotion = usePrefersReducedMotion();
   const [stepIndex, setStepIndex] = useState(0);
   const [manual, setManual] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [inView, setInView] = useState(false);
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const step = STEPS[stepIndex];
 
+  // Only advance while the trace is on screen, so it isn't over before anyone scrolls to it.
+  useEffect(() => {
+    if (!root) return;
+    const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold: 0.5 });
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [root]);
+
   // Plays once from the start to the bug, then rests there.
-  const autoplaying = !reducedMotion && !manual && stepIndex < BUG_STEP;
+  const playing = !reducedMotion && !manual && !paused && stepIndex < BUG_STEP;
+  const autoplaying = playing && inView;
   useEffect(() => {
     if (!autoplaying) return;
     const timer = setTimeout(() => setStepIndex((i) => i + 1), stepIndex === 0 ? 1400 : 1500);
@@ -181,7 +193,18 @@ export function TraceSpecimen() {
 
   function replay() {
     setManual(false);
+    setPaused(false);
     setStepIndex(0);
+  }
+
+  function togglePlay() {
+    if (playing) {
+      setPaused(true);
+      return;
+    }
+    setManual(false);
+    setPaused(false);
+    if (stepIndex >= BUG_STEP) setStepIndex(0);
   }
 
   function onKeyDown(e: KeyboardEvent) {
@@ -196,6 +219,7 @@ export function TraceSpecimen() {
 
   return (
     <div
+      ref={setRoot}
       role="group"
       aria-label="A two-pointer approach traced step by step. Use the left and right arrow keys to step."
       tabIndex={0}
@@ -220,7 +244,7 @@ export function TraceSpecimen() {
                   <span
                     className={cn(
                       "w-9 shrink-0 border-r border-pen-red/60 pr-2.5 text-right select-none",
-                      i === step.line && step.bug ? "text-pen-red" : "text-ink/45",
+                      i === step.line && step.bug ? "text-pen-red" : "text-ink/65",
                     )}
                   >
                     {i + 1}
@@ -234,7 +258,7 @@ export function TraceSpecimen() {
 
         {/* Trace */}
         <div className="flex min-w-0 flex-col gap-3 p-5">
-          <p className="font-mono text-sm text-ink/60">
+          <p className="font-mono text-sm text-ink/70">
             nums = [{NUMS.join(", ")}] <span className="px-1.5">target = {TARGET}</span>
           </p>
 
@@ -294,7 +318,7 @@ export function TraceSpecimen() {
               </ul>
               <ul className="flex pt-1" style={{ gap: GAP }} aria-hidden>
                 {NUMS.map((_, i) => (
-                  <li key={i} className="text-center font-mono text-xs text-ink/55" style={{ width: CELL }}>
+                  <li key={i} className="text-center font-mono text-xs text-ink/65" style={{ width: CELL }}>
                     {i}
                   </li>
                 ))}
@@ -305,26 +329,27 @@ export function TraceSpecimen() {
 
           <dl className="flex gap-5 font-mono text-sm">
             <div>
-              <dt className="inline text-ink/55">lo </dt>
+              <dt className="inline text-ink/65">lo </dt>
               <dd className="inline font-medium">{step.lo}</dd>
             </div>
             <div>
-              <dt className="inline text-ink/55">hi </dt>
+              <dt className="inline text-ink/65">hi </dt>
               <dd className="inline font-medium">{step.hi}</dd>
             </div>
             <div>
-              <dt className="inline text-ink/55">sum </dt>
+              <dt className="inline text-ink/65">sum </dt>
               <dd className="inline font-medium">{step.sum ?? "-"}</dd>
             </div>
           </dl>
 
-          <div
-            className="min-h-[5.5rem] text-sm leading-6"
-            aria-live={manual ? "polite" : "off"}
-          >
+          <div className="min-h-[5.5rem] text-sm leading-6">
             <p className="font-medium">{step.title}</p>
             <p className="text-ink/70">{step.text}</p>
           </div>
+          {/* Announce steps only when the reader moves them, not while autoplaying. */}
+          <p className="sr-only" aria-live="polite">
+            {manual ? `${step.title}. ${step.text}${step.note ? ` ${step.note}` : ""}` : ""}
+          </p>
 
           <div className="min-h-[4.25rem]">
             {step.note && (
@@ -351,6 +376,15 @@ export function TraceSpecimen() {
           <Button variant="ghost" size="icon-sm" aria-label="Next step" disabled={stepIndex === LAST} onClick={() => go(stepIndex + 1)}>
             <ChevronRightIcon />
           </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={playing ? "Pause autoplay" : "Play"}
+            disabled={reducedMotion}
+            onClick={togglePlay}
+          >
+            {playing ? <PauseIcon /> : <PlayIcon />}
+          </Button>
           <Button variant="ghost" size="icon-sm" aria-label="Replay from the start" onClick={replay}>
             <RotateCcwIcon />
           </Button>
@@ -360,6 +394,7 @@ export function TraceSpecimen() {
             <li key={i} className="flex-1">
               <button
                 type="button"
+                tabIndex={-1}
                 aria-label={`Step ${i + 1}: ${s.title}`}
                 aria-current={i === stepIndex ? "step" : undefined}
                 onClick={() => go(i)}
@@ -381,7 +416,7 @@ export function TraceSpecimen() {
             </li>
           ))}
         </ol>
-        <p className="w-14 shrink-0 text-right font-mono text-xs text-ink/55">
+        <p className="w-14 shrink-0 text-right font-mono text-xs text-ink/65">
           {stepIndex + 1} of {STEPS.length}
         </p>
       </div>

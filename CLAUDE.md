@@ -22,6 +22,8 @@ There is no test runner configured yet.
 - Route props use Next's global typed helpers (e.g. `LayoutProps<"/">` in `src/app/layout.tsx`) rather than hand-written prop types.
 - The package name is `scratchpad` (the app's name is Scratchpad) because the folder name `DSABuddy` is invalid as an npm name. Scaffolding tools run directly in this folder will fail on that.
 
+- **Brand accent** (mint) tokens live in `src/app/globals.css`: `bg-brand`/`border-brand`/`ring-brand` for fills, borders and focus; `text-brand-foreground` on top of `bg-brand`; `text-brand-strong` for accent text or icons (plain `brand` is too pale as text on light backgrounds); `bg-brand-soft` for a tint. Use these on new or reworked pages instead of hard-coded colors. `--accent` is shadcn's neutral hover surface, not the brand color. The landing page's ink/paper/pen palette is separate (`bg-paper`, `text-ink`, `pen-blue`, `pen-red`).
+
 ## shadcn/ui
 
 Configured via `components.json` with the **`base-nova`** style, which is built on **Base UI** (`@base-ui/react`), not Radix. Keep that in mind when writing or adapting components: Base UI APIs differ from Radix (e.g. `render` prop instead of `asChild`), so don't paste Radix-based examples verbatim.
