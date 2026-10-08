@@ -5,7 +5,7 @@ import { ONBOARDING_PATHS, homeFor } from "@/lib/auth/routes";
 
 const GUEST_PAGES = new Set(["/", "/login", "/signup", "/verify-email", "/forgot-password"]);
 // Open to everyone, logged in or not.
-const PUBLIC_PAGES = new Set(["/demo"]);
+const PUBLIC_PAGES = new Set(["/demo", "/privacy-policy", "/terms-of-service"]);
 
 // Verifies the access token only; never touches the database. Route handlers
 // and pages re-check the session themselves.

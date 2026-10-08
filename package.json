@@ -49,7 +49,10 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-hook-form": "^7.89.0",
+    "react-markdown": "^10.1.0",
     "react-resizable-panels": "^4.14.2",
+    "rehype-slug": "^6.0.0",
+    "remark-gfm": "^4.0.1",
     "server-only": "^0.0.1",
     "shadcn": "^4.21.3",
     "sonner": "^2.0.8",
@@ -58,6 +61,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@tailwindcss/typography": "^0.5.20",
     "@types/d3-hierarchy": "^3.1.7",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.2",

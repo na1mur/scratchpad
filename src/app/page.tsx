@@ -212,6 +212,12 @@ export default function Home() {
             <Link href="/signup" className={footerLink}>
               Get started
             </Link>
+            <Link href="/privacy-policy" className={footerLink}>
+              Privacy
+            </Link>
+            <Link href="/terms-of-service" className={footerLink}>
+              Terms
+            </Link>
           </nav>
         </div>
       </footer>
