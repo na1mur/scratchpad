@@ -5,7 +5,13 @@ import { ONBOARDING_PATHS, homeFor } from "@/lib/auth/routes";
 
 const GUEST_PAGES = new Set(["/", "/login", "/signup", "/verify-email", "/forgot-password"]);
 // Open to everyone, logged in or not.
-const PUBLIC_PAGES = new Set(["/demo", "/privacy-policy", "/terms-of-service"]);
+const PUBLIC_PAGES = new Set([
+  "/demo",
+  "/privacy-policy",
+  "/terms-of-service",
+  // Google Search Console ownership file (public/), needed for OAuth verification.
+  "/googled67951643ef37654.html",
+]);
 
 // Verifies the access token only; never touches the database. Route handlers
 // and pages re-check the session themselves.
