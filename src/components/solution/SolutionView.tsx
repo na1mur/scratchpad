@@ -16,6 +16,7 @@ import {
   TriangleAlertIcon,
 } from "lucide-react";
 import { LoadingButton } from "@/components/loading-button";
+import { SourceLink } from "@/components/problems/source-link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -254,6 +255,11 @@ export function SolutionView({
           <div className="min-w-0">
             <p className="text-xs font-medium tracking-wide text-brand-strong uppercase">Solution</p>
             <h1 className="text-xl leading-snug font-semibold tracking-tight text-balance">{problem.title}</h1>
+            {problem.sourceUrl && (
+              <div className="mt-2">
+                <SourceLink url={problem.sourceUrl} />
+              </div>
+            )}
           </div>
           <CollapsibleTrigger render={<Button variant="soft" size="sm" className="shrink-0 data-panel-open:[&_svg]:rotate-180" />}>
             Statement <ChevronDownIcon className="transition-transform" />

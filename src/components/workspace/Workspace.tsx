@@ -11,13 +11,13 @@ import {
   CopyPlusIcon,
   CpuIcon,
   EraserIcon,
-  ExternalLinkIcon,
   LockIcon,
   PlayIcon,
   RotateCcwIcon,
   SparklesIcon,
   TriangleAlertIcon,
 } from "lucide-react";
+import { SourceLink } from "@/components/problems/source-link";
 import { VerdictBadge } from "@/components/problems/verdict-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -356,18 +356,7 @@ export function Workspace({
                     )}
                   </ul>
                 )}
-                {problem.sourceUrl && (
-                  <a
-                    href={problem.sourceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex max-w-full items-center gap-1 rounded-sm text-xs text-muted-foreground outline-none hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
-                  >
-                    <span className="truncate">{new URL(problem.sourceUrl).hostname.replace(/^www\./, "")}</span>
-                    <ExternalLinkIcon className="size-3 shrink-0" aria-hidden />
-                    <span className="sr-only">(opens in a new tab)</span>
-                  </a>
-                )}
+                {problem.sourceUrl && <SourceLink url={problem.sourceUrl} />}
               </div>
             )}
           </div>
