@@ -30,7 +30,7 @@ export const metadata: Metadata = {
     type: "website",
     title: "Scratchpad: see exactly where your approach breaks",
     description:
-      "Paste your pseudo-code and reasoning, watch it run step by step, and find the step where it goes wrong. Hints, never answers.",
+      "Paste your pseudo-code and reasoning, watch it run step by step, and find the step where it goes wrong. Hints first, and the solution only when you ask for it.",
   },
 };
 
@@ -75,7 +75,8 @@ export default function Home() {
               </h1>
               <p className="max-w-[34rem] text-lg leading-7 text-ink/75">
                 Paste your pseudo-code and your reasoning, or photograph your notebook. Scratchpad runs it on a small
-                input, animates every loop, and marks the step where it goes wrong. It never hands you the answer.
+                input, animates every loop, and marks the step where it goes wrong. It gives hints, not answers, until you
+                ask for the solution.
               </p>
               <div className="flex flex-col items-start gap-3">
                 <div className="flex flex-wrap gap-2">
@@ -152,10 +153,15 @@ export default function Home() {
         <section>
           <div className={cn(container, "grid gap-10 py-24 lg:grid-cols-[5fr_7fr] lg:gap-16 lg:py-36")}>
             <div className="flex flex-col gap-5 lg:sticky lg:top-8 lg:self-start">
-              <h2 className={heading}>Hints, <span className="highlight">never answers</span>.</h2>
+              <h2 className={heading}>Hints first, <span className="highlight">answers when you ask</span>.</h2>
               <p className="max-w-md text-lg leading-7 text-ink/75">
                 Scratchpad points at where your logic breaks and asks the question that gets you thinking again. Hints
                 come one at a time, from vague to specific, and none of them is code you can copy.
+              </p>
+              <p className="max-w-md text-lg leading-7 text-ink/75">
+                Still stuck after a real try? Ask for the solution. It starts from your own attempt and shows what had
+                to change, then explains the code line by line and animates every loop iteration. Want another
+                approach or a better Big-O? Ask for that too.
               </p>
             </div>
             <HintLadder />
