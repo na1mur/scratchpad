@@ -9,6 +9,27 @@ const problemSchema = new Schema(
     statement: { type: String, required: true, maxlength: 10_000 },
     // Where the problem came from (LeetCode etc.), if the learner gave a link.
     sourceUrl: { type: String, required: false, trim: true, maxlength: 2000 },
+    // Text of the linked page, fetched on the server (src/lib/problemSource.ts) and given to the model.
+    sourceText: { type: String, required: false, maxlength: 10_000 },
+    // When the link was last tried; set even if the fetch failed, so it isn't retried on every run.
+    sourceFetchedAt: { type: Date, required: false },
+    // Known solutions found on the web (src/lib/problemReference.ts), one entry per language. Never shown to the
+    // learner as-is; an entry with empty text records a lookup that found nothing.
+    references: {
+      type: [
+        {
+          _id: false,
+          language: { type: String, required: true },
+          text: { type: String, default: "", maxlength: 12_000 },
+          sources: {
+            type: [{ _id: false, title: { type: String, required: true }, url: { type: String, required: true }, license: String }],
+            default: [],
+          },
+          fetchedAt: { type: Date, required: true },
+        },
+      ],
+      default: [],
+    },
     tags: { type: [{ type: String, enum: TAGS }], default: [] },
     tagsSource: { type: String, enum: ["user", "auto", "none"], default: "none", required: true },
     // Snapshot of the user's preferred language when the problem was created.

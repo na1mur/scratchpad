@@ -1,7 +1,8 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, after, type NextRequest } from "next/server";
 import { handle, parseJson, parseWith, requireUser } from "@/lib/api";
 import { getModel } from "@/lib/ai/providers";
 import { generateProblemTitle } from "@/lib/ai/pipeline/title";
+import { refreshProblemSource } from "@/lib/problemSource";
 import { distinctTags, listProblems, serializeProblem } from "@/lib/problems";
 import { createProblemSchema, listProblemsQuerySchema } from "@/lib/schemas/problems";
 import { loadUser } from "@/lib/users";
@@ -31,6 +32,8 @@ export function POST(req: NextRequest) {
       tagsSource: input.tags.length ? "user" : "none",
       language: user.preferredLanguage ?? "pseudocode",
     });
+    // Fetched after responding; the pipelines fetch it themselves if a run starts before this finishes.
+    if (problem.sourceUrl) after(() => refreshProblemSource(problem._id, problem.sourceUrl!));
     return NextResponse.json({ problem: serializeProblem(problem.toObject()) }, { status: 201 });
   });
 }

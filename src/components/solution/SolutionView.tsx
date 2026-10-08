@@ -10,6 +10,7 @@ import {
   CopyIcon,
   CopyPlusIcon,
   GitBranchIcon,
+  GlobeIcon,
   LightbulbIcon,
   RotateCcwIcon,
   Trash2Icon,
@@ -393,6 +394,29 @@ export function SolutionView({
                 accept several answers, but double-check it, or ask about it in the chat.
               </p>
             )}
+            {content.references?.length ? (
+              <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <GlobeIcon className="mt-0.5 size-3.5 shrink-0 text-brand-strong" aria-hidden />
+                <span>
+                  Written with reference to{" "}
+                  {content.references.map((r, i) => (
+                    <span key={r.url}>
+                      {i > 0 && ", "}
+                      <a
+                        href={r.url}
+                        target="_blank"
+                        rel="noopener noreferrer nofollow"
+                        className="underline underline-offset-2 hover:text-foreground"
+                      >
+                        {r.title}
+                      </a>
+                      {r.license && ` (${r.license})`}
+                    </span>
+                  ))}
+                  .
+                </span>
+              </p>
+            ) : null}
           </section>
         </>
       )}

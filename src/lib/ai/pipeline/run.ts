@@ -6,6 +6,8 @@ import { formatSpecIssues, vizSpecSchema, type VizSpec } from "@/lib/ai/schemas/
 import { deleteAttemptCascade } from "@/lib/cascade";
 import { connectDB } from "@/lib/db";
 import { storeSpec } from "@/lib/specStorage";
+import { ensureProblemReference } from "@/lib/problemReference";
+import { ensureProblemSource } from "@/lib/problemSource";
 import { normalizeTags } from "@/lib/tags";
 import { Attempt, type AttemptStatus } from "@/models/Attempt";
 import { Problem } from "@/models/Problem";
@@ -76,15 +78,21 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
     if (!problem || !user) throw new PipelineError("not_found", "This problem no longer exists.");
 
     const { model } = getModel(user, "reasoning");
+    const [source, reference] = await Promise.all([
+      ensureProblemSource(problem),
+      ensureProblemReference(problem, problem.language),
+    ]);
     const ctx: Ctx = {
       model,
       meter,
       learner: {
         statement: problem.statement,
+        source,
         pseudoCode: attempt.pseudoCode,
         idea: attempt.idea ?? "",
         language: problem.language,
       },
+      reference: reference?.text,
     };
 
     await setStatus(attemptId, "understanding");

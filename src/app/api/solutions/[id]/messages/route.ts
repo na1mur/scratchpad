@@ -6,6 +6,7 @@ import { toFriendlyProviderError } from "@/lib/ai/errors";
 import { PipelineError, UsageMeter } from "@/lib/ai/pipeline/llm";
 import { describeSteps } from "@/lib/ai/pipeline/steps";
 import { SOLUTION_CHAT_ROLE, solutionInstructions } from "@/lib/ai/prompts/solution";
+import { sourceBlock } from "@/lib/ai/prompts/system";
 import { getModel } from "@/lib/ai/providers";
 import type { SolutionContent } from "@/lib/ai/schemas/solution";
 import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
@@ -115,6 +116,7 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/solutions/[id]/me
     const instructions = [
       solutionInstructions(problem.language, SOLUTION_CHAT_ROLE),
       `<problem>\n${problem.statement}\n</problem>`,
+      sourceBlock(problem.sourceText),
       attempt ? `<their_attempt version="${attempt.version}">\n<pseudocode>\n${attempt.pseudoCode}\n</pseudocode>\n</their_attempt>` : "",
       others.length
         ? `<other_solutions>\n${others
