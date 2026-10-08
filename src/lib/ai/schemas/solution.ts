@@ -41,6 +41,11 @@ export const solutionContentSchema = z.object({
   lineNotes: z.array(lineNoteSchema).max(200),
   /** False when the traced run's result didn't match the expected output. */
   verified: z.boolean(),
+  /** Web sources the model was given as reference (src/lib/problemReference.ts); absent on older solutions. */
+  references: z
+    .array(z.object({ title: z.string().max(200), url: z.string().max(2000), license: z.string().max(40).optional() }))
+    .max(5)
+    .optional(),
 });
 export type SolutionContent = z.infer<typeof solutionContentSchema>;
 

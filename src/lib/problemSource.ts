@@ -163,6 +163,9 @@ function request(
   });
 }
 
+/** The guarded request (no internal addresses, ports 80/443, capped size and redirects) for other server-side fetchers. */
+export { request as safeRequest };
+
 // HTML to text ---------------------------------------------------------------
 
 const NOISE = "script, style, noscript, svg, template, iframe, nav, footer, header, form, button, head";

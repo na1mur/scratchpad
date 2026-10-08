@@ -20,6 +20,7 @@ export async function regenerateSpec(opts: {
   language: string;
   statement: string;
   source?: string;
+  reference?: string;
   guidance: Guidance;
   focusDescription?: string;
 }): Promise<{ specVersion: number; spec: VizSpec; usage: ReturnType<UsageMeter["snapshot"]> }> {
@@ -35,6 +36,7 @@ export async function regenerateSpec(opts: {
       idea: attempt.idea ?? "",
       language: opts.language,
     },
+    reference: opts.reference,
   };
   const fullGuidance: Guidance = {
     ...guidance,

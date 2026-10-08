@@ -1,6 +1,6 @@
 import "server-only";
 import type { LanguageModel } from "ai";
-import { baseInstructions, learnerContext } from "@/lib/ai/prompts/system";
+import { baseInstructions, learnerContext, referenceBlock } from "@/lib/ai/prompts/system";
 import {
   DIAGNOSE_ROLE,
   GUARDRAIL_ROLE,
@@ -40,7 +40,16 @@ import { collapseSteps, describeSteps, eventsToSteps } from "./steps";
 /** `source` is the linked page's text (src/lib/problemSource.ts), "" if there's none. */
 export type LearnerInput = { statement: string; source?: string; pseudoCode: string; idea: string; language: string };
 
-export type Ctx = { model: LanguageModel; meter: UsageMeter; learner: LearnerInput };
+/**
+ * `reference` is known solutions from the web (src/lib/problemReference.ts), "" if none were found. Only
+ * understand and diagnose see it: they need to know what correct looks like, the tracing stages don't.
+ */
+export type Ctx = { model: LanguageModel; meter: UsageMeter; learner: LearnerInput; reference?: string };
+
+function withReference(ctx: Ctx) {
+  const block = referenceBlock(ctx.reference);
+  return block ? `\n\n${block}` : "";
+}
 
 /** Steering from a follow-up question when regenerating a visualization. */
 export type Guidance = { reason: string; focus?: string; newTestInput?: string };
@@ -75,7 +84,7 @@ export function understand(ctx: Ctx, guidance?: Guidance): Promise<Understanding
     name: "understanding",
     schema: understandingSchema,
     instructions: instr(ctx, UNDERSTAND_ROLE),
-    prompt: `${learnerContext(ctx.learner)}${guidanceBlock(guidance)}`,
+    prompt: `${learnerContext(ctx.learner)}${withReference(ctx)}${guidanceBlock(guidance)}`,
     check: (u) => {
       try {
         const args = JSON.parse(u.chosenTestInput.argumentsJson);
@@ -429,7 +438,7 @@ export async function diagnose(ctx: Ctx, u: Understanding, trace: TraceResult, s
     name: "diagnosis",
     schema: diagnosisOutputSchema,
     instructions: instr(ctx, stricter ? `${DIAGNOSE_ROLE}\n\n${STRICTER_ADDENDUM}` : DIAGNOSE_ROLE),
-    prompt: `${learnerContext(ctx.learner)}\n\n${inputBlock(u)}\n\n<their_approach>${u.userApproachInOwnWords}</their_approach>\n<assumptions>${u.keyInvariantsUserAssumes.join("; ")}</assumptions>${addedLinesBlock(trace)}\n\n<run_result>\nactual output: ${trace.actualOutput}${
+    prompt: `${learnerContext(ctx.learner)}${withReference(ctx)}\n\n${inputBlock(u)}\n\n<their_approach>${u.userApproachInOwnWords}</their_approach>\n<assumptions>${u.keyInvariantsUserAssumes.join("; ")}</assumptions>${addedLinesBlock(trace)}\n\n<run_result>\nactual output: ${trace.actualOutput}${
       trace.runNote ? `\n${trace.runNote}` : ""
     }\n</run_result>\n\n<trace>\n${describeSteps(trace.steps, trace.codeLines)}\n</trace>`,
     check: (d) => {

@@ -12,6 +12,7 @@ import { baseInstructions, learnerContext } from "@/lib/ai/prompts/system";
 import { getModel } from "@/lib/ai/providers";
 import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
 import { getOwnedAttempt } from "@/lib/attempts";
+import { storedReference } from "@/lib/problemReference";
 import { rateLimits } from "@/lib/rateLimit";
 import { sendMessageSchema } from "@/lib/schemas/messages";
 import { loadSpec } from "@/lib/specStorage";
@@ -180,6 +181,7 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/attempts/[id]/mes
                         language: problem.language,
                         statement: problem.statement,
                         source: problem.sourceText ?? "",
+                        reference: storedReference(problem, problem.language)?.text,
                         guidance: { reason, newTestInput },
                         focusDescription: focusSteps.length
                           ? `the steps titled: ${focusSteps.map((s) => `"${s.title}"`).join(", ")}`

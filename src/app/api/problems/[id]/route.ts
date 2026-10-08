@@ -36,6 +36,8 @@ export function PATCH(req: NextRequest, ctx: RouteContext<"/api/problems/[id]">)
       if (input.sourceUrl) set.sourceUrl = input.sourceUrl;
       else update.$unset.sourceUrl = "";
     }
+    // Reference solutions are looked up by link and title, so either change means looking again on the next run.
+    if (urlChanged || (input.title !== undefined && input.title !== existing.title)) set.references = [];
     const updated = await Problem.findOneAndUpdate(
       { _id: existing._id, userId: session.userId },
       update,

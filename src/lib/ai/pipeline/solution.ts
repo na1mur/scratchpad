@@ -9,7 +9,7 @@ import {
   SOLVE_ROLE,
   solutionInstructions,
 } from "@/lib/ai/prompts/solution";
-import { sourceBlock } from "@/lib/ai/prompts/system";
+import { referenceBlock, sourceBlock } from "@/lib/ai/prompts/system";
 import { narrationSchema, simulationSchema } from "@/lib/ai/schemas/pipeline";
 import {
   SOLUTION_REQUEST_LABELS,
@@ -22,6 +22,7 @@ import {
 } from "@/lib/ai/schemas/solution";
 import { formatSpecIssues, vizSpecSchema, type Loop, type Step, type Structure, type VizSpec } from "@/lib/ai/schemas/vizSpec";
 import { connectDB } from "@/lib/db";
+import { ensureProblemReference, type Reference } from "@/lib/problemReference";
 import { ensureProblemSource } from "@/lib/problemSource";
 import { loadSpec, storeSpec } from "@/lib/specStorage";
 import { Attempt } from "@/models/Attempt";
@@ -34,8 +35,18 @@ import { runInSandbox, type SandboxResult } from "./sandbox";
 import { checkDeclarations, runNoteFor, simulationToSteps } from "./stages";
 import { collapseSteps, describeSteps, eventsToSteps } from "./steps";
 
-/** `source` (the linked page's text) only goes to the solve stage; later stages work from the plan. */
-type SolveCtx = { model: LanguageModel; meter: UsageMeter; language: string; statement: string; source: string };
+/**
+ * `source` (the linked page's text) and `reference` (known solutions from the web) only go to the solve
+ * stage; later stages work from the plan.
+ */
+type SolveCtx = {
+  model: LanguageModel;
+  meter: UsageMeter;
+  language: string;
+  statement: string;
+  source: string;
+  reference: Reference | null;
+};
 
 type Trace = {
   mode: "execution" | "simulation";
@@ -77,7 +88,11 @@ type PlanContext = {
 };
 
 function planPrompt(ctx: SolveCtx, pc: PlanContext): string {
-  const parts = [`<problem>\n${ctx.statement}\n</problem>`, sourceBlock(ctx.source)].filter(Boolean);
+  const parts = [
+    `<problem>\n${ctx.statement}\n</problem>`,
+    sourceBlock(ctx.source),
+    referenceBlock(ctx.reference?.text),
+  ].filter(Boolean);
   if (pc.attempt) {
     const d = pc.attempt.spec?.diagnosis;
     parts.push(
@@ -304,7 +319,7 @@ function assemble(plan: SolutionPlan, trace: Trace): VizSpec {
   };
 }
 
-function toContent(plan: SolutionPlan, verified: boolean): SolutionContent {
+function toContent(plan: SolutionPlan, verified: boolean, reference: Reference | null): SolutionContent {
   return solutionContentSchema.parse({
     name: plan.name.slice(0, 120) || "Solution",
     summary: plan.summary.slice(0, 1500),
@@ -321,6 +336,7 @@ function toContent(plan: SolutionPlan, verified: boolean): SolutionContent {
       .filter((n) => n.line >= 0 && n.line < plan.codeLines.length && n.note.trim())
       .map((n) => ({ line: n.line, note: n.note.slice(0, 600) })),
     verified,
+    ...(reference?.sources.length && { references: reference.sources.slice(0, 5) }),
   });
 }
 
@@ -357,12 +373,17 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
     if (!problem || !user) throw new PipelineError("not_found", "This problem no longer exists.");
 
     const { model } = getModel(user, "reasoning");
+    const [source, reference] = await Promise.all([
+      ensureProblemSource(problem),
+      ensureProblemReference(problem, solution.language),
+    ]);
     const ctx: SolveCtx = {
       model,
       meter,
       language: solution.language,
       statement: problem.statement,
-      source: await ensureProblemSource(problem),
+      source,
+      reference,
     };
     const pc: PlanContext = {
       attempt: attempt
@@ -410,7 +431,7 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
       console.error("[solution] assembled spec invalid:", formatSpecIssues(parsed.error, 5));
       throw new PipelineError("invalid_output", "The walkthrough came out malformed. Please try again.");
     }
-    const content = toContent(plan, verified);
+    const content = toContent(plan, verified, ctx.reference);
     const stored = await storeSpec(
       String(solution.userId),
       String(solution.problemId),
