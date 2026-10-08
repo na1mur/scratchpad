@@ -22,7 +22,7 @@ export function UsageBadge({ attempt }: { attempt: AttemptDetail }) {
         <CoinsIcon className="size-3.5" />
         {compact.format(usage.totalTokens)} tokens
       </TooltipTrigger>
-      <TooltipContent className="flex flex-col gap-0.5 text-xs">
+      <TooltipContent className="flex flex-col items-start gap-0.5 bg-popover px-3 py-2 text-left text-xs text-popover-foreground shadow-md ring-1 ring-foreground/10 [&>div]:hidden">
         {attempt.model && (
           <span>
             {PROVIDER_LABELS[attempt.model.provider]} · {attempt.model.model}
@@ -33,7 +33,7 @@ export function UsageBadge({ attempt }: { attempt: AttemptDetail }) {
         {attempt.traceMode && (
           <span>{attempt.traceMode === "execution" ? "Traced by running your logic in a sandbox" : "Traced by model simulation"}</span>
         )}
-        <span className="opacity-70">Billed to your own API key at your provider&apos;s rates.</span>
+        <span className="text-muted-foreground">Billed to your own API key at your provider&apos;s rates.</span>
       </TooltipContent>
     </Tooltip>
   );
