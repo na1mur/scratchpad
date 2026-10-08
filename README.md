@@ -24,18 +24,10 @@ Without signing up you can see the visualizer at `/demo`, which plays four hand-
 
 ### Environment
 
-| Variable | Notes |
-| --- | --- |
-| `MONGODB_URI` | e.g. `mongodb://127.0.0.1:27017/dsa-viz` |
-| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | Two different random strings, 32+ chars: `openssl rand -base64 48` |
-| `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL` | Optional token lifetimes as durations: a number plus `s`, `m`, `h`, `d` or `w` (e.g. `15m`, `30d`; a bare number is seconds). Defaults: `15m` and `7d`. The refresh token is renewed on every refresh, so its lifetime is how long someone can stay away before logging in again. |
-| `ENCRYPTION_KEY` | 32 random bytes, base64: `openssl rand -base64 32`. Encrypts users' API keys (AES-256-GCM). |
-| `ENCRYPTION_KEY_VERSION` | Stored with each encrypted value so the key can be rotated later. |
-| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | Cloudflare R2, for notebook photos. Optional: leave empty and uploads are disabled. |
-| `R2_PUBLIC_URL` | Optional public base URL of the bucket (`https://pub-….r2.dev` or a custom domain). When set, images are served from it; otherwise through short-lived presigned links. |
-| `APP_URL` | The public origin, e.g. `http://localhost:3000`. Mutating requests must come from this origin. |
-
-The server validates all of these at startup and refuses to start if any required one is missing.
+Every variable is documented in [`.env.example`](.env.example): what it's for, whether it's required, and how to
+generate a value. Copy it to `.env.local` and fill it in. Only the database, the JWT and encryption secrets, and
+`APP_URL` are needed to run locally; email, R2, Google login and Tavily are optional extras. The server validates
+everything at startup and refuses to start if a required value is missing.
 
 ### Cloudflare R2 (optional)
 
@@ -54,6 +46,31 @@ GET URLs from a private bucket. Either way the bucket needs a CORS rule allowing
   }
 ]
 ```
+
+## Deploying
+
+[Vercel](https://vercel.com) is the recommended place to deploy Scratchpad: it's made by the Next.js team and needs no
+configuration. The button clones the repo into your own GitHub account and asks for the required environment variables.
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fna1mur%2Fscratchpad&project-name=scratchpad&repository-name=scratchpad&env=MONGODB_URI,JWT_ACCESS_SECRET,JWT_REFRESH_SECRET,ENCRYPTION_KEY,APP_URL,SMTP_USER,SMTP_PASS&envDescription=Database%2C%20secrets%20and%20SMTP%20login%20for%20Scratchpad.%20See%20.env.example%20for%20how%20to%20generate%20each.&envLink=https%3A%2F%2Fgithub.com%2Fna1mur%2Fscratchpad%2Fblob%2Fmain%2F.env.example)
+
+Before or right after you click it:
+
+1. **Database.** Use a hosted MongoDB such as a free [MongoDB Atlas](https://www.mongodb.com/atlas) cluster, and paste its
+   connection string as `MONGODB_URI`. Allow Vercel to reach it in Atlas' network access list.
+2. **Secrets.** Generate `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` and `ENCRYPTION_KEY` as described in
+   [`.env.example`](.env.example).
+3. **`APP_URL`.** Set it to the public address of the deployment (your custom domain, or the `*.vercel.app` address
+   once you know it) and redeploy if you change it. Requests from any other origin are rejected.
+4. **Email.** Sign-up and password reset send codes over SMTP, so set `SMTP_USER` and `SMTP_PASS` (and `EMAIL_FROM`).
+   In production, sending fails without them.
+5. **Optional.** R2 (notebook photos), Google login and `TAVILY_API_KEY` can be added later in the project's
+   environment variable settings. For Google login, add `<APP_URL>/api/auth/google/callback` as an authorized redirect
+   URI. For R2, add your deployed origin to the bucket's CORS rule.
+
+You don't have to use Vercel. Scratchpad is a standard Next.js app, so it runs anywhere that can run Node 22+: build it
+with `yarn build` and start it with `yarn start`, on a platform of your choice or on your own server. It needs the same
+environment variables, and the in-memory rate limits assume a single instance.
 
 ## Scripts
 
