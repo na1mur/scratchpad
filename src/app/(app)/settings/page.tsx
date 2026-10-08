@@ -27,7 +27,8 @@ export default async function SettingsPage() {
         <CardHeader>
           <CardTitle>AI provider</CardTitle>
           <CardDescription>
-            Your key is encrypted at rest. Only the last four characters are ever shown back to you.
+            Sign in with OpenRouter or paste a key from any provider. Keys are encrypted at rest, and only the last
+            four characters are ever shown back to you.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">

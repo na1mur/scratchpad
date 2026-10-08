@@ -61,7 +61,7 @@ export const providerFormSchema = z
   .superRefine((v, ctx) => {
     const canReuseMainKey = v.hasStoredKey && v.storedProvider === v.provider;
     if (!v.apiKey && !canReuseMainKey) {
-      ctx.addIssue({ code: "custom", path: ["apiKey"], message: "Enter your API key" });
+      ctx.addIssue({ code: "custom", path: ["apiKey"], message: "Connect OpenRouter or enter your API key" });
     } else if (v.apiKey && v.apiKey.length < 8) {
       ctx.addIssue({ code: "custom", path: ["apiKey"], message: "That doesn't look like an API key" });
     }
