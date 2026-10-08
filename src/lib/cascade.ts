@@ -40,7 +40,12 @@ export async function deleteProblemCascade(userId: string, problemId: Types.Obje
  * Deletes one attempt, its chat and R2 objects, and points the problem's
  * latest attempt and verdict at the newest one that's left.
  */
-export async function deleteAttemptCascade(userId: string, attempt: WithR2Keys & { _id: Types.ObjectId; problemId: Types.ObjectId }) {
+export async function deleteAttemptCascade(
+  userId: string,
+  attempt: WithR2Keys & { _id: Types.ObjectId; problemId: Types.ObjectId },
+  /** `keepImages` leaves the uploaded photos in R2, for a discarded run whose form still points at them. */
+  opts: { keepImages?: boolean } = {},
+) {
   await Message.deleteMany({ attemptId: attempt._id, userId });
   const { deletedCount } = await Attempt.deleteOne({ _id: attempt._id, userId });
   if (!deletedCount) return;
@@ -60,5 +65,5 @@ export async function deleteAttemptCascade(userId: string, attempt: WithR2Keys &
     { _id: attempt.problemId, userId },
     { $inc: { attemptCount: -1 }, ...(Object.keys(set).length && { $set: set }), ...(Object.keys(unset).length && { $unset: unset }) },
   );
-  await cleanupR2(attemptR2Keys(attempt));
+  await cleanupR2(attemptR2Keys(opts.keepImages ? { ...attempt, images: [] } : attempt));
 }

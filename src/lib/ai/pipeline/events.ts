@@ -5,7 +5,8 @@ import type { AttemptStatus } from "@/models/Attempt";
 export type PipelineEvent =
   | { type: "status"; status: AttemptStatus; detail?: string }
   | { type: "done"; attemptId: string }
-  | { type: "error"; code: string; message: string };
+  // `discarded`: the failed run was removed instead of being kept as an attempt.
+  | { type: "error"; code: string; message: string; discarded?: boolean };
 
 // One process-wide bus. A refreshed page doesn't reattach to it; it polls
 // the attempt's stored status instead.

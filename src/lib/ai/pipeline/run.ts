@@ -3,6 +3,7 @@ import { ApiError } from "@/lib/api";
 import { getModel } from "@/lib/ai/providers";
 import type { Understanding } from "@/lib/ai/schemas/pipeline";
 import { formatSpecIssues, vizSpecSchema, type VizSpec } from "@/lib/ai/schemas/vizSpec";
+import { deleteAttemptCascade } from "@/lib/cascade";
 import { connectDB } from "@/lib/db";
 import { storeSpec } from "@/lib/specStorage";
 import { normalizeTags } from "@/lib/tags";
@@ -58,8 +59,8 @@ export async function traceAndDiagnose(
 
 /**
  * Runs the whole pipeline for one attempt, persisting status after every
- * stage so a reload can pick up progress. Never throws: failures are stored
- * on the attempt and emitted.
+ * stage so a reload can pick up progress. Never throws: a failed run is
+ * discarded (or, if that fails, stored as an error) and the failure emitted.
  */
 export async function runAttemptPipeline(attemptId: string): Promise<void> {
   await connectDB();
@@ -126,11 +127,21 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
     if (!(err instanceof PipelineError || err instanceof ApiError)) {
       console.error(`[pipeline] attempt ${attemptId} failed:`, err instanceof Error ? err.message : err);
     }
-    await Attempt.updateOne(
-      { _id: attemptId },
-      { $set: { status: "error", error: safe, tokenUsage: meter.snapshot() } },
-    ).catch(() => {});
-    emit(attemptId, { type: "status", status: "error" });
-    emit(attemptId, { type: "error", ...safe });
+    // A run that never produced a result isn't an attempt: remove it so it doesn't take a version number or
+    // count toward the problem. The form still holds the learner's text and photos for the retry.
+    const discarded = await deleteAttemptCascade(String(attempt.userId), attempt.toObject(), { keepImages: true })
+      .then(() => true)
+      .catch((e) => {
+        console.error(`[pipeline] couldn't discard failed attempt ${attemptId}:`, e instanceof Error ? e.message : e);
+        return false;
+      });
+    if (!discarded) {
+      await Attempt.updateOne(
+        { _id: attemptId },
+        { $set: { status: "error", error: safe, tokenUsage: meter.snapshot() } },
+      ).catch(() => {});
+      emit(attemptId, { type: "status", status: "error" });
+    }
+    emit(attemptId, { type: "error", ...safe, discarded });
   }
 }

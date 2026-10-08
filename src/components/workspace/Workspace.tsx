@@ -12,6 +12,7 @@ import {
   CpuIcon,
   EraserIcon,
   ExternalLinkIcon,
+  LockIcon,
   PlayIcon,
   RotateCcwIcon,
   SparklesIcon,
@@ -51,7 +52,7 @@ import { ProgressStepper } from "@/components/workspace/ProgressStepper";
 import { UsageBadge } from "@/components/workspace/UsageBadge";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import type { AttemptDetail, AttemptSummary } from "@/lib/attempts";
-import { api, apiRaw, toApiError } from "@/lib/fetcher";
+import { ApiClientError, api, apiRaw, toApiError } from "@/lib/fetcher";
 import type { ProblemDetail } from "@/lib/problems";
 import { PROVIDER_LABELS, type ProviderId } from "@/lib/providers";
 import { createAttemptSchema, type CreateAttemptInput } from "@/lib/schemas/attempts";
@@ -64,7 +65,7 @@ type StreamEvent =
   | { type: "attempt"; attemptId: string; version: number }
   | { type: "status"; status: AttemptStatus }
   | { type: "done"; attemptId: string }
-  | { type: "error"; code: string; message: string };
+  | { type: "error"; code: string; message: string; discarded?: boolean };
 
 const IN_PROGRESS = new Set<AttemptStatus>(["queued", "extracting", "understanding", "tracing", "diagnosing"]);
 
@@ -72,6 +73,7 @@ const IN_PROGRESS = new Set<AttemptStatus>(["queued", "extracting", "understandi
 const specLabel = (version: number) => (version === 1 ? "Original visualization" : `Regenerated #${version - 1}`);
 
 const dateFormat = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+const shortDate = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
 function ClearButton({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
   return (
@@ -113,17 +115,27 @@ export function Workspace({
       : null,
   );
   const [streaming, setStreaming] = useState(false);
+  /** Why the last run produced nothing. Such a run isn't kept as an attempt, so it's explained in the results pane. */
+  const [failure, setFailure] = useState<string | null>(null);
   const [playerIndex, setPlayerIndex] = useState(0);
   const [tab, setTab] = useState("viz");
   const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
   const toggleStep = (id: string) =>
     setSelectedSteps((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id].slice(-8)));
   const pollToken = useRef(0);
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   const form = useForm<CreateAttemptInput>({
     resolver: zodResolver(createAttemptSchema),
     defaultValues: { pseudoCode: initialAttempt?.pseudoCode ?? "", idea: initialAttempt?.idea ?? "", images: [] },
   });
+
+  /** When the panes are stacked, brings the results into view so a phone user isn't left looking at the form. */
+  function revealResults() {
+    if (isDesktop) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    resultsRef.current?.scrollIntoView({ block: "start", behavior: reduceMotion ? "auto" : "smooth" });
+  }
 
   async function loadAttempt(attemptId: string, specVersion?: number) {
     setLoadingAttempt(true);
@@ -132,10 +144,12 @@ export function Workspace({
       const { attempt } = await api<{ attempt: AttemptDetail }>(`/api/attempts/${attemptId}${query}`);
       setViewing(attempt);
       setMode("view");
+      setFailure(null);
       setPlayerIndex(0);
       setTab("viz");
       setSelectedSteps([]);
       setAttempts((list) => list.map((a) => (a.id === attempt.id ? { ...a, status: attempt.status, verdict: attempt.verdict } : a)));
+      revealResults();
       return attempt;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't load that attempt.");
@@ -144,6 +158,15 @@ export function Workspace({
       setLoadingAttempt(false);
     }
   }
+
+  // Ask before closing or reloading the tab mid-run. Browsers show their own generic wording.
+  const isRunning = Boolean(running);
+  useEffect(() => {
+    if (!isRunning) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [isRunning]);
 
   // After a reload (or a dropped stream) progress comes from polling.
   useEffect(() => {
@@ -166,12 +189,33 @@ export function Workspace({
         setPlayerIndex(0);
         setAttempts((list) => list.map((a) => (a.id === attempt.id ? { ...a, status: attempt.status, verdict: attempt.verdict } : a)));
         router.refresh();
-      } catch {
-        // keep polling; transient failures are fine
+      } catch (err) {
+        if (token !== pollToken.current) return;
+        // The run failed and was discarded, so there's no attempt to find. The form still has its text.
+        if (err instanceof ApiClientError && err.status === 404) {
+          clearInterval(timer);
+          setRunning(null);
+          setAttempts((list) => list.filter((a) => a.id !== attemptId));
+          setViewing((v) => (v?.id === attemptId ? null : v));
+          setMode("new");
+          setFailure("The run didn't finish.");
+          router.refresh();
+        }
+        // Otherwise keep polling; transient failures are fine.
       }
     }, 2000);
     return () => clearInterval(timer);
   }, [running?.attemptId, streaming, router]);
+
+  /** Drops a failed run that the server discarded and returns to the editable draft. */
+  function discardRun(attemptId: string | null, message: string) {
+    setRunning(null);
+    setAttempts((list) => list.filter((a) => a.id !== attemptId));
+    setViewing((v) => (v?.id === attemptId ? null : v));
+    setMode("new");
+    setFailure(message);
+    router.refresh();
+  }
 
   function notifyFinished(attempt: AttemptDetail) {
     if (attempt.status === "error") toast.error(attempt.error?.message ?? "Processing failed.");
@@ -180,8 +224,10 @@ export function Workspace({
   }
 
   async function onProcess(values: CreateAttemptInput) {
+    setFailure(null);
     setRunning({ attemptId: null, status: "queued" });
     setStreaming(true);
+    revealResults();
     let attemptId: string | null = null;
     let finished = false;
     try {
@@ -205,8 +251,13 @@ export function Workspace({
           router.refresh();
         } else if (e.type === "error") {
           finished = true;
-          setRunning(null);
-          if (attemptId) await loadAttempt(attemptId);
+          if (e.discarded) {
+            // Nothing was saved: the learner stays on their draft and can press Process again.
+            discardRun(attemptId, e.message);
+          } else {
+            setRunning(null);
+            if (attemptId) await loadAttempt(attemptId);
+          }
           toast.error(e.message);
         }
       }
@@ -226,6 +277,7 @@ export function Workspace({
     const source = clear ? null : (prefill ?? viewing);
     form.reset({ pseudoCode: source?.pseudoCode ?? "", idea: source?.idea ?? "", images: [] });
     setMode("new");
+    setFailure(null);
   }
 
   /** Asks whether to clear the previous text, unless there's nothing to clear. */
@@ -265,11 +317,14 @@ export function Workspace({
       if (notes.trim()) form.setValue("idea", join(idea, notes), { shouldDirty: true });
     },
   });
+  // Attempts made before the model was recorded fall back to the learner's current model.
+  const ranOn = viewing?.model ?? aiModel;
+  const ranOnIsCurrent = !viewing?.model;
   // While drafting a new attempt nothing is selected; the trigger shows a placeholder instead.
   const selectValue = mode === "new" ? null : (viewing?.id ?? null);
   const attemptItems = attempts.map((a) => ({
     value: a.id,
-    label: `v${a.version} · ${a.verdict ? VERDICT_LABELS[a.verdict] : IN_PROGRESS.has(a.status) ? "processing" : a.status === "error" ? "failed" : "…"}`,
+    label: `v${a.version} · ${a.verdict ? VERDICT_LABELS[a.verdict] : IN_PROGRESS.has(a.status) ? "processing" : a.status === "error" ? "failed" : "…"} · ${shortDate.format(new Date(a.createdAt))}`,
   }));
 
   const left = (
@@ -277,26 +332,35 @@ export function Workspace({
       <Collapsible defaultOpen={!initialAttempt}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h1 className="text-lg font-semibold tracking-tight">{problem.title}</h1>
-            {problem.sourceUrl && (
-              <a
-                href={problem.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-0.5 inline-flex max-w-full items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
-              >
-                <span className="truncate">{new URL(problem.sourceUrl).hostname.replace(/^www\./, "")}</span>
-                <ExternalLinkIcon className="size-3 shrink-0" />
-              </a>
-            )}
-            {problem.tags.length > 0 && (
-              <div className="mt-1 flex flex-wrap gap-1">
-                {problem.tags.map((t) => (
-                  <Badge key={t} variant="secondary">
-                    {t}
-                  </Badge>
-                ))}
-                {problem.tagsSource === "auto" && <span className="text-xs text-muted-foreground">auto-tagged</span>}
+            <h1 className="text-xl leading-snug font-semibold tracking-tight text-balance">{problem.title}</h1>
+            {(problem.tags.length > 0 || problem.sourceUrl) && (
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                {problem.tags.length > 0 && (
+                  <ul className="flex flex-wrap items-center gap-1" aria-label="Topics">
+                    {problem.tags.map((t) => (
+                      <li key={t}>
+                        <Badge variant="secondary">{t}</Badge>
+                      </li>
+                    ))}
+                    {problem.tagsSource === "auto" && (
+                      <li className="text-xs text-muted-foreground" title="Suggested by the AI. Edit the problem to change them.">
+                        auto-tagged
+                      </li>
+                    )}
+                  </ul>
+                )}
+                {problem.sourceUrl && (
+                  <a
+                    href={problem.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex max-w-full items-center gap-1 rounded-sm text-xs text-muted-foreground outline-none hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <span className="truncate">{new URL(problem.sourceUrl).hostname.replace(/^www\./, "")}</span>
+                    <ExternalLinkIcon className="size-3 shrink-0" aria-hidden />
+                    <span className="sr-only">(opens in a new tab)</span>
+                  </a>
+                )}
               </div>
             )}
           </div>
@@ -315,20 +379,6 @@ export function Workspace({
           </pre>
         </CollapsibleContent>
       </Collapsible>
-
-      <div className="-mb-2 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-        <CpuIcon className="size-3.5 shrink-0" />
-        {aiModel ? (
-          <span className="min-w-0 truncate" title={`${PROVIDER_LABELS[aiModel.provider]} · ${aiModel.model}`}>
-            {PROVIDER_LABELS[aiModel.provider]} · <span className="font-mono">{aiModel.model}</span>
-          </span>
-        ) : (
-          <span>No AI provider set</span>
-        )}
-        <Link href="/settings" className="shrink-0 underline-offset-2 hover:text-foreground hover:underline">
-          {aiModel ? "Change" : "Set up"}
-        </Link>
-      </div>
 
       <div className="flex items-center gap-2">
         {attempts.length > 0 ? (
@@ -366,6 +416,19 @@ export function Workspace({
           />
         )}
       </div>
+
+      {mode === "view" && viewing && ranOn && (
+        <p className="-mt-2 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <CpuIcon className="size-3.5 shrink-0" aria-hidden />
+          <span
+            className="min-w-0 truncate"
+            title={ranOnIsCurrent ? "This attempt has no record of its model, so your current one is shown." : undefined}
+          >
+            Ran on {PROVIDER_LABELS[ranOn.provider]} · <span className="font-mono">{ranOn.model}</span>
+            {ranOnIsCurrent && " (your current model)"}
+          </span>
+        </p>
+      )}
 
       <Dialog open={confirmingNew} onOpenChange={setConfirmingNew}>
         <DialogContent>
@@ -417,12 +480,9 @@ export function Workspace({
                   </div>
                 )}
                 {mode === "view" && viewing && (
-                  <span className="text-xs text-muted-foreground">
-                    v{viewing.version} · {dateFormat.format(new Date(viewing.createdAt))}
-                    {viewing.model &&
-                      (viewing.model.provider !== aiModel?.provider || viewing.model.model !== aiModel?.model) &&
-                      ` · ran on ${viewing.model.model}`}{" "}
-                    · read-only
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <LockIcon className="size-3 shrink-0" aria-hidden />
+                    Read-only · v{viewing.version} · {dateFormat.format(new Date(viewing.createdAt))}
                   </span>
                 )}
               </div>
@@ -487,16 +547,31 @@ export function Workspace({
             </div>
           </div>
         )}
-        {mode === "new" &&
-          (aiModel ? (
-            <LoadingButton type="submit" size="lg" loading={Boolean(running)} icon={<PlayIcon />}>
-              {running ? "Processing…" : "Process"}
-            </LoadingButton>
-          ) : (
-            <Link href="/settings" className={buttonVariants({ size: "lg" })}>
-              Set up an AI provider to process
-            </Link>
-          ))}
+        {mode === "new" && (
+          // Sticks to the bottom of the pane so the main action stays in reach while editing a long attempt.
+          <div className="sticky bottom-0 z-10 -mx-4 flex flex-col gap-2 border-t bg-background/90 px-4 py-3 backdrop-blur">
+            {aiModel ? (
+              <LoadingButton type="submit" size="lg" loading={Boolean(running)} icon={<PlayIcon />}>
+                {running ? "Processing…" : "Process"}
+              </LoadingButton>
+            ) : (
+              <Link href="/settings" className={buttonVariants({ size: "lg" })}>
+                Set up an AI provider to process
+              </Link>
+            )}
+            {aiModel && (
+              <p className="flex min-w-0 items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                <CpuIcon className="size-3.5 shrink-0" aria-hidden />
+                <span className="min-w-0 truncate" title={`${PROVIDER_LABELS[aiModel.provider]} · ${aiModel.model}`}>
+                  Runs on {PROVIDER_LABELS[aiModel.provider]} · <span className="font-mono">{aiModel.model}</span>
+                </span>
+                <Link href="/settings" className="shrink-0 underline underline-offset-2 hover:text-foreground">
+                  Change
+                </Link>
+              </p>
+            )}
+          </div>
+        )}
       </form>
     </div>
   );
@@ -504,10 +579,10 @@ export function Workspace({
   let right: React.ReactNode;
   if (running) {
     right = (
-      <div className="mx-auto flex w-full max-w-md flex-col gap-6 p-8">
+      <div className="mx-auto flex w-full max-w-md flex-col gap-6 p-8" role="status" aria-live="polite">
         <div>
           <h2 className="font-medium">Working on it</h2>
-          <p className="text-sm text-muted-foreground">This usually takes under a minute. You can leave this page.</p>
+          <p className="text-sm text-muted-foreground">This usually takes under a minute. Keep this tab open until it finishes.</p>
         </div>
         <ProgressStepper status={running.status} />
       </div>
@@ -615,15 +690,36 @@ export function Workspace({
         />
       </div>
     );
+  } else if (failure) {
+    right = (
+      <div className="flex flex-col gap-4 p-6">
+        <Alert variant="destructive">
+          <TriangleAlertIcon />
+          <AlertTitle>That run failed, so nothing was saved</AlertTitle>
+          <AlertDescription>
+            {failure} Your pseudo-code and idea are still on the left. Press Process to try again.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
   } else {
     right = (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center">
-        <SparklesIcon className="size-6 text-muted-foreground" />
-        <p className="font-medium">Write your approach, then press Process</p>
-        <p className="max-w-sm text-sm text-muted-foreground">
-          Your pseudo-code is run on a small input and animated step by step, with the point where it goes wrong
-          marked in red.
-        </p>
+      <div className="flex h-full flex-col items-center justify-center gap-5 p-10 text-center">
+        <span className="flex size-10 items-center justify-center rounded-full bg-brand-soft text-brand-strong">
+          <SparklesIcon className="size-5" aria-hidden />
+        </span>
+        <div className="flex flex-col gap-1">
+          <p className="font-medium">Write your approach, then press Process</p>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            Your pseudo-code is run on a small input and animated step by step, with the point where it goes wrong
+            marked in red.
+          </p>
+        </div>
+        <ol className="flex max-w-sm list-inside list-decimal flex-col gap-1 text-left text-sm text-muted-foreground marker:text-brand-strong">
+          <li>Paste or type your pseudo-code.</li>
+          <li>Add the idea behind it, if you can. It helps pinpoint where your reasoning and code disagree.</li>
+          <li>Step through the animation, then read the diagnosis.</li>
+        </ol>
       </div>
     );
   }
@@ -632,7 +728,9 @@ export function Workspace({
     return (
       <div className="flex flex-col">
         {left}
-        <div className="border-t">{right}</div>
+        <div ref={resultsRef} className="scroll-mt-14 border-t">
+          {right}
+        </div>
       </div>
     );
   }
