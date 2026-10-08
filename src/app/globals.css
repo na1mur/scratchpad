@@ -171,7 +171,7 @@
   --paper: oklch(0.2 0.025 235);
   --sheet: oklch(0.245 0.028 235);
   --tile: oklch(0.26 0.02 235);
-  --plate: oklch(0.34 0.004 90);
+  --plate: oklch(0.255 0.014 235);
   --grid: oklch(0.25 0.028 235);
   --ink: oklch(0.94 0.012 225);
   --marker: oklch(0.85 0.17 95);
