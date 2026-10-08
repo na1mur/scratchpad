@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, SearchXIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, NotebookPenIcon, PlusIcon, SearchXIcon } from "lucide-react";
 import { cn } from "cn";
 import { ProblemCard } from "@/components/problems/problem-card";
 import { ProblemSearch } from "@/components/problems/problem-search";
@@ -34,29 +34,52 @@ export default async function ProblemsPage({ searchParams }: PageProps<"/problem
     distinctTags(session.userId),
   ]);
   const isFiltered = Boolean(query.tag || query.q);
+  const now = new Date().getTime();
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">Problems</h1>
-          <p className="text-sm text-muted-foreground">
-            {total} {total === 1 ? "problem" : "problems"}
-            {isFiltered && " matching"}
+          <p className="text-sm text-muted-foreground" aria-live="polite">
+            {isFiltered ? (
+              <>
+                {total} {total === 1 ? "problem" : "problems"}
+                {query.q && (
+                  <>
+                    {" "}
+                    matching <span className="font-medium text-foreground">&ldquo;{query.q}&rdquo;</span>
+                  </>
+                )}
+                {query.tag && (
+                  <>
+                    {" "}
+                    tagged <span className="font-medium text-foreground">{query.tag}</span>
+                  </>
+                )}
+              </>
+            ) : total > 0 ? (
+              `${total} ${total === 1 ? "problem" : "problems"}, most recently worked on first`
+            ) : (
+              "Your saved problems will show up here"
+            )}
           </p>
         </div>
         <div className="flex w-full items-center gap-2 sm:w-auto">
-          <Suspense>
+          <Suspense fallback={<div className="h-8 flex-1 rounded-lg border bg-muted/40 sm:w-72 sm:flex-none" />}>
             <ProblemSearch />
           </Suspense>
-          <Link href="/problems/new" className={buttonVariants()}>
-            <PlusIcon /> Add new
+          <Link href="/problems/new" className={cn(buttonVariants(), "shrink-0")}>
+            <PlusIcon /> Add problem
           </Link>
         </div>
       </div>
 
       {tags.length > 0 && (
-        <nav aria-label="Filter by tag" className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
+        <nav
+          aria-label="Filter by tag"
+          className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0"
+        >
           {[undefined, ...tags].map((tag) => {
             const active = query.tag === tag;
             return (
@@ -65,10 +88,10 @@ export default async function ProblemsPage({ searchParams }: PageProps<"/problem
                 href={hrefWith({ tag, q: query.q })}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "shrink-0 rounded-full border px-3 py-1 text-sm whitespace-nowrap transition-colors",
+                  "shrink-0 rounded-full border px-3 py-1 text-sm whitespace-nowrap transition-colors outline-none focus-visible:ring-3 focus-visible:ring-brand/50",
                   active
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    ? "border-brand bg-brand font-medium text-brand-foreground"
+                    : "text-muted-foreground hover:border-brand/60 hover:bg-brand-soft/30 hover:text-foreground",
                 )}
               >
                 {tag ?? "All"}
@@ -79,26 +102,42 @@ export default async function ProblemsPage({ searchParams }: PageProps<"/problem
       )}
 
       {items.length > 0 ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((p) => (
-            <ProblemCard key={p.id} problem={p} />
+            <li key={p.id} className="grid">
+              <ProblemCard problem={p} now={now} />
+            </li>
           ))}
-        </div>
+        </ul>
       ) : isFiltered ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-16 text-center">
-          <SearchXIcon className="size-6 text-muted-foreground" />
-          <p className="font-medium">No problems match</p>
-          <Link href="/problems" className="text-sm text-muted-foreground underline underline-offset-4">
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center">
+          <SearchXIcon className="size-6 text-muted-foreground" aria-hidden />
+          <div className="flex flex-col gap-1">
+            <p className="font-medium">Nothing matches that</p>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              {query.q && query.tag
+                ? "Try a different word, or look at every tag."
+                : query.q
+                  ? "Try a different word, or search for part of the title."
+                  : "None of your problems have this tag yet."}
+            </p>
+          </div>
+          <Link href="/problems" className={buttonVariants({ variant: "outline" })}>
             Clear filters
           </Link>
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center">
-          <p className="font-medium">No problems yet</p>
-          <p className="max-w-sm text-sm text-muted-foreground">
-            Add a problem you&apos;re stuck on, then paste your approach and watch it run.
-          </p>
-          <Link href="/problems/new" className={buttonVariants({ variant: "outline" })}>
+        <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed bg-brand-soft/10 py-16 text-center">
+          <span className="flex size-10 items-center justify-center rounded-full bg-brand-soft text-brand-strong">
+            <NotebookPenIcon className="size-5" aria-hidden />
+          </span>
+          <div className="flex flex-col gap-1">
+            <p className="font-medium">No problems yet</p>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              Add a problem you&apos;re stuck on, then paste your approach and watch it run.
+            </p>
+          </div>
+          <Link href="/problems/new" className={buttonVariants()}>
             <PlusIcon /> Add your first problem
           </Link>
         </div>
@@ -106,23 +145,27 @@ export default async function ProblemsPage({ searchParams }: PageProps<"/problem
 
       {pageCount > 1 && (
         <nav aria-label="Pagination" className="flex items-center justify-center gap-2">
-          <Link
-            href={hrefWith({ ...query, page: page - 1 })}
-            aria-disabled={page <= 1}
-            className={cn(buttonVariants({ variant: "ghost" }), page <= 1 && "pointer-events-none opacity-50")}
-          >
-            <ChevronLeftIcon /> Previous
-          </Link>
-          <span className="text-sm text-muted-foreground">
+          {page > 1 ? (
+            <Link href={hrefWith({ ...query, page: page - 1 })} className={buttonVariants({ variant: "ghost" })}>
+              <ChevronLeftIcon /> Previous
+            </Link>
+          ) : (
+            <span className={cn(buttonVariants({ variant: "ghost" }), "pointer-events-none opacity-50")} aria-hidden>
+              <ChevronLeftIcon /> Previous
+            </span>
+          )}
+          <span className="min-w-24 text-center text-sm text-muted-foreground" aria-current="page">
             Page {page} of {pageCount}
           </span>
-          <Link
-            href={hrefWith({ ...query, page: page + 1 })}
-            aria-disabled={page >= pageCount}
-            className={cn(buttonVariants({ variant: "ghost" }), page >= pageCount && "pointer-events-none opacity-50")}
-          >
-            Next <ChevronRightIcon />
-          </Link>
+          {page < pageCount ? (
+            <Link href={hrefWith({ ...query, page: page + 1 })} className={buttonVariants({ variant: "ghost" })}>
+              Next <ChevronRightIcon />
+            </Link>
+          ) : (
+            <span className={cn(buttonVariants({ variant: "ghost" }), "pointer-events-none opacity-50")} aria-hidden>
+              Next <ChevronRightIcon />
+            </span>
+          )}
         </nav>
       )}
     </main>
