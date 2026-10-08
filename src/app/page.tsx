@@ -3,13 +3,14 @@ import Link from "next/link";
 import { cn } from "cn";
 import { buttonVariants } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { Logo } from "@/components/logo";
 import { LanguageIcon } from "@/components/language-icon";
 import { GraphBackdrop } from "@/components/landing/graph-backdrop";
 import { HintLadder } from "@/components/landing/hint-ladder";
 import { landingFonts } from "@/components/landing/fonts";
+import { LandingHeader } from "@/components/landing/landing-header";
 import { NotebookTranscript } from "@/components/landing/notebook-transcript";
+import { ScrollToTop } from "@/components/landing/scroll-to-top";
 import { TraceSpecimen } from "@/components/landing/trace-specimen";
 import { LANGUAGES } from "@/lib/languages";
 
@@ -37,25 +38,8 @@ export const metadata: Metadata = {
 export default function Home() {
   return (
     <div className={cn(landingFonts, "flex flex-1 flex-col bg-paper text-ink")}>
-      <header
-        style={{ height: HEADER_H }}
-        className={cn(container, "relative z-10 flex items-center justify-between")}
-      >
-        <Logo href="/" height={36} priority />
-        <nav aria-label="Main" className="flex items-center gap-1">
-          <Link href="/demo" className={cn(buttonVariants({ variant: "ghost" }), "hidden sm:inline-flex")}>
-            Demo
-          </Link>
-          <Link href="/login" className={buttonVariants({ variant: "ghost" })}>
-            Log in
-          </Link>
-          {/* Hidden on phones, where the logo, Log in and the toggle already fill the row; the hero has the same CTA. */}
-          <Link href="/signup" className={cn(buttonVariants(), inkButton, "hidden sm:inline-flex")}>
-            Get started
-          </Link>
-          <ThemeToggle />
-        </nav>
-      </header>
+      <LandingHeader height={HEADER_H} />
+      <ScrollToTop />
 
       <main>
         <section
