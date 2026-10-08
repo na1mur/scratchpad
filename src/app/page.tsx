@@ -90,8 +90,8 @@ export default function Home() {
                   </Link>
                 </div>
                 <p className="max-w-[34rem] text-sm leading-5 text-ink/70">
-                  The demo needs no account. To run your own problems, you&apos;ll add an API key from your AI
-                  provider.
+                  The demo needs no account. To run your own problems, sign in with OpenRouter, which has free
+                  models, or add an API key from your AI provider.
                 </p>
               </div>
               <div className="flex flex-col gap-3">
@@ -141,8 +141,9 @@ export default function Home() {
             <div className="flex flex-col gap-6 lg:pl-16">
               <h2 className={heading}>Run on <span className="highlight">your own model</span>.</h2>
               <p className="max-w-md text-lg leading-7 text-ink/75">
-                Bring a key from OpenAI, Anthropic, Google Gemini, xAI, Mistral, DeepSeek or any of ten other providers.
-                Your key is stored encrypted and only ever used to call your model.
+                Sign in with OpenRouter for hundreds of models, free ones included, with no key to copy. Or bring a
+                key from OpenAI, Anthropic, Google Gemini, xAI, DeepSeek or any of ten other providers. Keys are
+                stored encrypted and only ever used to call your model.
               </p>
             </div>
           </div>

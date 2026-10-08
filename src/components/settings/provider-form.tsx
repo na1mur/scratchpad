@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { CheckCircle2Icon, Loader2Icon, PlugZapIcon, RefreshCwIcon, XCircleIcon } from "lucide-react";
+import { CheckCircle2Icon, KeyRoundIcon, Loader2Icon, LogInIcon, PlugZapIcon, RefreshCwIcon, XCircleIcon } from "lucide-react";
 import { cn } from "cn";
 import { LoadingButton } from "@/components/loading-button";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { ModelPicker, type ModelOption } from "@/components/settings/model-picker";
 import { ProviderPicker } from "@/components/settings/provider-picker";
 import { api } from "@/lib/fetcher";
+import { finishOpenRouterConnect, startOpenRouterConnect } from "@/lib/openrouter-connect";
 import type { ProviderId } from "@/lib/providers";
 import { providerFormSchema, type ProviderFormValues, type ProviderSettingsInput } from "@/lib/schemas/settings";
 import type { PublicUser } from "@/lib/serializers";
@@ -21,6 +22,13 @@ import type { PublicUser } from "@/lib/serializers";
 type Listing = { models: ModelOption[]; source: "live" | "fallback" };
 type LoadState = { status: "idle" | "loading" | "ready" | "error"; listing?: Listing; error?: string };
 type TestState = { status: "idle" | "testing" | "ok" | "error"; message?: string };
+// Buttons on the mint OpenRouter card. Three shades so each reads as its own control in light and dark:
+// a solid fill for the main action, a paper tint for the refresh icon, an ink tint for the escape hatch.
+const CARD_PRIMARY = "bg-brand-strong text-background hover:bg-brand-strong/85";
+const CARD_PAPER = "bg-background/70 text-foreground hover:bg-background";
+const CARD_INK = "bg-foreground/10 text-foreground hover:bg-foreground/15";
+
+type ConnectState = { status: "idle" | "redirecting" | "connecting" | "connected" | "error"; error?: string };
 
 // Only prefixes that are known to be stable; the rest just get a generic prompt.
 const KEY_HINTS: Record<ProviderId, string> = {
@@ -79,9 +87,20 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
   const [test, setTest] = useState<TestState>({ status: "idle" });
   const [redirecting, setRedirecting] = useState(false);
   const [skipping, setSkipping] = useState(false);
-  const busy = form.formState.isSubmitting || redirecting || skipping;
+  const [connect, setConnect] = useState<ConnectState>({ status: "idle" });
+  const connectStarted = useRef(false);
+  // Reveals the provider and key fields even while OpenRouter is the active provider.
+  const [manual, setManual] = useState(false);
+  const busy =
+    form.formState.isSubmitting ||
+    redirecting ||
+    skipping ||
+    connect.status === "redirecting" ||
+    connect.status === "connecting";
 
   const canUseStoredMain = ai?.provider === v.provider;
+  // OpenRouter with a key in hand (just connected, or already saved): nothing to type, so hide the key fields.
+  const viaOpenRouter = !manual && v.provider === "openrouter" && (connect.status === "connected" || canUseStoredMain);
   const canUseStoredVision =
     v.visionProvider === v.provider || (ai?.vision?.hasOwnKey && ai.vision.provider === v.visionProvider);
   const selectedModel = main.listing?.models.find((m) => m.id === v.model);
@@ -119,12 +138,56 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
     set(result ?? { status: "idle" });
   }
 
+  /** Leaves the OpenRouter sign-in: shows the provider and key fields, minus the key OpenRouter issued. */
+  function useOwnKey() {
+    setManual(true);
+    setConnect({ status: "idle" });
+    setTest({ status: "idle" });
+    // Otherwise the OpenRouter key would be sent to whichever provider is picked next.
+    form.setValue("apiKey", "");
+  }
+
+  async function connectOpenRouter() {
+    setConnect({ status: "redirecting" });
+    try {
+      await startOpenRouterConnect();
+    } catch (err) {
+      setConnect({ status: "error", error: err instanceof Error ? err.message : "Couldn't start OpenRouter sign-in." });
+    }
+  }
+
+  /** Back from OpenRouter with `?code=`: swap it for the key and fill the form with it. */
+  async function completeOpenRouterConnect(code: string) {
+    router.replace(window.location.pathname, { scroll: false });
+    setConnect({ status: "connecting" });
+    try {
+      const key = await finishOpenRouterConnect(code);
+      if (form.getValues("provider") !== "openrouter") form.setValue("model", "");
+      form.setValue("provider", "openrouter");
+      form.setValue("apiKey", key, { shouldValidate: true });
+      setTest({ status: "idle" });
+      setManual(false);
+      setConnect({ status: "connected" });
+      await loadModels("main");
+    } catch (err) {
+      setConnect({ status: "error", error: err instanceof Error ? err.message : "Couldn't connect OpenRouter." });
+      if (ai) void loadModels("main");
+      else setMain({ status: "idle" });
+    }
+  }
+
   // Settings page: the key is already stored, so list models straight away.
   // Initial state is already "loading" in that case.
   useEffect(() => {
-    if (!ai) return;
-    void requestModels("main").then((r) => setMain(r ?? { status: "idle" }));
-    if (initialVisionCustom) void requestModels("vision").then((r) => setVision(r ?? { status: "idle" }));
+    // The ref keeps Strict Mode's second effect run from spending the code twice.
+    const code = new URLSearchParams(window.location.search).get("code");
+    if (code && !connectStarted.current) {
+      connectStarted.current = true;
+      void completeOpenRouterConnect(code);
+    } else if (ai && !code) {
+      void requestModels("main").then((r) => setMain(r ?? { status: "idle" }));
+    }
+    if (ai && initialVisionCustom) void requestModels("vision").then((r) => setVision(r ?? { status: "idle" }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -189,7 +252,7 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
     try {
       const { redirectTo } = await api<{ redirectTo: string }>("/api/settings/provider/skip", { method: "POST" });
       setRedirecting(true);
-      toast.success("Skipped for now. Add your key any time in Settings.");
+      toast.success("Skipped for now. Connect your AI any time in Settings.");
       router.push(redirectTo);
       router.refresh();
     } catch (err) {
@@ -207,71 +270,141 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
     <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-8" noValidate>
       <fieldset disabled={busy} className="contents">
       <FieldGroup>
-        <Controller
-          name="provider"
-          control={form.control}
-          render={({ field }) => (
-            <Field>
-              <FieldLabel htmlFor="provider">Provider</FieldLabel>
-              <ProviderPicker
-                id="provider"
-                value={field.value}
-                onChange={(value) => {
-                  field.onChange(value);
-                  form.setValue("model", "");
-                  setTest({ status: "idle" });
-                  void loadModels("main");
-                }}
-              />
-            </Field>
-          )}
-        />
-
-        <Controller
-          name="apiKey"
-          control={form.control}
-          render={({ field, fieldState }) => (
-            <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="apiKey">API key</FieldLabel>
-              <div className="flex gap-2">
-                <Input
-                  {...field}
-                  id="apiKey"
-                  type="password"
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder={keyPlaceholder}
-                  aria-invalid={fieldState.invalid}
-                  onChange={(e) => {
-                    field.onChange(e);
-                    setTest({ status: "idle" });
-                  }}
-                  onBlur={() => {
-                    field.onBlur();
-                    if (field.value) void loadModels("main");
-                  }}
-                />
+        <div className="flex flex-col gap-3 rounded-lg border border-brand/40 bg-brand-soft p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-1">
+              <p className="flex items-center gap-1.5 text-sm font-medium">
+                {viaOpenRouter && <CheckCircle2Icon className="size-4 shrink-0 text-viz-success" />}
+                {viaOpenRouter ? "OpenRouter connected" : "Sign in with OpenRouter"}
+              </p>
+              <p className="text-sm text-muted-foreground" aria-live="polite">
+                {viaOpenRouter
+                  ? connect.status === "connected"
+                    ? "Pick a model below, then save. There's no key to enter."
+                    : "Using the key you connected. Reconnect to replace it."
+                  : "No key to copy. One OpenRouter account covers hundreds of models, including free ones, and you can revoke Scratchpad's key any time in your OpenRouter settings."}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {viaOpenRouter && (
                 <Button
                   type="button"
-                  variant="outline"
                   size="icon"
-                  aria-label="Load models"
-                  disabled={main.status === "loading" || (!v.apiKey && !canUseStoredMain)}
+                  className={CARD_PAPER}
+                  aria-label="Reload models"
+                  disabled={main.status === "loading"}
                   onClick={() => loadModels("main")}
                 >
                   {main.status === "loading" ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
                 </Button>
-              </div>
-              <FieldDescription>
-                {canUseStoredMain && ai
-                  ? "Leave blank to keep your saved key. Entering a new one replaces it."
-                  : "Encrypted at rest and only decrypted on the server when making AI calls."}
-              </FieldDescription>
-              <FieldError errors={[fieldState.error]} />
-              {main.status === "error" && <FieldError>{main.error}</FieldError>}
-            </Field>
+              )}
+              <LoadingButton
+                type="button"
+                className={CARD_PRIMARY}
+                onClick={connectOpenRouter}
+                loading={connect.status === "redirecting" || connect.status === "connecting"}
+                disabled={busy}
+                icon={<LogInIcon />}
+              >
+                {connect.status === "connecting" ? "Connecting…" : viaOpenRouter ? "Reconnect" : "Connect OpenRouter"}
+              </LoadingButton>
+            </div>
+          </div>
+          {viaOpenRouter && main.status === "error" && (
+            <p role="alert" className="flex items-center gap-1.5 text-sm text-destructive">
+              <XCircleIcon className="size-4 shrink-0" /> {main.error}
+            </p>
           )}
-        />
+          {connect.status === "error" && (
+            <p role="alert" className="flex items-center gap-1.5 text-sm text-destructive">
+              <XCircleIcon className="size-4 shrink-0" /> {connect.error}
+            </p>
+          )}
+          {viaOpenRouter && (
+            <Button type="button" className={cn("w-fit", CARD_INK)} onClick={useOwnKey}>
+              <KeyRoundIcon /> Use my own API key instead
+            </Button>
+          )}
+        </div>
+
+        {!viaOpenRouter && (
+          <>
+            {/* Not FieldSeparator: its label sits on bg-background, which shows on the settings card. */}
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <span aria-hidden className="h-px flex-1 bg-border" />
+              or use an API key from any provider
+              <span aria-hidden className="h-px flex-1 bg-border" />
+            </div>
+
+            <Controller
+              name="provider"
+              control={form.control}
+              render={({ field }) => (
+                <Field>
+                  <FieldLabel htmlFor="provider">Provider</FieldLabel>
+                  <ProviderPicker
+                    id="provider"
+                    value={field.value}
+                    onChange={(value) => {
+                      field.onChange(value);
+                      // A key typed for the previous provider is wrong for this one.
+                      form.setValue("apiKey", "");
+                      form.setValue("model", "");
+                      setTest({ status: "idle" });
+                      void loadModels("main");
+                    }}
+                  />
+                </Field>
+              )}
+            />
+
+            <Controller
+              name="apiKey"
+              control={form.control}
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="apiKey">API key</FieldLabel>
+                  <div className="flex gap-2">
+                    <Input
+                      {...field}
+                      id="apiKey"
+                      type="password"
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder={keyPlaceholder}
+                      aria-invalid={fieldState.invalid}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        setTest({ status: "idle" });
+                      }}
+                      onBlur={() => {
+                        field.onBlur();
+                        if (field.value) void loadModels("main");
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      aria-label="Load models"
+                      disabled={main.status === "loading" || (!v.apiKey && !canUseStoredMain)}
+                      onClick={() => loadModels("main")}
+                    >
+                      {main.status === "loading" ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
+                    </Button>
+                  </div>
+                  <FieldDescription>
+                    {canUseStoredMain && ai
+                      ? "Leave blank to keep your saved key. Entering a new one replaces it."
+                      : "Encrypted at rest and only decrypted on the server when making AI calls."}
+                  </FieldDescription>
+                  <FieldError errors={[fieldState.error]} />
+                  {main.status === "error" && <FieldError>{main.error}</FieldError>}
+                </Field>
+              )}
+            />
+          </>
+        )}
 
         <Controller
           name="model"

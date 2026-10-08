@@ -20,8 +20,8 @@ export default async function OnboardingProviderPage() {
       </Link>
       <StepHeader
         step={2}
-        title="Bring your own AI key"
-        description="Scratchpad runs on your own AI account: OpenAI, Anthropic, Google, xAI, OpenRouter and more. You can skip this for now and add your key later in Settings."
+        title="Connect your AI"
+        description="Scratchpad runs on your own AI account. Sign in with OpenRouter to pick from hundreds of models, free ones included, or paste a key from OpenAI, Anthropic, Google and more. You can skip this and connect later in Settings."
       />
       <ProviderForm ai={user.ai} onboarding />
     </>
