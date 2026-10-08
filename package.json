@@ -2,6 +2,13 @@
   "name": "scratchpad",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
+  "author": "Naimur Rahman",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/na1mur/scratchpad.git"
+  },
+  "bugs": "https://github.com/na1mur/scratchpad/issues",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

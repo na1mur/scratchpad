@@ -91,3 +91,13 @@ nothing else.
 - Model-generated code only ever runs inside QuickJS, never via `eval`, `Function` or `node:vm`.
 - Rate limits on processing, chat, uploads and login are in-memory (single instance) behind an interface in
   `src/lib/rateLimit.ts`, so they can move to Redis.
+
+## Contributing
+
+Scratchpad is open source and contributions are welcome: bug reports, feature ideas and pull requests. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for how to get started, and please follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+Report security issues privately as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for attribution.
