@@ -2,7 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { cn } from "cn";
 
-const RATIO = { light: 1000 / 200, dark: 912 / 273 };
+// Both artworks are 1000x200 with the wordmark filling the height, so they render at the same size.
+const RATIO = 1000 / 200;
 
 type LogoProps = {
   /** Rendered height in px; width follows each artwork's aspect ratio. */
@@ -21,7 +22,7 @@ export function Logo({ height = 32, href, priority, className }: LogoProps) {
       src={`/logo-${variant}.png`}
       alt={variant === "light" ? "Scratchpad" : ""}
       aria-hidden={variant === "dark" || undefined}
-      width={Math.round(height * RATIO[variant])}
+      width={Math.round(height * RATIO)}
       height={height}
       priority={priority}
       className={variant === "light" ? "dark:hidden" : "hidden dark:block"}
