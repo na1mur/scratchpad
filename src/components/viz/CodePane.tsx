@@ -38,7 +38,7 @@ export function CodePane({
   return (
     <div
       ref={container}
-      className={cn("relative overflow-auto rounded-lg border bg-muted/30 py-2 font-mono text-[13px] leading-6", className)}
+      className={cn("relative overflow-auto rounded-lg border bg-tile py-2 font-mono text-[13px] leading-6", className)}
     >
       {lines.map((line, i) => {
         const active = i === activeLine;

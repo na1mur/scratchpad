@@ -58,7 +58,7 @@ export function StructureView({
   const Renderer = RENDERERS[structure.kind] as (props: RendererProps<StructureKind>) => React.ReactNode;
 
   return (
-    <section className="flex min-w-0 flex-col gap-2 rounded-lg border bg-card/50 p-3">
+    <section className="flex min-w-0 flex-col gap-2 rounded-lg border bg-tile p-3">
       <header className="flex items-baseline gap-2">
         <h3 className="font-mono text-sm font-medium">{structure.label}</h3>
         {KIND_LABEL[structure.kind] && (

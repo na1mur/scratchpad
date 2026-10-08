@@ -111,7 +111,7 @@ export function Player({
           <IconButton label="Previous step (←)" onClick={() => (setPlaying(false), seek(current - 1))} disabled={current === 0}>
             <SkipBackIcon />
           </IconButton>
-          <Button size="icon" onClick={togglePlay} aria-label={playing ? "Pause (space)" : "Play (space)"}>
+          <Button variant="brand" size="icon" onClick={togglePlay} aria-label={playing ? "Pause (space)" : "Play (space)"}>
             {playing ? <PauseIcon /> : <PlayIcon />}
           </Button>
           <IconButton label="Next step (→)" onClick={() => (setPlaying(false), seek(current + 1))} disabled={current === last}>

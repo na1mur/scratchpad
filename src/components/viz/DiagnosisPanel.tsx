@@ -22,7 +22,7 @@ export function DiagnosisPanel({ spec, onJumpToStep }: { spec: VizSpec; onJumpTo
         <p className="text-sm text-muted-foreground">{summary.understoodApproach}</p>
       </div>
 
-      <dl className="grid gap-2 rounded-lg border p-3 text-sm sm:grid-cols-[auto_1fr]">
+      <dl className="grid gap-2 rounded-lg border bg-tile p-3 text-sm sm:grid-cols-[auto_1fr]">
         <dt className="text-muted-foreground">Test input</dt>
         <dd className="font-mono">{summary.testInputDescription}</dd>
         <dt className="text-muted-foreground">Expected</dt>
@@ -32,7 +32,7 @@ export function DiagnosisPanel({ spec, onJumpToStep }: { spec: VizSpec; onJumpTo
       </dl>
 
       {diagnosis.whatGoesWrong && (
-        <section className="flex flex-col gap-1.5">
+        <section className="flex flex-col gap-1.5 rounded-lg border border-l-4 border-l-pen-red bg-tile p-3">
           <h3 className="flex items-center gap-1.5 font-medium">
             <TriangleAlertIcon className="size-4 text-viz-error" /> What goes wrong
           </h3>
@@ -40,7 +40,7 @@ export function DiagnosisPanel({ spec, onJumpToStep }: { spec: VizSpec; onJumpTo
         </section>
       )}
       {diagnosis.whyItGoesWrong && (
-        <section className="flex flex-col gap-1.5">
+        <section className="flex flex-col gap-1.5 rounded-lg border bg-tile p-3">
           <h3 className="font-medium">Why</h3>
           <p className="text-sm">{diagnosis.whyItGoesWrong}</p>
         </section>

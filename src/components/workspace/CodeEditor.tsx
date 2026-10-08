@@ -57,16 +57,16 @@ export function CodeEditor({
     <div
       style={{ height: visibleLines * LINE_HEIGHT + CHROME }}
       className={cn(
-        "flex overflow-hidden rounded-lg border bg-muted/20 font-mono text-[13px] leading-6 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
+        "flex overflow-hidden rounded-lg border bg-tile font-mono text-[13px] leading-6 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
         invalid && "border-destructive ring-3 ring-destructive/20",
-        readOnly && "bg-muted/40",
+        readOnly && "bg-muted/50",
         className,
       )}
     >
       <div
         ref={gutter}
         aria-hidden
-        className="w-10 shrink-0 overflow-hidden border-r bg-muted/40 py-2 pr-2 text-right text-muted-foreground/70 select-none tabular-nums"
+        className="w-10 shrink-0 overflow-hidden border-r bg-foreground/5 py-2 pr-2 text-right text-muted-foreground/70 select-none tabular-nums"
       >
         {Array.from({ length: lineCount }, (_, i) => (
           <div key={i}>{i + 1}</div>

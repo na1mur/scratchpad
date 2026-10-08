@@ -25,7 +25,7 @@ export function ExplanationPanel({
 }) {
   const loop = step.iteration ? loops.find((l) => l.id === step.iteration!.loopId) : undefined;
   return (
-    <div className={`rounded-lg border p-4 ${isBug ? "border-viz-error/50 bg-viz-error/5" : "bg-card"}`}>
+    <div className={`rounded-lg border p-4 ${isBug ? "border-l-4 border-l-viz-error bg-tile" : "bg-tile"}`}>
       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
         <span className="font-medium text-muted-foreground tabular-nums">
           Step {index + 1} of {total}

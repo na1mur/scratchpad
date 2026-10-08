@@ -44,7 +44,7 @@ export function DeleteAttemptButton({
   return (
     <>
       <Button
-        variant="outline"
+        variant="destructive"
         size="icon"
         aria-label={`Delete attempt v${attempt.version}`}
         title="Delete this attempt"

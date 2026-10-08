@@ -18,7 +18,6 @@ import {
   SparklesIcon,
   TriangleAlertIcon,
 } from "lucide-react";
-import { cn } from "cn";
 import { VerdictBadge } from "@/components/problems/verdict-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -366,7 +365,7 @@ export function Workspace({
           </div>
           <div className="flex shrink-0 items-center">
             <CollapsibleTrigger
-              render={<Button variant="ghost" size="sm" className="data-panel-open:[&_svg]:rotate-180" />}
+              render={<Button variant="soft" size="sm" className="data-panel-open:[&_svg]:rotate-180" />}
             >
               Statement <ChevronDownIcon className="transition-transform" />
             </CollapsibleTrigger>
@@ -374,7 +373,7 @@ export function Workspace({
           </div>
         </div>
         <CollapsibleContent>
-          <pre className="mt-3 max-h-64 overflow-auto rounded-lg border bg-muted/30 p-3 font-sans text-sm whitespace-pre-wrap">
+          <pre className="mt-3 max-h-64 overflow-auto rounded-lg border bg-tile p-3 font-sans text-sm whitespace-pre-wrap">
             {problem.statement}
           </pre>
         </CollapsibleContent>
@@ -403,7 +402,7 @@ export function Workspace({
           <span className="flex-1 px-1 text-sm text-muted-foreground">New attempt</span>
         )}
         {mode === "view" && viewing && (
-          <Button variant="outline" onClick={requestNewAttempt} disabled={Boolean(running) || loadingAttempt}>
+          <Button variant="brand" onClick={requestNewAttempt} disabled={Boolean(running) || loadingAttempt}>
             <CopyPlusIcon /> New attempt
           </Button>
         )}
@@ -441,7 +440,7 @@ export function Workspace({
           </DialogHeader>
           <DialogFooter>
             <Button
-              variant="outline"
+              variant="soft"
               onClick={() => {
                 setConfirmingNew(false);
                 startNewAttempt(viewing);
@@ -450,6 +449,7 @@ export function Workspace({
               Keep them
             </Button>
             <Button
+              variant="brand"
               onClick={() => {
                 setConfirmingNew(false);
                 startNewAttempt(viewing, true);
@@ -523,7 +523,7 @@ export function Workspace({
                 readOnly={readOnly}
                 maxLength={MAX_TEXT}
                 rows={6}
-                className="min-h-36"
+                className="min-h-36 bg-tile"
                 placeholder="Why do you think this works? What are you relying on?"
                 aria-invalid={fieldState.invalid}
               />
@@ -551,11 +551,11 @@ export function Workspace({
           // Sticks to the bottom of the pane so the main action stays in reach while editing a long attempt.
           <div className="sticky bottom-0 z-10 -mx-4 flex flex-col gap-2 border-t bg-background/90 px-4 py-3 backdrop-blur">
             {aiModel ? (
-              <LoadingButton type="submit" size="lg" loading={Boolean(running)} icon={<PlayIcon />}>
+              <LoadingButton type="submit" variant="brand" size="lg" loading={Boolean(running)} icon={<PlayIcon />}>
                 {running ? "Processing…" : "Process"}
               </LoadingButton>
             ) : (
-              <Link href="/settings" className={buttonVariants({ size: "lg" })}>
+              <Link href="/settings" className={buttonVariants({ variant: "brand", size: "lg" })}>
                 Set up an AI provider to process
               </Link>
             )}
@@ -604,7 +604,7 @@ export function Workspace({
           <AlertTitle>Processing failed</AlertTitle>
           <AlertDescription>{viewing.error?.message ?? "Something went wrong."}</AlertDescription>
         </Alert>
-        <Button className="mt-4" variant="outline" onClick={() => startNewAttempt(viewing)}>
+        <Button className="mt-4" variant="soft" onClick={() => startNewAttempt(viewing)}>
           <RotateCcwIcon /> Edit and try again
         </Button>
       </div>
@@ -726,7 +726,7 @@ export function Workspace({
 
   if (!isDesktop) {
     return (
-      <div className="flex flex-col">
+      <div className="flex flex-col bg-paper">
         {left}
         <div ref={resultsRef} className="scroll-mt-14 border-t">
           {right}
@@ -739,11 +739,11 @@ export function Workspace({
     // Inline style, because the library's own inline `height: 100%` would beat a height class. The extra 1px is
     // the header's bottom border.
     <ResizablePanelGroup orientation="horizontal" style={{ height: "calc(100dvh - 3.5rem - 1px)" }}>
-      <ResizablePanel defaultSize="38%" minSize="25%" className={cn("overflow-y-auto")}>
+      <ResizablePanel defaultSize="38%" minSize="25%" className="overflow-y-auto bg-paper">
         {left}
       </ResizablePanel>
       <ResizableHandle withHandle />
-      <ResizablePanel defaultSize="62%" minSize="35%" className="overflow-y-auto">
+      <ResizablePanel defaultSize="62%" minSize="35%" className="overflow-y-auto bg-paper">
         {right}
       </ResizablePanel>
     </ResizablePanelGroup>

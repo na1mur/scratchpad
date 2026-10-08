@@ -24,7 +24,7 @@ export function HintsPanel({ spec, onJumpToStep }: { spec: VizSpec; onJumpToStep
       {rethink && (
         <>
           {rethink.scope === "rethink-the-approach" ? (
-            <div className="flex gap-2.5 rounded-lg border border-viz-error/30 bg-viz-error/10 p-3 text-sm">
+            <div className="flex gap-2.5 rounded-lg border border-l-4 border-l-viz-error bg-tile p-3 text-sm">
               <RefreshCwIcon className="mt-0.5 size-4 shrink-0 text-viz-error" />
               <p>
                 <span className="font-medium">This strategy needs rethinking.</span> Patching the details won&apos;t make it
@@ -32,7 +32,7 @@ export function HintsPanel({ spec, onJumpToStep }: { spec: VizSpec; onJumpToStep
               </p>
             </div>
           ) : (
-            <div className="flex gap-2.5 rounded-lg border border-viz-success/30 bg-viz-success/10 p-3 text-sm">
+            <div className="flex gap-2.5 rounded-lg border border-l-4 border-l-viz-success bg-tile p-3 text-sm">
               <WrenchIcon className="mt-0.5 size-4 shrink-0 text-viz-success" />
               <p>
                 <span className="font-medium">You&apos;re close.</span> The core idea can work; it&apos;s the details that
@@ -41,7 +41,7 @@ export function HintsPanel({ spec, onJumpToStep }: { spec: VizSpec; onJumpToStep
             </div>
           )}
 
-          <section className="flex flex-col gap-1.5">
+          <section className="flex flex-col gap-1.5 rounded-lg border bg-tile p-3">
             <h3 className="font-medium">Why the current approach doesn&apos;t work</h3>
             <p className="text-sm">{rethink.brokenAssumption}</p>
             {firstBugIndex !== undefined && (
@@ -56,7 +56,7 @@ export function HintsPanel({ spec, onJumpToStep }: { spec: VizSpec; onJumpToStep
           </section>
 
           {rethink.shiftInThinking && (
-            <section className="flex flex-col gap-1.5">
+            <section className="flex flex-col gap-1.5 rounded-lg border bg-tile p-3">
               <h3 className="flex items-center gap-1.5 font-medium">
                 <CompassIcon className="size-4 text-viz-active" /> A different way to look at it
               </h3>
@@ -73,14 +73,14 @@ export function HintsPanel({ spec, onJumpToStep }: { spec: VizSpec; onJumpToStep
           </h3>
           <ol className="flex flex-col gap-2">
             {thinkingHints.slice(0, revealed).map((h, i) => (
-              <li key={i} className="rounded-lg border border-viz-compare/30 bg-viz-compare/10 p-3 text-sm">
+              <li key={i} className="rounded-lg border bg-tile p-3 text-sm">
                 <span className="mr-1 font-medium">{i + 1}.</span>
                 {h}
               </li>
             ))}
           </ol>
           {revealed < thinkingHints.length ? (
-            <Button variant="outline" className="self-start" onClick={() => setRevealed(revealed + 1)}>
+            <Button variant="soft" className="self-start" onClick={() => setRevealed(revealed + 1)}>
               <LightbulbIcon />
               {revealed === 0 ? "Show a hint" : "Show a more specific hint"} ({revealed + 1}/{thinkingHints.length})
             </Button>

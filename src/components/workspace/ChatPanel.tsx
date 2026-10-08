@@ -91,7 +91,7 @@ export function ChatPanel({
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border p-3" aria-label="Ask about this run">
+    <section className="flex flex-col gap-3 rounded-lg border bg-tile p-3" aria-label="Ask about this run">
       <header className="flex items-center gap-2">
         <MessageCircleQuestionIcon className="size-4 text-muted-foreground" />
         <h3 className="text-sm font-medium">Ask about this run</h3>
@@ -146,7 +146,7 @@ export function ChatPanel({
           {selectedStepIds.map((id) => {
             const step = steps.find((s) => s.id === id);
             return (
-              <span key={id} className="flex items-center gap-1 rounded-full border bg-muted px-2 py-0.5 text-xs">
+              <span key={id} className="flex items-center gap-1 rounded-full border bg-sheet px-2 py-0.5 text-xs">
                 Step {stepNumber(id)}: <span className="max-w-40 truncate">{step?.title}</span>
                 <button type="button" aria-label="Remove step" onClick={() => onToggleStep(id)}>
                   <XIcon className="size-3" />
@@ -179,7 +179,7 @@ export function ChatPanel({
             />
           )}
         />
-        <Button type="submit" size="icon" aria-label="Send" disabled={Boolean(pending)}>
+        <Button type="submit" variant="brand" size="icon" aria-label="Send" disabled={Boolean(pending)}>
           {pending ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
         </Button>
       </form>
@@ -192,7 +192,7 @@ function Bubble({ role, children }: { role: "user" | "assistant"; children: Reac
     <div
       className={cn(
         "max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap",
-        role === "user" ? "self-end bg-primary text-primary-foreground" : "self-start bg-muted",
+        role === "user" ? "self-end bg-primary text-primary-foreground" : "self-start border bg-sheet",
       )}
     >
       {children}
