@@ -166,7 +166,7 @@ export function ProblemActions({ problem }: { problem: ProblemDetail }) {
             <DialogTitle>Delete &ldquo;{problem.title}&rdquo;?</DialogTitle>
             <DialogDescription>
               This removes the problem, all {problem.attemptCount} attempt{problem.attemptCount === 1 ? "" : "s"}, their
-              visualizations, chats and uploaded photos. It can&apos;t be undone.
+              visualizations, chats, solutions and uploaded photos. It can&apos;t be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

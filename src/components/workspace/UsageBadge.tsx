@@ -8,8 +8,14 @@ import { PROVIDER_LABELS } from "@/lib/providers";
 const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
 const full = new Intl.NumberFormat("en");
 
-/** Tokens spent on this attempt (pipeline, regenerations and chat), billed to the learner's own key. */
-export function UsageBadge({ attempt }: { attempt: AttemptDetail }) {
+/** Tokens spent on an attempt or solution (pipeline, regenerations and chat), billed to the learner's own key. */
+export function UsageBadge({
+  attempt,
+  executionLabel = "Traced by running your logic in a sandbox",
+}: {
+  attempt: Pick<AttemptDetail, "tokenUsage" | "model" | "traceMode">;
+  executionLabel?: string;
+}) {
   const usage = attempt.tokenUsage;
   if (!usage || usage.totalTokens === 0) return null;
   return (
@@ -31,7 +37,7 @@ export function UsageBadge({ attempt }: { attempt: AttemptDetail }) {
         <span>Input: {full.format(usage.inputTokens)}</span>
         <span>Output: {full.format(usage.outputTokens)}</span>
         {attempt.traceMode && (
-          <span>{attempt.traceMode === "execution" ? "Traced by running your logic in a sandbox" : "Traced by model simulation"}</span>
+          <span>{attempt.traceMode === "execution" ? executionLabel : "Traced by model simulation"}</span>
         )}
         <span className="text-muted-foreground">Billed to your own API key at your provider&apos;s rates.</span>
       </TooltipContent>

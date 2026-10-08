@@ -2,7 +2,7 @@
 
 ### 1. Product summary
 
-A web app where a learner pastes pseudo-code and their reasoning for a DSA problem, or uploads a photo of their notebook. An AI agent works out what they're trying to do, simulates their approach on a small input, and shows a step-by-step animated visualization of execution, including each loop iteration. It then explains why the approach fails, if it does. The AI never gives the solution. It can only point out where the reasoning breaks and nudge how to think about the problem. Users bring their own API key (OpenAI, Anthropic, Google, xAI, and a dozen more; see `src/lib/providers.ts`).
+A web app where a learner pastes pseudo-code and their reasoning for a DSA problem, or uploads a photo of their notebook. An AI agent works out what they're trying to do, simulates their approach on a small input, and shows a step-by-step animated visualization of execution, including each loop iteration. It then explains why the approach fails, if it does. The AI never volunteers the solution: it points out where the reasoning breaks and nudges how to think about the problem. A learner who wants the solution can ask for it explicitly (section 11a). Users bring their own API key (OpenAI, Anthropic, Google, xAI, and a dozen more; see `src/lib/providers.ts`).
 
 ### 2. Tech stack
 
@@ -263,6 +263,15 @@ The workspace has a chat panel under the visualization. The user can select one 
 `POST /api/attempts/[id]/messages` sends the problem, the user's code and idea, `summary`, `diagnosis`, the focused steps, and the last ~10 messages. It streams a text answer with `streamText`.
 
 The model has one tool, `regenerateVisualization({ reason, focusStepIds?, newTestInput? })`. When it calls this tool, run stages 2–3 again with that guidance, push the result to `specVersions`, and point the player at the new version. Store the message with `producedSpecVersion`. The answer goes through the same no-solution guardrail.
+
+### 11a. Solutions (opt-in)
+
+The tutor never volunteers a solution, but a learner can ask for one from the workspace's Solution button. Before the first one exists it asks whether they'd rather try once more. Solutions are versioned per problem and stored, so opening them again costs nothing:
+
+- **v1** builds on the learner's newest analysed attempt: keep their approach and fix only what's broken, or, if the strategy can't work, the closest correct approach, with a note on what carried over and what changed.
+- **Later versions** answer a request: a different approach, a better time or space complexity, or something specific. The learner asks from the page or the chat proposes one.
+- `/problems/[id]/solution`: the left pane has the statement, the version picker, the approach (complexity, key ideas, why it works, relation to the attempt) and the code; the right pane has the walkthrough (the Player, with "skip iteration / skip loop" and every step grouped by loop iteration), a line-by-line breakdown, and a chat about the solution.
+- The code is run in the sandbox like an attempt; if its result disagrees with the expected one it's re-solved once, and a remaining mismatch is shown to the learner.
 
 ### 12. File storage (Cloudflare R2)
 

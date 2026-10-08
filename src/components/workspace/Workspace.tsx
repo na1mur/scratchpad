@@ -42,6 +42,7 @@ import { DiagnosisPanel } from "@/components/viz/DiagnosisPanel";
 import { HintsPanel } from "@/components/viz/HintsPanel";
 import { Player } from "@/components/viz/Player";
 import { LoadingButton } from "@/components/loading-button";
+import { SolutionButton } from "@/components/solution/SolutionButton";
 import { ChatPanel } from "@/components/workspace/ChatPanel";
 import { DeleteAttemptButton } from "@/components/workspace/DeleteAttemptButton";
 import { CodeEditor } from "@/components/workspace/CodeEditor";
@@ -93,6 +94,7 @@ export function Workspace({
   initialAttempt,
   aiModel,
   uploadsEnabled,
+  hasSolution,
 }: {
   problem: ProblemDetail;
   initialAttempts: AttemptSummary[];
@@ -100,6 +102,8 @@ export function Workspace({
   /** The provider and model new attempts will use. */
   aiModel: { provider: ProviderId; model: string } | null;
   uploadsEnabled: boolean;
+  /** Whether a solution exists (or is being written), so the button opens it instead of asking first. */
+  hasSolution: boolean;
 }) {
   const router = useRouter();
   const isDesktop = useMediaQuery("(min-width: 1024px)", true);
@@ -326,6 +330,10 @@ export function Workspace({
     label: `v${a.version} · ${a.verdict ? VERDICT_LABELS[a.verdict] : IN_PROGRESS.has(a.status) ? "processing" : a.status === "error" ? "failed" : "…"} · ${shortDate.format(new Date(a.createdAt))}`,
   }));
 
+  // The first solution builds on the attempt being viewed, or else the newest one that finished.
+  const solutionBase =
+    mode === "view" && viewing?.status === "done" ? viewing : (attempts.find((a) => a.status === "done") ?? null);
+
   const left = (
     <div className="flex flex-col gap-4 p-4">
       <Collapsible defaultOpen={!initialAttempt}>
@@ -364,6 +372,15 @@ export function Workspace({
             )}
           </div>
           <div className="flex shrink-0 items-center">
+            <span className="mr-2">
+              <SolutionButton
+                problemId={problem.id}
+                hasSolution={hasSolution}
+                attempt={solutionBase && { id: solutionBase.id, version: solutionBase.version }}
+                canGenerate={Boolean(aiModel)}
+                disabled={Boolean(running)}
+              />
+            </span>
             <CollapsibleTrigger
               render={<Button variant="soft" size="sm" className="data-panel-open:[&_svg]:rotate-180" />}
             >
@@ -680,7 +697,7 @@ export function Workspace({
         </Tabs>
         <ChatPanel
           key={viewing.id}
-          attemptId={viewing.id}
+          endpoint={`/api/attempts/${viewing.id}/messages`}
           specVersion={viewing.specVersion}
           steps={spec.steps}
           selectedStepIds={selectedSteps}

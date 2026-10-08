@@ -1,3 +1,4 @@
+import type { SolutionRequestKind } from "@/lib/ai/schemas/solution";
 import type { MessageDoc } from "@/models/Message";
 
 export function serializeMessage(m: MessageDoc) {
@@ -18,6 +19,8 @@ export type ChatEvent =
   | { type: "regenerating"; reason: string }
   | { type: "spec"; specVersion: number }
   | { type: "replace"; text: string }
+  /** Solution chat: the model suggests generating a new solution; the learner confirms it. */
+  | { type: "proposal"; kind: SolutionRequestKind; note: string }
   | { type: "done"; message: ChatMessage }
   /** The question is discarded too, so history never holds an unanswered turn. */
   | { type: "error"; message: string; discardedMessageId: string };

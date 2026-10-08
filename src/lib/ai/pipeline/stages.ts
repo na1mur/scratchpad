@@ -93,7 +93,7 @@ function inputBlock(u: Understanding) {
   return `<test_input>\n${u.chosenTestInput.description}\narguments: ${u.chosenTestInput.argumentsJson}\nexpected (correct) output: ${u.expectedOutput}\n</test_input>`;
 }
 
-function checkDeclarations(t: { codeLines: string[]; addedLines: number[]; structures: Structure[]; loops: Loop[] }): string[] {
+export function checkDeclarations(t: { codeLines: string[]; addedLines: number[]; structures: Structure[]; loops: Loop[] }): string[] {
   const issues: string[] = [];
   const ids = new Set<string>();
   for (const s of t.structures) {
@@ -109,7 +109,7 @@ function checkDeclarations(t: { codeLines: string[]; addedLines: number[]; struc
   return issues;
 }
 
-function runNoteFor(result: SandboxResult): string | null {
+export function runNoteFor(result: SandboxResult): string | null {
   switch (result.outcome) {
     case "timeout":
       return `The code never finished on this input (${result.errorMessage}). It most likely loops forever.`;
@@ -290,7 +290,7 @@ function wireToState(w: WireState, kind: Structure["kind"]): StructureState | nu
   return parsed.success ? parsed.data : null;
 }
 
-function simulationToSteps(sim: Simulation): { steps: Step[]; issues: string[] } {
+export function simulationToSteps(sim: Simulation): { steps: Step[]; issues: string[] } {
   const kinds = new Map(sim.structures.map((s) => [s.id, s.kind]));
   const loopIds = new Set(sim.loops.map((l) => l.id));
   const issues: string[] = [];

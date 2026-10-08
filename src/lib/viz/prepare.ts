@@ -115,6 +115,99 @@ export function iterationStarts(spec: VizSpec): Map<number, { loopId: string; in
   return out;
 }
 
+const indentOf = (line: string) => line.length - line.trimStart().length;
+
+/**
+ * loopId -> ids of the loops that contain it, outermost first. Specs don't
+ * record nesting, so it's read from indentation: a loop sits inside another
+ * when it's indented deeper and no line between them steps back out.
+ */
+export function loopAncestors(spec: Pick<VizSpec, "loops" | "codeLines">): Map<string, string[]> {
+  const loops = [...spec.loops].sort((a, b) => a.line - b.line);
+  const contains = (outer: (typeof loops)[number], inner: (typeof loops)[number]) => {
+    if (inner.line <= outer.line) return false;
+    const base = indentOf(spec.codeLines[outer.line] ?? "");
+    for (let i = outer.line + 1; i <= inner.line; i++) {
+      const text = spec.codeLines[i] ?? "";
+      if (text.trim() && indentOf(text) <= base) return false;
+    }
+    return true;
+  };
+  return new Map(loops.map((l) => [l.id, loops.filter((o) => o.id !== l.id && contains(o, l)).map((o) => o.id)]));
+}
+
+/** Whether a step runs inside the given loop, directly or in a loop nested in it. */
+function inLoop(step: Step, loopId: string, ancestors: Map<string, string[]>) {
+  const own = step.iteration?.loopId;
+  return Boolean(own && (own === loopId || ancestors.get(own)?.includes(loopId)));
+}
+
+/**
+ * Where "skip" lands from step `index`: the first step after the current
+ * iteration of its innermost loop, and the first step after that loop
+ * finishes. Null when there's nothing to skip to.
+ */
+export function skipTargets(
+  steps: Step[],
+  index: number,
+  ancestors: Map<string, string[]>,
+): { loopId: string; iteration: number | null; loop: number | null } | null {
+  const it = steps[index]?.iteration;
+  if (!it) return null;
+  const sameIteration = (s: Step) =>
+    s.iteration?.loopId === it.loopId ? s.iteration.index === it.index : inLoop(s, it.loopId, ancestors);
+  let iteration: number | null = null;
+  let loop: number | null = null;
+  for (let j = index + 1; j < steps.length; j++) {
+    if (iteration === null && !sameIteration(steps[j])) iteration = j;
+    if (!inLoop(steps[j], it.loopId, ancestors)) {
+      loop = j;
+      break;
+    }
+  }
+  return { loopId: it.loopId, iteration, loop };
+}
+
+export type OutlineRow =
+  | { type: "iteration"; key: string; loopId: string; index: number; depth: number; start: number; end: number }
+  | { type: "step"; stepIndex: number; depth: number; parents: string[] };
+
+/**
+ * The run as a list with a header at the start of every loop iteration and
+ * steps indented under it, nested loops deeper. `parents` lists the keys of
+ * the iteration headers a step sits under, so collapsing one hides it.
+ */
+export function outlineRows(spec: VizSpec): OutlineRow[] {
+  const ancestors = loopAncestors(spec);
+  const rows: OutlineRow[] = [];
+  /** Iteration headers the current step sits under, outermost first. */
+  let open: Extract<OutlineRow, { type: "iteration" }>[] = [];
+  let counter = 0;
+
+  spec.steps.forEach((s, i) => {
+    const it = s.iteration;
+    const chain = it ? [...(ancestors.get(it.loopId) ?? []), it.loopId] : [];
+    // An outer loop's header stays open through its inner loops; the innermost one closes when its iteration moves on.
+    open = open.filter((h) => chain.includes(h.loopId) && (h.loopId !== it?.loopId || h.index === it.index));
+    if (it && open.at(-1)?.loopId !== it.loopId) {
+      const header = {
+        type: "iteration" as const,
+        key: `${it.loopId}:${it.index}:${counter++}`,
+        loopId: it.loopId,
+        index: it.index,
+        depth: open.length,
+        start: i,
+        end: i,
+      };
+      rows.push(header);
+      open = [...open, header];
+    }
+    for (const h of open) h.end = i;
+    rows.push({ type: "step", stepIndex: i, depth: open.length, parents: open.map((h) => h.key) });
+  });
+  return rows;
+}
+
 export type StepDecorations = {
   pointers: Pointer[];
   /** target (stringified) -> tone; later highlights win. */

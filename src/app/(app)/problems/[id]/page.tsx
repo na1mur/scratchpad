@@ -8,6 +8,7 @@ import { getOwnedProblem, serializeProblem } from "@/lib/problems";
 import { r2Enabled } from "@/lib/r2";
 import { getPageUser } from "@/lib/users";
 import { Attempt } from "@/models/Attempt";
+import { Solution } from "@/models/Solution";
 
 async function loadProblem(id: string) {
   const session = await requirePageSession();
@@ -32,6 +33,7 @@ export default async function WorkspacePage({ params }: PageProps<"/problems/[id
     .sort({ version: -1 })
     .select({ version: 1, status: 1, createdAt: 1, "vizSpec.summary.verdict": 1 })
     .lean();
+  const hasSolution = Boolean(await Solution.exists({ problemId: problem._id, userId, status: { $ne: "error" } }));
   const latest = attempts[0] ? await serializeAttempt(await getOwnedAttempt(userId, String(attempts[0]._id))) : null;
   const summaries = attempts.map(serializeAttemptSummary);
   // The detail load may have just marked a stale run as failed.
@@ -44,6 +46,7 @@ export default async function WorkspacePage({ params }: PageProps<"/problems/[id
       initialAttempt={latest}
       aiModel={user.ai ? { provider: user.ai.provider, model: user.ai.model } : null}
       uploadsEnabled={r2Enabled}
+      hasSolution={hasSolution}
     />
   );
 }

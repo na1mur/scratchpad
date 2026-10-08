@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { Loader2Icon, MessageCircleQuestionIcon, RefreshCwIcon, SendIcon, XIcon } from "lucide-react";
+import { Loader2Icon, MessageCircleQuestionIcon, RefreshCwIcon, SendIcon, SparklesIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { SOLUTION_REQUEST_LABELS, type SolutionRequestKind } from "@/lib/ai/schemas/solution";
 import type { Step } from "@/lib/ai/schemas/vizSpec";
 import { api, apiRaw, toApiError } from "@/lib/fetcher";
 import type { ChatEvent, ChatMessage } from "@/lib/messages";
@@ -15,26 +16,40 @@ import { MAX_MESSAGE, sendMessageSchema, type SendMessageInput } from "@/lib/sch
 import { readSSE } from "@/lib/sse";
 
 type Pending = { text: string; regenerating: string | null };
+type Proposal = { kind: SolutionRequestKind; note: string };
 
+/**
+ * Follow-up chat about a run. `endpoint` is the messages route of an attempt
+ * or a solution; both stream the same ChatEvents.
+ */
 export function ChatPanel({
-  attemptId,
+  endpoint,
+  title = "Ask about this run",
+  example = <>e.g. &ldquo;Why does left move here?&rdquo; or &ldquo;What happens with duplicates?&rdquo;</>,
   specVersion,
   steps,
   selectedStepIds,
   onToggleStep,
   onClearSelection,
   onSpecVersion,
+  onProposal,
 }: {
-  attemptId: string;
-  specVersion: number;
+  endpoint: string;
+  title?: string;
+  example?: React.ReactNode;
+  specVersion?: number;
   steps: Step[];
   selectedStepIds: string[];
   onToggleStep: (stepId: string) => void;
   onClearSelection: () => void;
-  onSpecVersion: (version: number) => void;
+  onSpecVersion?: (version: number) => void;
+  /** Solution chat: the model suggested a new solution; the learner decides whether to generate it. */
+  onProposal?: (proposal: Proposal) => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
+  /** The newest suggestion, shown under the answer it came with. */
+  const [proposal, setProposal] = useState<Proposal | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const form = useForm<SendMessageInput>({
     resolver: zodResolver(sendMessageSchema),
@@ -43,13 +58,13 @@ export function ChatPanel({
 
   useEffect(() => {
     let cancelled = false;
-    api<{ messages: ChatMessage[] }>(`/api/attempts/${attemptId}/messages`)
+    api<{ messages: ChatMessage[] }>(endpoint)
       .then((r) => !cancelled && setMessages(r.messages))
       .catch(() => !cancelled && setMessages([]));
     return () => {
       cancelled = true;
     };
-  }, [attemptId]);
+  }, [endpoint]);
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "nearest" });
@@ -59,8 +74,9 @@ export function ChatPanel({
 
   async function onSend(values: SendMessageInput) {
     setPending({ text: "", regenerating: null });
+    setProposal(null);
     try {
-      const res = await apiRaw(`/api/attempts/${attemptId}/messages`, {
+      const res = await apiRaw(endpoint, {
         method: "POST",
         body: { content: values.content, focusStepIds: selectedStepIds, specVersion },
       });
@@ -75,8 +91,9 @@ export function ChatPanel({
         else if (e.type === "spec") {
           setPending((p) => (p ? { ...p, regenerating: null } : p));
           toast.success("New visualization ready.");
-          onSpecVersion(e.specVersion);
-        } else if (e.type === "done") setMessages((m) => [...(m ?? []), e.message]);
+          onSpecVersion?.(e.specVersion);
+        } else if (e.type === "proposal") setProposal({ kind: e.kind, note: e.note });
+        else if (e.type === "done") setMessages((m) => [...(m ?? []), e.message]);
         else if (e.type === "error") {
           setMessages((m) => (m ?? []).filter((x) => x.id !== e.discardedMessageId));
           form.setValue("content", values.content);
@@ -94,7 +111,7 @@ export function ChatPanel({
     <section className="flex flex-col gap-3 rounded-lg border bg-tile p-3" aria-label="Ask about this run">
       <header className="flex items-center gap-2">
         <MessageCircleQuestionIcon className="size-4 text-muted-foreground" />
-        <h3 className="text-sm font-medium">Ask about this run</h3>
+        <h3 className="text-sm font-medium">{title}</h3>
         <span className="ml-auto hidden text-xs text-muted-foreground sm:inline">
           Shift-click timeline steps to ask about them
         </span>
@@ -104,9 +121,7 @@ export function ChatPanel({
         {messages === null ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : messages.length === 0 && !pending ? (
-          <p className="text-sm text-muted-foreground">
-            e.g. &ldquo;Why does left move here?&rdquo; or &ldquo;What happens with duplicates?&rdquo;
-          </p>
+          <p className="text-sm text-muted-foreground">{example}</p>
         ) : null}
         {messages?.map((m) => (
           <Bubble key={m.id} role={m.role}>
@@ -121,7 +136,7 @@ export function ChatPanel({
                 variant="link"
                 size="sm"
                 className="mt-1 h-auto p-0"
-                onClick={() => onSpecVersion(m.producedSpecVersion!)}
+                onClick={() => onSpecVersion?.(m.producedSpecVersion!)}
               >
                 <RefreshCwIcon /> Show regenerated visualization #{m.producedSpecVersion - 1}
               </Button>
@@ -137,6 +152,18 @@ export function ChatPanel({
             )}
             {pending.text || (!pending.regenerating && <Loader2Icon className="size-4 animate-spin text-muted-foreground" />)}
           </Bubble>
+        )}
+        {proposal && onProposal && !pending && (
+          <div className="flex flex-wrap items-center gap-2 self-start rounded-lg border border-brand bg-brand-soft px-3 py-2 text-sm">
+            <SparklesIcon className="size-4 shrink-0 text-brand-strong" aria-hidden />
+            <span className="min-w-0">
+              {SOLUTION_REQUEST_LABELS[proposal.kind]}
+              {proposal.note && <span className="text-muted-foreground">: {proposal.note}</span>}
+            </span>
+            <Button variant="brand" size="xs" onClick={() => onProposal(proposal)}>
+              Review and generate
+            </Button>
+          </div>
         )}
         <div ref={bottom} />
       </div>

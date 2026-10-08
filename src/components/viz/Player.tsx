@@ -5,10 +5,12 @@ import { LayoutGroup } from "motion/react";
 import {
   CheckIcon,
   ChevronFirstIcon,
+  ChevronsRightIcon,
   MessageCircleQuestionIcon,
   ChevronLastIcon,
   PauseIcon,
   PlayIcon,
+  RedoIcon,
   SkipBackIcon,
   SkipForwardIcon,
 } from "lucide-react";
@@ -16,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
-import { bugStepIndexes, iterationStarts, withStableIds } from "@/lib/viz/prepare";
+import { bugStepIndexes, iterationStarts, loopAncestors, skipTargets, withStableIds } from "@/lib/viz/prepare";
 import { CodePane } from "./CodePane";
 import { ExplanationPanel } from "./ExplanationPanel";
 import { StructureView } from "./StructureView";
@@ -38,6 +40,7 @@ export function Player({
   selectedStepIds,
   onToggleStepSelect,
   layoutId = "player",
+  skipControls = false,
 }: {
   spec: VizSpec;
   index: number;
@@ -46,6 +49,8 @@ export function Player({
   onToggleStepSelect?: (stepId: string) => void;
   /** Namespaces shared-layout animations when several players exist. */
   layoutId?: string;
+  /** Show "skip iteration" and "skip loop" buttons while inside a loop. */
+  skipControls?: boolean;
 }) {
   const prepared = withStableIds(spec);
   const steps = prepared.steps;
@@ -63,6 +68,8 @@ export function Player({
       iterationCounts.set(s.iteration.loopId, Math.max(iterationCounts.get(s.iteration.loopId) ?? 0, s.iteration.index + 1));
     }
   }
+  const skip = skipControls ? skipTargets(steps, current, loopAncestors(prepared)) : null;
+  const skipLoopLabel = skip ? (prepared.loops.find((l) => l.id === skip.loopId)?.label ?? skip.loopId) : "";
   const histories = new Map(prepared.structures.map((st) => [st.id, steps.map((s) => s.states[st.id]).filter(Boolean)]));
 
   const seek = (i: number) => onIndexChange(Math.min(Math.max(i, 0), last));
@@ -136,6 +143,24 @@ export function Player({
             {current + 1} / {steps.length}
           </span>
         </div>
+
+        {skip && (skip.iteration !== null || skip.loop !== null) && (
+          <div className="-mt-1 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+            <span className="mr-1 min-w-0 truncate">
+              In loop <code className="font-mono text-foreground">{skipLoopLabel}</code>
+            </span>
+            {skip.iteration !== null && skip.iteration !== skip.loop && (
+              <Button variant="soft" size="xs" onClick={() => (setPlaying(false), seek(skip.iteration!))}>
+                <ChevronsRightIcon /> Skip this iteration
+              </Button>
+            )}
+            {skip.loop !== null && (
+              <Button variant="soft" size="xs" onClick={() => (setPlaying(false), seek(skip.loop!))}>
+                <RedoIcon /> Skip to after the loop
+              </Button>
+            )}
+          </div>
+        )}
 
         <Timeline
           steps={steps}

@@ -4,7 +4,9 @@ import { CheckIcon, Loader2Icon } from "lucide-react";
 import { cn } from "cn";
 import type { AttemptStatus } from "@/models/Attempt";
 
-const STAGES: { status: AttemptStatus; label: string; detail: string }[] = [
+type Stage = { status: string; label: string; detail: string };
+
+const STAGES: Stage[] = [
   { status: "understanding", label: "Understanding your approach", detail: "Reading your pseudo-code and picking a test input" },
   { status: "tracing", label: "Running it step by step", detail: "Executing your logic in a sandbox and recording each step" },
   { status: "diagnosing", label: "Finding where it breaks", detail: "Comparing what happens with what should happen" },
@@ -12,17 +14,27 @@ const STAGES: { status: AttemptStatus; label: string; detail: string }[] = [
 
 const ORDER: AttemptStatus[] = ["queued", "extracting", "understanding", "tracing", "diagnosing", "done"];
 
-export function ProgressStepper({ status }: { status: AttemptStatus }) {
-  const at = ORDER.indexOf(status);
-  const firstIdx = ORDER.indexOf(STAGES[0].status);
+/** Defaults to an attempt's stages; `stages` and `order` describe another pipeline (solutions). */
+export function ProgressStepper({
+  status,
+  stages = STAGES,
+  order = ORDER,
+}: {
+  status: string;
+  stages?: Stage[];
+  /** Every status in run order, including ones before the first stage and "done". */
+  order?: readonly string[];
+}) {
+  const at = order.indexOf(status);
+  const firstIdx = order.indexOf(stages[0].status);
   return (
     <ol className="flex flex-col" aria-label="Progress">
-      {STAGES.map((stage, i) => {
-        const idx = ORDER.indexOf(stage.status);
+      {stages.map((stage, i) => {
+        const idx = order.indexOf(stage.status);
         // Until the first stage starts (queued, extracting) the first step is shown as the one in progress,
         // so something is always visibly moving.
         const state = at > idx ? "done" : at === idx || (i === 0 && at < firstIdx) ? "active" : "pending";
-        const isLast = i === STAGES.length - 1;
+        const isLast = i === stages.length - 1;
         return (
           <li key={stage.status} className="flex gap-3" aria-current={state === "active" ? "step" : undefined}>
             <div className="flex flex-col items-center">
