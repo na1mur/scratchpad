@@ -48,6 +48,7 @@
   --color-paper: var(--paper);
   --color-sheet: var(--sheet);
   --color-tile: var(--tile);
+  --color-plate: var(--plate);
   --color-ink: var(--ink);
   --color-marker: var(--marker);
   --color-pen-red: var(--pen-red);
@@ -111,6 +112,8 @@
   --sheet: oklch(0.997 0.002 215);
   /* One calm surface for cards and code on the paper-coloured workspace, a notch deeper than the page. */
   --tile: oklch(0.96 0.006 220);
+  /* Cards on the problem list: a neutral grey, a little deeper than the paper page. */
+  --plate: oklch(0.985 0.002 90);
   --grid: oklch(0.94 0.012 215);
   --ink: oklch(0.25 0.04 250);
   --marker: oklch(0.92 0.17 100);
@@ -168,6 +171,7 @@
   --paper: oklch(0.2 0.025 235);
   --sheet: oklch(0.245 0.028 235);
   --tile: oklch(0.26 0.02 235);
+  --plate: oklch(0.34 0.004 90);
   --grid: oklch(0.25 0.028 235);
   --ink: oklch(0.94 0.012 225);
   --marker: oklch(0.85 0.17 95);

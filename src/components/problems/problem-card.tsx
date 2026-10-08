@@ -31,7 +31,7 @@ export function ProblemCard({ problem, now }: { problem: ProblemSummary; now: nu
   // and the delete button sits above it.
   const noAttempts = problem.attemptCount === 0;
   return (
-    <div className="group relative flex min-h-36 flex-col gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-brand hover:bg-brand-soft/20 has-[a:focus-visible]:border-brand has-[a:focus-visible]:ring-3 has-[a:focus-visible]:ring-brand/40">
+    <div className="group relative flex min-h-36 flex-col gap-3 rounded-xl border bg-plate p-4 transition-colors hover:border-foreground/30 has-[a:focus-visible]:border-foreground/40 has-[a:focus-visible]:ring-3 has-[a:focus-visible]:ring-ring/50">
       <h2 className="line-clamp-2 text-base leading-snug font-medium text-balance">
         <Link href={`/problems/${problem.id}`} className="outline-none after:absolute after:inset-0 after:rounded-xl">
           {problem.title}
@@ -73,7 +73,7 @@ export function ProblemCard({ problem, now }: { problem: ProblemSummary; now: nu
           </time>
           <DeleteProblemButton
             problem={problem}
-            className="relative z-10 -my-1 -mr-1 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus-visible:opacity-100"
+            className="relative z-10 -my-1 -mr-1 hover:bg-destructive/10 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus-visible:opacity-100"
           />
         </span>
       </div>
