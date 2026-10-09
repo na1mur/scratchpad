@@ -1,10 +1,13 @@
 import "server-only";
+import { env } from "@/lib/env";
 
 export type RateLimitResult = { ok: boolean; remaining: number; retryAfterSeconds: number };
 
 /** Swap the implementation for Redis later without touching call sites. */
 export interface RateLimiter {
   consume(key: string): Promise<RateLimitResult>;
+  /** Gives back one use, for work that failed and so shouldn't count against the limit. */
+  refund(key: string): Promise<void>;
 }
 
 /** Fixed-window counter held in process memory. Fine for a single instance. */
@@ -32,6 +35,12 @@ class MemoryRateLimiter implements RateLimiter {
     };
   }
 
+  async refund(key: string): Promise<void> {
+    const entry = this.hits.get(key);
+    // A window that has already rolled over has nothing of this use left to give back.
+    if (entry && entry.resetAt > Date.now() && entry.count > 0) entry.count--;
+  }
+
   private sweep(now: number) {
     for (const [key, entry] of this.hits) if (entry.resetAt <= now) this.hits.delete(key);
   }
@@ -44,6 +53,9 @@ function limiter(name: string, limit: number, windowMs: number): RateLimiter {
   return (limiters[name] ??= new MemoryRateLimiter(limit, windowMs));
 }
 
+/** A cap set from the environment, where 0 means no limit. */
+const configured = (name: string, perHour: number) => limiter(name, perHour === 0 ? Infinity : perHour, 60 * 60_000);
+
 export const rateLimits = {
   login: () => limiter("login", 10, 15 * 60_000),
   signup: () => limiter("signup", 10, 60 * 60_000),
@@ -52,9 +64,10 @@ export const rateLimits = {
   otpCooldown: () => limiter("otpCooldown", 1, 60_000),
   otpHourly: () => limiter("otpHourly", 6, 60 * 60_000),
   otpVerify: () => limiter("otpVerify", 20, 15 * 60_000),
-  attempts: () => limiter("attempts", 10, 60 * 60_000),
-  messages: () => limiter("messages", 30, 60 * 60_000),
-  solutions: () => limiter("solutions", 6, 60 * 60_000),
+  // The three caps below come from RATE_LIMIT_*_PER_HOUR (see .env.example).
+  attempts: () => configured("attempts", env.RATE_LIMIT_ATTEMPTS_PER_HOUR),
+  messages: () => configured("messages", env.RATE_LIMIT_MESSAGES_PER_HOUR),
+  solutions: () => configured("solutions", env.RATE_LIMIT_SOLUTIONS_PER_HOUR),
   providerProbe: () => limiter("providerProbe", 30, 15 * 60_000),
   uploads: () => limiter("uploads", 30, 60 * 60_000),
 };

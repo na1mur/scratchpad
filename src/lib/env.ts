@@ -28,6 +28,13 @@ const duration = (fallbackSeconds: number) =>
       .default(fallbackSeconds),
   );
 
+// A whole number of uses per hour; empty (`KEY=`) counts as unset and 0 means no limit.
+const perHour = (fallback: number) =>
+  z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().min(0, "must be 0 (no limit) or more").default(fallback),
+  );
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   MONGODB_URI: z.string().min(1),
@@ -38,6 +45,11 @@ const envSchema = z.object({
   // TTL is how long a user can stay away before having to log in again.
   ACCESS_TOKEN_TTL: duration(15 * 60),
   REFRESH_TOKEN_TTL: duration(7 * 24 * 60 * 60),
+  // Hourly caps per learner on the actions that spend their AI key: analysing an attempt, writing a
+  // solution, and chat messages. Failed runs are refunded. 0 turns a cap off.
+  RATE_LIMIT_ATTEMPTS_PER_HOUR: perHour(10),
+  RATE_LIMIT_SOLUTIONS_PER_HOUR: perHour(6),
+  RATE_LIMIT_MESSAGES_PER_HOUR: perHour(30),
   ENCRYPTION_KEY: base64Key,
   ENCRYPTION_KEY_VERSION: z.coerce.number().int().positive().default(1),
   // R2 is only needed for notebook image uploads. Leaving these empty disables

@@ -5,6 +5,7 @@ import type { Understanding } from "@/lib/ai/schemas/pipeline";
 import { formatSpecIssues, vizSpecSchema, type VizSpec } from "@/lib/ai/schemas/vizSpec";
 import { deleteAttemptCascade } from "@/lib/cascade";
 import { connectDB } from "@/lib/db";
+import { rateLimits } from "@/lib/rateLimit";
 import { storeSpec } from "@/lib/specStorage";
 import { ensureProblemReference } from "@/lib/problemReference";
 import { ensureProblemSource } from "@/lib/problemSource";
@@ -135,6 +136,8 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
     if (!(err instanceof PipelineError || err instanceof ApiError)) {
       console.error(`[pipeline] attempt ${attemptId} failed:`, err instanceof Error ? err.message : err);
     }
+    // A failed run doesn't use up the learner's hourly allowance, so they can retry with another model.
+    await rateLimits.attempts().refund(String(attempt.userId)).catch(() => {});
     // A run that never produced a result isn't an attempt: remove it so it doesn't take a version number or
     // count toward the problem. The form still holds the learner's text and photos for the retry.
     const discarded = await deleteAttemptCascade(String(attempt.userId), attempt.toObject(), { keepImages: true })

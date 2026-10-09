@@ -86,6 +86,7 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/problems/[id]/sol
     const solutionId = String(solution._id);
 
     const job = runSolutionPipeline(solutionId).catch((err) => {
+      void rateLimits.solutions().refund(session.userId);
       console.error("[solutions] pipeline crashed:", err instanceof Error ? err.message : err);
     });
     after(() => job);

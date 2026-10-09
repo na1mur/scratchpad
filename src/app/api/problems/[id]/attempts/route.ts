@@ -104,6 +104,7 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/problems/[id]/att
 
     // Subscribed above before the pipeline can emit anything.
     const job = runAttemptPipeline(attemptId).catch((err) => {
+      void rateLimits.attempts().refund(session.userId);
       emit(attemptId, { type: "error", code: "internal", message: "Processing failed." });
       console.error("[attempts] pipeline crashed:", err instanceof Error ? err.message : err);
     });

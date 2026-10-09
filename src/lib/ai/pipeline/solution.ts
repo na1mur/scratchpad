@@ -25,6 +25,7 @@ import { connectDB } from "@/lib/db";
 import { ensureProblemReference, type Reference } from "@/lib/problemReference";
 import { ensureProblemSource } from "@/lib/problemSource";
 import { loadSpec, storeSpec } from "@/lib/specStorage";
+import { rateLimits } from "@/lib/rateLimit";
 import { Attempt } from "@/models/Attempt";
 import { Problem } from "@/models/Problem";
 import { Solution, type SolutionStatus } from "@/models/Solution";
@@ -453,6 +454,8 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
     if (!(err instanceof PipelineError || err instanceof ApiError)) {
       console.error(`[solution] ${solutionId} failed:`, err instanceof Error ? err.message : err);
     }
+    // A failed run doesn't use up the learner's hourly allowance, so they can retry with another model.
+    await rateLimits.solutions().refund(String(solution.userId)).catch(() => {});
     await Solution.updateOne({ _id: solutionId }, { $set: { status: "error", error: safe, tokenUsage: meter.snapshot() } }).catch(
       () => {},
     );
