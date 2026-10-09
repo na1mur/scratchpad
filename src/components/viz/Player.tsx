@@ -35,6 +35,7 @@ function isTypingTarget(el: EventTarget | null) {
 
 export function Player({
   spec,
+  language,
   index,
   onIndexChange,
   selectedStepIds,
@@ -43,6 +44,8 @@ export function Player({
   skipControls = false,
 }: {
   spec: VizSpec;
+  /** The code's language, for syntax colors. */
+  language?: string | null;
   index: number;
   onIndexChange: (index: number) => void;
   selectedStepIds?: Set<string>;
@@ -192,6 +195,7 @@ export function Player({
         <div className="grid gap-3 @3xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           <CodePane
             lines={prepared.codeLines}
+            language={language}
             addedLines={prepared.addedLines}
             activeLine={step.line}
             isBug={bugs.has(current)}

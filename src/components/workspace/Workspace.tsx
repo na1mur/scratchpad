@@ -660,6 +660,7 @@ export function Workspace({
             <Player
               key={`${viewing.id}-${viewing.specVersion}`}
               spec={spec}
+              language={problem.language}
               index={playerIndex}
               onIndexChange={setPlayerIndex}
               layoutId={viewing.id}

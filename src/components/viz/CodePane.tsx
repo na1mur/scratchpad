@@ -2,16 +2,32 @@
 
 import { useEffect, useRef } from "react";
 import { cn } from "cn";
+import type { ThemedToken } from "shiki/core";
+import { useHighlightedLines } from "@/hooks/use-highlighted-lines";
+
+/** One line of code: syntax-colored when it has tokens, plain text otherwise. */
+export function CodeLine({ line, tokens }: { line: string; tokens?: ThemedToken[] }) {
+  if (!tokens?.length) return line || " ";
+  return tokens.map((t, j) => (
+    // Each token carries both themes' colors as CSS variables; the class picks the one for the current theme.
+    <span key={j} style={t.htmlStyle as React.CSSProperties} className="text-(--shiki-light) dark:text-(--shiki-dark)">
+      {t.content}
+    </span>
+  ));
+}
 
 /** Read-only code with the executing line highlighted and kept in view. */
 export function CodePane({
   lines,
+  language,
   addedLines,
   activeLine,
   isBug,
   className,
 }: {
   lines: string[];
+  /** A `LanguageId`; syntax colors are skipped for pseudo-code or when it's missing. */
+  language?: string | null;
   /** Lines the pipeline added to make the learner's fragment runnable. */
   addedLines?: number[];
   activeLine: number | null;
@@ -21,6 +37,7 @@ export function CodePane({
 }) {
   const container = useRef<HTMLDivElement>(null);
   const added = new Set(addedLines);
+  const tokens = useHighlightedLines(lines, language);
 
   useEffect(() => {
     const box = container.current;
@@ -62,7 +79,8 @@ export function CodePane({
               {isAdded ? "+" : ""}
             </span>
             <span className={cn("whitespace-pre", isAdded && !active && "text-muted-foreground italic")}>
-              {line || " "}
+              {/* Added lines stay muted so they read as scaffolding, not the learner's code. */}
+              <CodeLine line={line} tokens={isAdded ? undefined : tokens?.[i]} />
               {isAdded && <span className="sr-only"> (added to make your code runnable)</span>}
             </span>
           </div>

@@ -3,6 +3,8 @@
 import { PlayIcon } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
+import { CodeLine } from "@/components/viz/CodePane";
+import { useHighlightedLines } from "@/hooks/use-highlighted-lines";
 import type { SolutionContent } from "@/lib/ai/schemas/solution";
 import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
 
@@ -12,11 +14,13 @@ import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
  */
 export function LineBreakdown({
   content,
+  language,
   spec,
   activeLine,
   onJumpToStep,
 }: {
   content: SolutionContent;
+  language: string;
   spec: VizSpec;
   activeLine: number | null;
   onJumpToStep: (index: number) => void;
@@ -27,6 +31,7 @@ export function LineBreakdown({
     if (s.line !== null && !firstStep.has(s.line)) firstStep.set(s.line, i);
   });
   const runs = (i: number) => spec.steps.filter((s) => s.line === i).length;
+  const tokens = useHighlightedLines(content.codeLines, language);
 
   return (
     <ol className="flex flex-col rounded-lg border bg-tile" aria-label="Line by line">
@@ -45,8 +50,8 @@ export function LineBreakdown({
           >
             <div className="flex items-baseline gap-2 font-mono text-[13px] leading-6">
               <span className="w-6 shrink-0 text-right text-muted-foreground/70 select-none tabular-nums">{i + 1}</span>
-              <span className={cn("min-w-0 flex-1 overflow-x-auto whitespace-pre", !note && "text-muted-foreground")}>
-                {line || " "}
+              <span className={cn("min-w-0 flex-1 overflow-x-auto whitespace-pre", !note && "opacity-70")}>
+                <CodeLine line={line} tokens={tokens?.[i]} />
               </span>
             </div>
             {note && (

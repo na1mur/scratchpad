@@ -398,7 +398,12 @@ export function SolutionView({
               </h3>
               <CopyCodeButton code={content.codeLines.join("\n")} />
             </div>
-            <CodePane lines={content.codeLines} activeLine={tab === "walkthrough" ? currentLine : null} className="max-h-[28rem]" />
+            <CodePane
+              lines={content.codeLines}
+              language={viewing.language}
+              activeLine={tab === "walkthrough" ? currentLine : null}
+              className="max-h-[28rem]"
+            />
             {!content.verified && (
               <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
                 <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0 text-viz-error" aria-hidden />
@@ -515,6 +520,7 @@ export function SolutionView({
             <Player
               key={viewing.id}
               spec={spec}
+              language={viewing.language}
               index={playerIndex}
               onIndexChange={setPlayerIndex}
               layoutId={viewing.id}
@@ -536,7 +542,7 @@ export function SolutionView({
             </Collapsible>
           </TabsContent>
           <TabsContent value="lines" className="pt-3">
-            <LineBreakdown content={content} spec={spec} activeLine={currentLine} onJumpToStep={jumpToStep} />
+            <LineBreakdown content={content} language={viewing.language} spec={spec} activeLine={currentLine} onJumpToStep={jumpToStep} />
           </TabsContent>
         </Tabs>
         <ChatPanel
