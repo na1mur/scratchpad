@@ -43,6 +43,7 @@ import { HintsPanel } from "@/components/viz/HintsPanel";
 import { Player } from "@/components/viz/Player";
 import { LoadingButton } from "@/components/loading-button";
 import { SolutionButton } from "@/components/solution/SolutionButton";
+import { ChangeModelLink } from "@/components/workspace/ChangeModelLink";
 import { ChatPanel } from "@/components/workspace/ChatPanel";
 import { DeleteAttemptButton } from "@/components/workspace/DeleteAttemptButton";
 import { CodeEditor } from "@/components/workspace/CodeEditor";
@@ -610,9 +611,12 @@ export function Workspace({
           <AlertTitle>Processing failed</AlertTitle>
           <AlertDescription>{viewing.error?.message ?? "Something went wrong."}</AlertDescription>
         </Alert>
-        <Button className="mt-4" variant="soft" onClick={() => startNewAttempt(viewing)}>
-          <RotateCcwIcon /> Edit and try again
-        </Button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button variant="soft" onClick={() => startNewAttempt(viewing)}>
+            <RotateCcwIcon /> Edit and try again
+          </Button>
+          <ChangeModelLink />
+        </div>
       </div>
     );
   } else if (mode === "view" && viewing?.vizSpec) {
@@ -706,6 +710,9 @@ export function Workspace({
             {failure} Your pseudo-code and idea are still on the left. Press Process to try again.
           </AlertDescription>
         </Alert>
+        <div>
+          <ChangeModelLink newTab />
+        </div>
       </div>
     );
   } else {

@@ -13,8 +13,9 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegen
 import { Input } from "@/components/ui/input";
 import { ModelPicker, type ModelOption } from "@/components/settings/model-picker";
 import { ProviderPicker } from "@/components/settings/provider-picker";
+import { ReturnCountdown } from "@/components/settings/return-countdown";
 import { api } from "@/lib/fetcher";
-import { finishOpenRouterConnect, startOpenRouterConnect } from "@/lib/openrouter-connect";
+import { finishOpenRouterConnect, startOpenRouterConnect, takeReturnTo } from "@/lib/openrouter-connect";
 import type { ProviderId } from "@/lib/providers";
 import { providerFormSchema, type ProviderFormValues, type ProviderSettingsInput } from "@/lib/schemas/settings";
 import type { PublicUser } from "@/lib/serializers";
@@ -74,7 +75,16 @@ function defaults(ai: PublicUser["ai"]): ProviderFormValues {
   };
 }
 
-export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboarding?: boolean }) {
+export function ProviderForm({
+  ai,
+  onboarding,
+  returnTo,
+}: {
+  ai: PublicUser["ai"];
+  onboarding?: boolean;
+  /** Where to send the learner after saving (a failed run sent them here to change model). */
+  returnTo?: string | null;
+}) {
   const router = useRouter();
   const form = useForm<ProviderFormValues>({
     resolver: zodResolver(providerFormSchema),
@@ -87,6 +97,7 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
   const [test, setTest] = useState<TestState>({ status: "idle" });
   const [redirecting, setRedirecting] = useState(false);
   const [skipping, setSkipping] = useState(false);
+  const [returning, setReturning] = useState(false);
   const [connect, setConnect] = useState<ConnectState>({ status: "idle" });
   const connectStarted = useRef(false);
   // Reveals the provider and key fields even while OpenRouter is the active provider.
@@ -150,7 +161,7 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
   async function connectOpenRouter() {
     setConnect({ status: "redirecting" });
     try {
-      await startOpenRouterConnect();
+      await startOpenRouterConnect(returnTo);
     } catch (err) {
       setConnect({ status: "error", error: err instanceof Error ? err.message : "Couldn't start OpenRouter sign-in." });
     }
@@ -158,7 +169,11 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
 
   /** Back from OpenRouter with `?code=`: swap it for the key and fill the form with it. */
   async function completeOpenRouterConnect(code: string) {
-    router.replace(window.location.pathname, { scroll: false });
+    // OpenRouter drops the query string, so the way back was parked in this tab and is restored here.
+    const back = takeReturnTo();
+    router.replace(back ? `${window.location.pathname}?returnTo=${encodeURIComponent(back)}` : window.location.pathname, {
+      scroll: false,
+    });
     setConnect({ status: "connecting" });
     try {
       const key = await finishOpenRouterConnect(code);
@@ -240,6 +255,7 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
       } else {
         toast.success("AI provider saved");
         form.reset(defaults(user.ai));
+        if (returnTo) setReturning(true);
       }
       router.refresh();
     } catch (err) {
@@ -570,6 +586,7 @@ export function ProviderForm({ ai, onboarding }: { ai: PublicUser["ai"]; onboard
       </FieldSet>
 
       </fieldset>
+      {returning && returnTo && <ReturnCountdown returnTo={returnTo} onStay={() => setReturning(false)} />}
       <div className="flex items-center justify-end gap-2">
         {onboarding && (
           <LoadingButton type="button" variant="ghost" onClick={skip} loading={skipping} disabled={busy}>

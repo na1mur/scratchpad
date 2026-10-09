@@ -9,6 +9,7 @@ import {
   ChevronDownIcon,
   CopyIcon,
   CopyPlusIcon,
+  CpuIcon,
   GitBranchIcon,
   GlobeIcon,
   LightbulbIcon,
@@ -35,6 +36,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CodePane } from "@/components/viz/CodePane";
 import { Player } from "@/components/viz/Player";
+import { ChangeModelLink } from "@/components/workspace/ChangeModelLink";
 import { ChatPanel } from "@/components/workspace/ChatPanel";
 import { ProgressStepper } from "@/components/workspace/ProgressStepper";
 import { UsageBadge } from "@/components/workspace/UsageBadge";
@@ -44,6 +46,7 @@ import type { SolutionEvent } from "@/lib/ai/pipeline/events";
 import { ApiClientError, api, apiRaw, toApiError } from "@/lib/fetcher";
 import { languageLabel } from "@/lib/languages";
 import type { ProblemDetail } from "@/lib/problems";
+import { PROVIDER_LABELS } from "@/lib/providers";
 import type { SolutionDetail, SolutionSummary } from "@/lib/solutions";
 import { readSSE } from "@/lib/sse";
 import type { SolutionStatus } from "@/models/Solution";
@@ -332,6 +335,15 @@ export function SolutionView({
                     : ""}
               </p>
               <h2 className="text-lg font-semibold tracking-tight">{content.name}</h2>
+              {viewing.model && (
+                <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                  <CpuIcon className="size-3.5 shrink-0" aria-hidden />
+                  <span className="min-w-0 truncate">
+                    Written by {PROVIDER_LABELS[viewing.model.provider]} ·{" "}
+                    <span className="font-mono">{viewing.model.model}</span>
+                  </span>
+                </p>
+              )}
             </div>
             <dl className="flex flex-wrap gap-2 text-sm">
               <div className="flex items-center gap-1.5 rounded-full border bg-tile px-3 py-1">
@@ -475,9 +487,12 @@ export function SolutionView({
           <AlertTitle>Writing the solution failed</AlertTitle>
           <AlertDescription>{viewing.error?.message ?? "Something went wrong."}</AlertDescription>
         </Alert>
-        <LoadingButton variant="soft" loading={starting} disabled={!canGenerate} onClick={() => void retry(viewing)}>
-          <RotateCcwIcon /> Try again
-        </LoadingButton>
+        <div className="flex flex-wrap gap-2">
+          <LoadingButton variant="soft" loading={starting} disabled={!canGenerate} onClick={() => void retry(viewing)}>
+            <RotateCcwIcon /> Try again
+          </LoadingButton>
+          <ChangeModelLink />
+        </div>
       </div>
     );
   } else {
