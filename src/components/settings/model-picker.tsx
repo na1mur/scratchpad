@@ -52,8 +52,11 @@ export function ModelPicker({
           />
         }
       >
-        <span className={cn("truncate", !value && "text-muted-foreground")}>
-          {selected?.label ?? (value || placeholder)}
+        <span className={cn("flex min-w-0 items-baseline gap-2", !value && "text-muted-foreground")}>
+          <span className="truncate">{selected?.label ?? (value || placeholder)}</span>
+          {selected && selected.label !== selected.id && (
+            <span className="truncate font-mono text-xs text-muted-foreground">{selected.id}</span>
+          )}
         </span>
         <ChevronsUpDownIcon className="opacity-50" />
       </PopoverTrigger>
@@ -73,7 +76,12 @@ export function ModelPicker({
                   }}
                 >
                   <CheckIcon className={cn("size-4", m.id === value ? "opacity-100" : "opacity-0")} />
-                  <span className="flex-1 truncate">{m.label}</span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate">{m.label}</span>
+                    {m.label !== m.id && (
+                      <span className="truncate font-mono text-xs text-muted-foreground">{m.id}</span>
+                    )}
+                  </span>
                   {m.supportsImages && (
                     <ImageIcon aria-label="Supports images" className="size-3.5 text-muted-foreground" />
                   )}
