@@ -5,7 +5,7 @@ trying to do, runs your approach on a small input, animates every step and loop 
 reasoning breaks. It never gives you the solution: only where it goes wrong, why, and progressively more specific
 hints.
 
-You bring your own API key (OpenAI, Anthropic, Google, xAI, Mistral, DeepSeek, Groq, Cerebras, Together AI, Fireworks, DeepInfra, Cohere, Perplexity, Baseten, Vercel AI Gateway or OpenRouter; the list lives in `src/lib/providers.ts`). It is encrypted at rest and only decrypted on the server
+You bring your own API key (OpenAI, Anthropic, Google, xAI, Mistral, DeepSeek, Groq, Cerebras, Together AI, Fireworks, DeepInfra, Cohere, Perplexity, Baseten, Vercel AI Gateway, OpenRouter, Moonshot (Kimi), Z.AI (GLM), Alibaba Qwen, MiniMax, NVIDIA NIM, SambaNova, Nebius or Hugging Face; the list lives in `src/lib/providers.ts`). It is encrypted at rest and only decrypted on the server
 at the moment of an AI call.
 
 ## Running locally

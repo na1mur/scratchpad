@@ -1,5 +1,6 @@
 import "server-only";
 import { ApiError } from "@/lib/api";
+import { OPENAI_COMPATIBLE_BASE_URLS } from "@/lib/ai/compatible";
 import type { ProviderId } from "@/lib/providers";
 
 export type ModelOption = {
@@ -80,6 +81,29 @@ const FALLBACK: Record<ProviderId, ModelOption[]> = {
     { id: "anthropic/claude-sonnet-5.5", label: "Anthropic: Claude Sonnet 5.5", supportsImages: true },
     { id: "openai/gpt-5", label: "OpenAI: GPT-5", supportsImages: true },
   ],
+  // The providers below are reached through their OpenAI-compatible APIs. These
+  // lists only appear when the live listing is unavailable, so they stay short.
+  moonshotai: [
+    { id: "kimi-k2.6", label: "kimi-k2.6", supportsImages: null },
+    { id: "kimi-k2.5", label: "kimi-k2.5", supportsImages: null },
+  ],
+  // Z.AI may not expose a listing endpoint, in which case this list is what's shown.
+  zai: [
+    { id: "glm-5.2", label: "glm-5.2", supportsImages: false },
+    { id: "glm-5.1", label: "glm-5.1", supportsImages: false },
+  ],
+  alibaba: [
+    { id: "qwen3-max", label: "qwen3-max", supportsImages: false },
+    { id: "qwen-plus", label: "qwen-plus", supportsImages: false },
+  ],
+  minimax: [{ id: "MiniMax-M2", label: "MiniMax-M2", supportsImages: false }],
+  nvidia: [{ id: "meta/llama-3.3-70b-instruct", label: "llama-3.3-70b-instruct", supportsImages: false }],
+  sambanova: [
+    { id: "gpt-oss-120b", label: "gpt-oss-120b", supportsImages: false },
+    { id: "Meta-Llama-3.3-70B-Instruct", label: "Meta-Llama-3.3-70B-Instruct", supportsImages: false },
+  ],
+  nebius: [{ id: "meta-llama/Llama-3.3-70B-Instruct", label: "Llama 3.3 70B Instruct", supportsImages: null }],
+  huggingface: [{ id: "openai/gpt-oss-120b", label: "gpt-oss-120b", supportsImages: false }],
 };
 
 const TIMEOUT_MS = 10_000;
@@ -255,6 +279,24 @@ async function listGateway(apiKey: string): Promise<ModelOption[]> {
     }));
 }
 
+/**
+ * `GET <base>/models` for the OpenAI-compatible providers. Capability metadata
+ * differs by provider, so image support is only reported when the entry says so.
+ */
+function listCompatible(provider: keyof typeof OPENAI_COMPATIBLE_BASE_URLS) {
+  return (apiKey: string) =>
+    listOpenAIStyle(
+      `${OPENAI_COMPATIBLE_BASE_URLS[provider]}/models`,
+      apiKey,
+      (m: { id: string; supports_image_in?: boolean; architecture?: { input_modalities?: string[] } }) => {
+        if (NON_CHAT.test(m.id)) return null;
+        const modalities = m.architecture?.input_modalities;
+        const supportsImages = m.supports_image_in ?? (modalities ? modalities.includes("image") : null);
+        return { id: m.id, label: m.id, supportsImages };
+      },
+    );
+}
+
 const LISTERS: Record<ProviderId, (apiKey: string) => Promise<ModelOption[]>> = {
   openai: listOpenAI,
   anthropic: listAnthropic,
@@ -273,6 +315,14 @@ const LISTERS: Record<ProviderId, (apiKey: string) => Promise<ModelOption[]>> = 
   baseten: (k) => listOpenAIStyle("https://inference.baseten.co/v1/models", k, chatOnly(null)),
   gateway: listGateway,
   openrouter: listOpenRouter,
+  moonshotai: listCompatible("moonshotai"),
+  zai: listCompatible("zai"),
+  alibaba: listCompatible("alibaba"),
+  minimax: listCompatible("minimax"),
+  nvidia: listCompatible("nvidia"),
+  sambanova: listCompatible("sambanova"),
+  nebius: listCompatible("nebius"),
+  huggingface: listCompatible("huggingface"),
 };
 
 /** Lists models with the user's key; this doubles as key validation. */

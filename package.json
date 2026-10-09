@@ -27,6 +27,7 @@
     "@ai-sdk/groq": "^4.0.57",
     "@ai-sdk/mistral": "^4.0.59",
     "@ai-sdk/openai": "^4.0.84",
+    "@ai-sdk/openai-compatible": "^3.0.65",
     "@ai-sdk/perplexity": "^5.0.8",
     "@ai-sdk/togetherai": "^3.0.66",
     "@ai-sdk/xai": "^5.0.17",

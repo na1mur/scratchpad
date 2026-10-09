@@ -9,6 +9,7 @@ import { createFireworks } from "@ai-sdk/fireworks";
 import { createGoogle } from "@ai-sdk/google";
 import { createGroq } from "@ai-sdk/groq";
 import { createMistral } from "@ai-sdk/mistral";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createPerplexity } from "@ai-sdk/perplexity";
 import { createTogetherAI } from "@ai-sdk/togetherai";
@@ -17,6 +18,7 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createGateway, type LanguageModel } from "ai";
 import { ApiError } from "@/lib/api";
 import { decrypt } from "@/lib/crypto";
+import { OPENAI_COMPATIBLE_BASE_URLS } from "@/lib/ai/compatible";
 import type { ProviderId } from "@/lib/providers";
 import type { UserDoc } from "@/models/User";
 
@@ -54,6 +56,16 @@ export function createModel(provider: ProviderId, apiKey: string, model: string)
       return createGateway({ apiKey })(model);
     case "openrouter":
       return createOpenRouter({ apiKey, appName: "Scratchpad" })(model);
+    default:
+      // Providers with no SDK package of their own, reached through their OpenAI-compatible API.
+      // Structured output is on because the pipelines depend on the schema reaching the model.
+      return createOpenAICompatible({
+        name: provider,
+        apiKey,
+        baseURL: OPENAI_COMPATIBLE_BASE_URLS[provider],
+        supportsStructuredOutputs: true,
+        includeUsage: true,
+      })(model);
   }
 }
 

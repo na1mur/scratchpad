@@ -49,6 +49,14 @@ const KEY_HINTS: Record<ProviderId, string> = {
   baseten: "API key",
   gateway: "API key",
   openrouter: "sk-or-…",
+  moonshotai: "sk-…",
+  zai: "API key",
+  alibaba: "sk-…",
+  minimax: "API key",
+  nvidia: "nvapi-…",
+  sambanova: "API key",
+  nebius: "API key",
+  huggingface: "hf_…",
 };
 
 /** Placeholder for a saved key: its prefix when the hint has one, then the last 4. */

@@ -16,6 +16,14 @@ export const PROVIDERS = [
   "baseten",
   "gateway",
   "openrouter",
+  "moonshotai",
+  "zai",
+  "alibaba",
+  "minimax",
+  "nvidia",
+  "sambanova",
+  "nebius",
+  "huggingface",
 ] as const;
 export type ProviderId = (typeof PROVIDERS)[number];
 
@@ -36,4 +44,12 @@ export const PROVIDER_LABELS: Record<ProviderId, string> = {
   baseten: "Baseten",
   gateway: "Vercel AI Gateway",
   openrouter: "OpenRouter",
+  moonshotai: "Moonshot AI (Kimi)",
+  zai: "Z.AI (Zhipu GLM)",
+  alibaba: "Alibaba Qwen",
+  minimax: "MiniMax",
+  nvidia: "NVIDIA NIM",
+  sambanova: "SambaNova",
+  nebius: "Nebius",
+  huggingface: "Hugging Face",
 };
