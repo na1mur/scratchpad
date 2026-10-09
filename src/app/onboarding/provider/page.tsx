@@ -23,7 +23,7 @@ export default async function OnboardingProviderPage() {
         title="Connect your AI"
         description="Scratchpad runs on your own AI account. Sign in with OpenRouter to pick from hundreds of models, free ones included, or paste a key from OpenAI, Anthropic, Google and more. You can skip this and connect later in Settings."
       />
-      <ProviderForm ai={user.ai} onboarding />
+      <ProviderForm ai={user.ai} search={user.search} onboarding />
     </>
   );
 }

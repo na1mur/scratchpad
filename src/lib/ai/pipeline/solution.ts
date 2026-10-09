@@ -23,6 +23,7 @@ import {
 import { formatSpecIssues, vizSpecSchema, type Loop, type Step, type Structure, type VizSpec } from "@/lib/ai/schemas/vizSpec";
 import { connectDB } from "@/lib/db";
 import { ensureProblemReference, type Reference } from "@/lib/problemReference";
+import { userSearchKey } from "@/lib/tavily";
 import { ensureProblemSource } from "@/lib/problemSource";
 import { loadSpec, storeSpec } from "@/lib/specStorage";
 import { rateLimits } from "@/lib/rateLimit";
@@ -376,7 +377,7 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
     const { model } = getModel(user, "reasoning");
     const [source, reference] = await Promise.all([
       ensureProblemSource(problem),
-      ensureProblemReference(problem, solution.language),
+      ensureProblemReference(problem, solution.language, userSearchKey(user)),
     ]);
     const ctx: SolveCtx = {
       model,

@@ -24,6 +24,9 @@ export function publicUser(user: UserDoc) {
             : null,
         }
       : null,
+    search: user.search
+      ? { enabled: user.search.enabled, keyLast4: user.search.apiKey ? (user.search.keyLast4 ?? null) : null }
+      : null,
   };
 }
 

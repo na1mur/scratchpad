@@ -5,20 +5,31 @@ import { useRouter } from "next/navigation";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { CheckCircle2Icon, KeyRoundIcon, Loader2Icon, LogInIcon, PlugZapIcon, RefreshCwIcon, XCircleIcon } from "lucide-react";
+import { CheckCircle2Icon, ExternalLinkIcon, KeyRoundIcon, Loader2Icon, LogInIcon, PlugZapIcon, RefreshCwIcon, XCircleIcon } from "lucide-react";
 import { cn } from "cn";
 import { LoadingButton } from "@/components/loading-button";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ModelPicker, type ModelOption } from "@/components/settings/model-picker";
 import { ProviderPicker } from "@/components/settings/provider-picker";
 import { ReturnCountdown } from "@/components/settings/return-countdown";
-import { api } from "@/lib/fetcher";
+import { ApiClientError, api } from "@/lib/fetcher";
 import { finishOpenRouterConnect, startOpenRouterConnect, takeReturnTo } from "@/lib/openrouter-connect";
 import type { ProviderId } from "@/lib/providers";
 import { providerFormSchema, type ProviderFormValues, type ProviderSettingsInput } from "@/lib/schemas/settings";
 import type { PublicUser } from "@/lib/serializers";
+import type { SearchUsage } from "@/lib/tavily";
 
 type Listing = { models: ModelOption[]; source: "live" | "fallback" };
 type LoadState = { status: "idle" | "loading" | "ready" | "error"; listing?: Listing; error?: string };
@@ -65,7 +76,7 @@ function savedKeyHint(provider: ProviderId, last4: string) {
   return `${hint.includes("…") ? hint.replace("…", "") : ""}…${last4} (saved)`;
 }
 
-function defaults(ai: PublicUser["ai"]): ProviderFormValues {
+function defaults(ai: PublicUser["ai"], search: PublicUser["search"]): ProviderFormValues {
   const vision = ai?.vision;
   const visionIsSame = vision && vision.provider === ai?.provider && vision.model === ai?.model && !vision.hasOwnKey;
   return {
@@ -80,15 +91,22 @@ function defaults(ai: PublicUser["ai"]): ProviderFormValues {
     hasStoredVisionKey: Boolean(vision?.hasOwnKey),
     storedProvider: ai?.provider ?? null,
     storedVisionProvider: vision?.hasOwnKey ? vision.provider : null,
+    searchEnabled: Boolean(search?.enabled),
+    searchApiKey: "",
+    hasStoredSearchKey: Boolean(search?.keyLast4),
   };
 }
 
+const TAVILY_URL = "https://app.tavily.com";
+
 export function ProviderForm({
   ai,
+  search,
   onboarding,
   returnTo,
 }: {
   ai: PublicUser["ai"];
+  search: PublicUser["search"];
   onboarding?: boolean;
   /** Where to send the learner after saving (a failed run sent them here to change model). */
   returnTo?: string | null;
@@ -96,10 +114,10 @@ export function ProviderForm({
   const router = useRouter();
   const form = useForm<ProviderFormValues>({
     resolver: zodResolver(providerFormSchema),
-    defaultValues: defaults(ai),
+    defaultValues: defaults(ai, search),
   });
   const v = useWatch({ control: form.control });
-  const initialVisionCustom = Boolean(ai?.vision) && defaults(ai).visionMode === "custom";
+  const initialVisionCustom = Boolean(ai?.vision) && defaults(ai, search).visionMode === "custom";
   const [main, setMain] = useState<LoadState>({ status: ai ? "loading" : "idle" });
   const [vision, setVision] = useState<LoadState>({ status: initialVisionCustom ? "loading" : "idle" });
   const [test, setTest] = useState<TestState>({ status: "idle" });
@@ -250,24 +268,36 @@ export function ProviderForm({
               apiKey: values.visionApiKey || undefined,
             }
           : { mode: values.visionMode },
+      // A key typed and then hidden by unticking the box isn't sent.
+      search: { enabled: values.searchEnabled, apiKey: (values.searchEnabled && values.searchApiKey) || undefined },
     };
     try {
-      const { redirectTo, user } = await api<{ redirectTo: string; user: PublicUser }>("/api/settings/provider", {
-        method: "PUT",
-        body: payload,
-      });
+      const { redirectTo, user, searchUsage } = await api<{
+        redirectTo: string;
+        user: PublicUser;
+        searchUsage: SearchUsage | null;
+      }>("/api/settings/provider", { method: "PUT", body: payload });
+      // A new Tavily key that's already used up still saves, but say so: searches stay off until it resets.
+      if (searchUsage?.limit && searchUsage.used >= searchUsage.limit) {
+        toast.warning("Your Tavily key is saved, but it has no credits left this month, so web search waits until they reset.");
+      }
       if (onboarding) {
         setRedirecting(true);
         toast.success("You're all set! Add your first problem.");
         router.push(redirectTo);
       } else {
         toast.success("AI provider saved");
-        form.reset(defaults(user.ai));
+        form.reset(defaults(user.ai, user.search));
         if (returnTo) setReturning(true);
       }
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't save settings.");
+      const message = err instanceof Error ? err.message : "Couldn't save settings.";
+      // The server only refuses the search key once it has asked Tavily, so point at that field.
+      if (err instanceof ApiClientError && err.code === "search_key_invalid") {
+        form.setError("searchApiKey", { message }, { shouldFocus: true });
+      }
+      toast.error(message);
     }
   }
 
@@ -590,6 +620,69 @@ export function ProviderForm({
               )}
             />
           </FieldGroup>
+        )}
+      </FieldSet>
+
+      <FieldSet>
+        <FieldLegend>Web search</FieldLegend>
+        <Controller
+          name="searchEnabled"
+          control={form.control}
+          render={({ field }) => (
+            <Field orientation="horizontal">
+              <Checkbox
+                id="searchEnabled"
+                checked={field.value}
+                onCheckedChange={(checked) => {
+                  field.onChange(checked);
+                  if (!checked) form.clearErrors("searchApiKey");
+                }}
+              />
+              <FieldContent>
+                <FieldLabel htmlFor="searchEnabled">Enable web search</FieldLabel>
+                <FieldDescription>
+                  Optional. Looks up known solutions to your problem on the web, which helps the AI understand the
+                  problem better and check its feedback. Searches use your own Tavily key.
+                </FieldDescription>
+              </FieldContent>
+            </Field>
+          )}
+        />
+
+        {v.searchEnabled && (
+          <Controller
+            name="searchApiKey"
+            control={form.control}
+            render={({ field, fieldState }) => (
+              <Field data-invalid={fieldState.invalid}>
+                <FieldLabel htmlFor="searchApiKey">Tavily API key</FieldLabel>
+                <Input
+                  {...field}
+                  id="searchApiKey"
+                  type="password"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={search?.keyLast4 ? `tvly-…${search.keyLast4} (saved)` : "tvly-…"}
+                  aria-invalid={fieldState.invalid}
+                />
+                <FieldDescription>
+                  Tavily&apos;s free plan gives 1,000 credits a month (one per search) and needs no credit card.{" "}
+                  <a
+                    href={TAVILY_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-0.5 font-medium text-brand-strong underline underline-offset-2"
+                  >
+                    Get a free key at tavily.com
+                    <ExternalLinkIcon className="size-3.5" aria-hidden />
+                    <span className="sr-only"> (opens in a new tab)</span>
+                  </a>
+                  {search?.keyLast4 ? ". Leave blank to keep your saved key." : ", then paste it here."}
+                </FieldDescription>
+                <FieldError errors={[fieldState.error]} />
+              </Field>
+            )}
+          />
         )}
       </FieldSet>
 

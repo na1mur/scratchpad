@@ -8,6 +8,7 @@ import { connectDB } from "@/lib/db";
 import { rateLimits } from "@/lib/rateLimit";
 import { storeSpec } from "@/lib/specStorage";
 import { ensureProblemReference } from "@/lib/problemReference";
+import { userSearchKey } from "@/lib/tavily";
 import { ensureProblemSource } from "@/lib/problemSource";
 import { normalizeTags } from "@/lib/tags";
 import { Attempt, type AttemptStatus } from "@/models/Attempt";
@@ -81,7 +82,7 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
     const { model } = getModel(user, "reasoning");
     const [source, reference] = await Promise.all([
       ensureProblemSource(problem),
-      ensureProblemReference(problem, problem.language),
+      ensureProblemReference(problem, problem.language, userSearchKey(user)),
     ]);
     const ctx: Ctx = {
       model,

@@ -1,6 +1,7 @@
 import "server-only";
 import { languageLabel } from "@/lib/languages";
 import { safeRequest } from "@/lib/problemSource";
+import type { SearchKey } from "@/lib/tavily";
 import { Problem, type ProblemDoc } from "@/models/Problem";
 
 /**
@@ -8,7 +9,7 @@ import { Problem, type ProblemDoc } from "@/models/Problem";
  * reference: for a solution it's a starting point that the sandbox run then
  * checks, for an attempt it tells the tutor what correct looks like. LeetCode
  * links go straight to the doocs/leetcode repository on GitHub; anything else
- * goes through Tavily search when TAVILY_API_KEY is set.
+ * goes through Tavily search, on the user's own key when they've turned it on.
  */
 
 export type ReferenceSource = { title: string; url: string; license?: string };
@@ -163,25 +164,34 @@ function solutionPart(markdown: string): string {
 }
 
 // The search is a nice-to-have, so a run never waits long on it, and after a refusal the next runs skip it for a while
-// instead of each asking again. The free plan has a monthly credit limit (432) and a rate limit (429).
+// instead of each asking again. The free plan has a monthly credit limit (432) and a rate limit (429). Each user
+// searches with their own key, so a pause only covers that user's runs.
 const SEARCH_TIMEOUT_MS = 6_000;
 const PAUSE_SHORT_MS = 60_000;
 const PAUSE_LONG_MS = 60 * 60 * 1000;
-let searchPausedUntil = 0;
+const searchPausedUntil = new Map<string, number>();
 
-/** The search couldn't be asked (refused, down or paused): not the same as finding nothing, so the miss isn't stored. */
+/**
+ * The search couldn't be asked (off, refused, down or paused): not the same as finding nothing, so the miss
+ * isn't stored and a later run, perhaps with a key, asks again.
+ */
 class SearchUnavailable extends Error {}
 
-function pauseSearch(ms: number, why: string): never {
-  searchPausedUntil = Date.now() + ms;
-  console.warn(`[reference] search ${why}; skipping it for ${Math.round(ms / 60_000)} min`);
+function pauseSearch(owner: string, ms: number, why: string): never {
+  searchPausedUntil.set(owner, Date.now() + ms);
+  console.warn(`[reference] search ${why} for user ${owner}; skipping it for ${Math.round(ms / 60_000)} min`);
   throw new SearchUnavailable(why);
 }
 
-async function fromSearch(problem: Pick<ProblemDoc, "title" | "sourceUrl">, language: string): Promise<Reference | null> {
-  const key = process.env.TAVILY_API_KEY;
-  if (!key) return null;
-  if (Date.now() < searchPausedUntil) throw new SearchUnavailable("paused");
+async function fromSearch(
+  problem: Pick<ProblemDoc, "title" | "sourceUrl">,
+  language: string,
+  search: SearchKey | null,
+): Promise<Reference | null> {
+  // No key of the user's own: web search is off for them.
+  if (!search) throw new SearchUnavailable("off");
+  const { owner, key } = search;
+  if (Date.now() < (searchPausedUntil.get(owner) ?? 0)) throw new SearchUnavailable("paused");
   let site = "";
   try {
     if (problem.sourceUrl) site = new URL(problem.sourceUrl).hostname.replace(/^www\./, "");
@@ -205,9 +215,9 @@ async function fromSearch(problem: Pick<ProblemDoc, "title" | "sourceUrl">, lang
       signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
     });
     if (res.status === 401 || res.status === 432 || res.status === 433) {
-      pauseSearch(PAUSE_LONG_MS, `refused (${res.status}: invalid key or plan limit reached)`);
+      pauseSearch(owner, PAUSE_LONG_MS, `refused (${res.status}: invalid key or plan limit reached)`);
     }
-    if (res.status === 429 || res.status >= 500) pauseSearch(PAUSE_SHORT_MS, `unavailable (${res.status})`);
+    if (res.status === 429 || res.status >= 500) pauseSearch(owner, PAUSE_SHORT_MS, `unavailable (${res.status})`);
     if (!res.ok) {
       console.warn(`[reference] search failed: ${res.status}`);
       return null;
@@ -215,7 +225,7 @@ async function fromSearch(problem: Pick<ProblemDoc, "title" | "sourceUrl">, lang
     results = ((await res.json()) as { results?: TavilyResult[] }).results ?? [];
   } catch (err) {
     if (err instanceof SearchUnavailable) throw err;
-    pauseSearch(PAUSE_SHORT_MS, `unreachable or too slow (${err instanceof Error ? err.name : "error"})`);
+    pauseSearch(owner, PAUSE_SHORT_MS, `unreachable or too slow (${err instanceof Error ? err.name : "error"})`);
   }
   // The URLs end up as links on the solution page, so only plain web links.
   const usable = results.filter((r) => r.url && /^https?:\/\//i.test(r.url) && (r.raw_content || r.content));
@@ -244,17 +254,19 @@ function leetCodeSlug(sourceUrl: string | null | undefined): string | null {
 }
 
 /**
- * Best-effort lookup: doocs/leetcode for LeetCode links, then web search.
- * `final` is false when the search couldn't be asked, so a later run should try again.
+ * Best-effort lookup: doocs/leetcode for LeetCode links, then web search on
+ * the user's own key. `final` is false when the search couldn't be asked
+ * (no key, refused, out of credits, down), so a later run should try again.
  */
 export async function findReference(
   problem: Pick<ProblemDoc, "title" | "sourceUrl">,
   language: string,
+  search: SearchKey | null,
 ): Promise<{ reference: Reference | null; final: boolean }> {
   try {
     const slug = leetCodeSlug(problem.sourceUrl);
     const fromRepo = slug ? await fromDoocs(slug, language, AbortSignal.timeout(FETCH_TIMEOUT_MS)).catch(() => null) : null;
-    return { reference: fromRepo ?? (await fromSearch(problem, language)), final: true };
+    return { reference: fromRepo ?? (await fromSearch(problem, language, search)), final: true };
   } catch (err) {
     if (err instanceof SearchUnavailable) return { reference: null, final: false };
     console.warn(`[reference] lookup for "${problem.title}" failed:`, err instanceof Error ? err.message : err);
@@ -282,16 +294,20 @@ export function storedReference(problem: Pick<ProblemDoc, "references">, languag
  * The reference for this language, looking it up first if that hasn't been
  * done (or found nothing a day ago). The result is stored on the problem, and
  * an empty one is recorded too so it isn't searched on every run. A search
- * that was refused or down isn't recorded: the run goes on without a
+ * that was off, refused or down isn't recorded: the run goes on without a
  * reference and the next one asks again. Editing the title or link clears them all.
  */
-export async function ensureProblemReference(problem: ReferenceProblem, language: string): Promise<Reference | null> {
+export async function ensureProblemReference(
+  problem: ReferenceProblem,
+  language: string,
+  search: SearchKey | null,
+): Promise<Reference | null> {
   const entry = problem.references?.find((r) => r.language === language);
   if (entry && (entry.text || Date.now() - new Date(entry.fetchedAt).getTime() < RETRY_EMPTY_AFTER_MS)) {
     return fromEntry(entry);
   }
 
-  const { reference: found, final } = await findReference(problem, language);
+  const { reference: found, final } = await findReference(problem, language, search);
   if (!final) return null;
   // Skip the write if the title or link changed in the meantime.
   const unchanged = {

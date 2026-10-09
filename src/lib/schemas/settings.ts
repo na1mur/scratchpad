@@ -40,6 +40,11 @@ export const providerSettingsSchema = z.object({
   apiKey: apiKeyField.optional(),
   model: z.string().min(1, "Pick a model").max(200),
   vision: visionSchema,
+  /** Web search on the user's own Tavily key. An omitted key keeps the stored one. */
+  search: z.object({
+    enabled: z.boolean(),
+    apiKey: apiKeyField.optional(),
+  }),
 });
 export type ProviderSettingsInput = z.infer<typeof providerSettingsSchema>;
 
@@ -57,6 +62,9 @@ export const providerFormSchema = z
     hasStoredVisionKey: z.boolean(),
     storedProvider: providerIdSchema.nullable(),
     storedVisionProvider: providerIdSchema.nullable(),
+    searchEnabled: z.boolean(),
+    searchApiKey: z.string().trim().max(400),
+    hasStoredSearchKey: z.boolean(),
   })
   .superRefine((v, ctx) => {
     const canReuseMainKey = v.hasStoredKey && v.storedProvider === v.provider;
@@ -72,6 +80,11 @@ export const providerFormSchema = z
       if (!v.visionApiKey && !reusesMain && !reusesStoredVision) {
         ctx.addIssue({ code: "custom", path: ["visionApiKey"], message: "Enter a key for this provider" });
       }
+    }
+    if (v.searchEnabled && !v.searchApiKey && !v.hasStoredSearchKey) {
+      ctx.addIssue({ code: "custom", path: ["searchApiKey"], message: "Enter your Tavily API key, or turn web search off" });
+    } else if (v.searchApiKey && v.searchApiKey.length < 8) {
+      ctx.addIssue({ code: "custom", path: ["searchApiKey"], message: "That doesn't look like a Tavily API key" });
     }
   });
 export type ProviderFormValues = z.infer<typeof providerFormSchema>;

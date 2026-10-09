@@ -26,7 +26,7 @@ Without signing up you can see the visualizer at `/demo`, which plays four hand-
 
 Every variable is documented in [`.env.example`](.env.example): what it's for, whether it's required, and how to
 generate a value. Copy it to `.env.local` and fill it in. Only the database, the JWT and encryption secrets, and
-`APP_URL` are needed to run locally; email, R2, Google login and Tavily are optional extras. The server validates
+`APP_URL` are needed to run locally; email, R2 and Google login are optional extras. The server validates
 everything at startup and refuses to start if a required value is missing.
 
 ### Cloudflare R2 (optional)
@@ -64,7 +64,7 @@ Before or right after you click it:
    once you know it) and redeploy if you change it. Requests from any other origin are rejected.
 4. **Email.** Sign-up and password reset send codes over SMTP, so set `SMTP_USER` and `SMTP_PASS` (and `EMAIL_FROM`).
    In production, sending fails without them.
-5. **Optional.** R2 (notebook photos), Google login and `TAVILY_API_KEY` can be added later in the project's
+5. **Optional.** R2 (notebook photos) and Google login can be added later in the project's
    environment variable settings. For Google login, add `<APP_URL>/api/auth/google/callback` as an authorized redirect
    URI. For R2, add your deployed origin to the bucket's CORS rule.
 

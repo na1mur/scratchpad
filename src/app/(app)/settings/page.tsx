@@ -48,8 +48,8 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
-          <ProviderSummary ai={user.ai} />
-          <ProviderForm ai={user.ai} returnTo={returnTo} />
+          <ProviderSummary ai={user.ai} search={user.search} />
+          <ProviderForm ai={user.ai} search={user.search} returnTo={returnTo} />
         </CardContent>
       </Card>
     </main>

@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date:** October 8, 2026
+**Effective date:** October 9, 2026
 
 Scratchpad ("Scratchpad", "we", "us") is a web app that helps you practise data structures and algorithms. You paste your pseudo-code and reasoning, or photograph your notebook, and Scratchpad traces it step by step, shows where your approach breaks, and gives hints. It is available at [https://dsa-scratchpad.vercel.app](https://dsa-scratchpad.vercel.app).
 
@@ -14,7 +14,7 @@ This policy explains what information Scratchpad collects, why, who it is shared
 - **Your work.** The problems you add (title, description, an optional link), the pseudo-code, reasoning and notes you submit, photos of notebook pages you upload, and your conversations with the built-in tutor chat.
 - **Profile photo.** An image you choose to upload, which your browser crops and shrinks before it is sent.
 - **Preferences.** Your preferred programming language and the AI provider and model you choose.
-- **AI provider credentials.** The API key you supply, or the key issued to you when you connect with OpenRouter. Keys are encrypted with AES-256-GCM before they are stored, only the last four characters are kept in readable form so you can recognise the key, and a key is decrypted on our server only to make a request you started.
+- **AI provider and search credentials.** The API key you supply, the key issued to you when you connect with OpenRouter, and your Tavily API key if you turn on web search. Keys are encrypted with AES-256-GCM before they are stored, only the last four characters are kept in readable form so you can recognise the key, and a key is decrypted on our server only to make a request you started.
 
 ### Information from Google
 
@@ -57,7 +57,7 @@ Scratchpad relies on a few service providers to work. They receive only what eac
 - **Hosting and database providers.** The app runs on Vercel, and account and content data is stored in a MongoDB database.
 - **Cloudflare R2**, which stores the notebook photos and profile photo you upload.
 - **Email delivery.** We send verification and password-reset emails over SMTP (currently through Gmail), so your email address and the message pass through that service.
-- **Reference lookups.** To give the AI a known solution for comparison, Scratchpad may fetch public pages for a problem you added: the problem link you provide, the public [doocs/leetcode](https://github.com/doocs/leetcode) repository on GitHub, or a web search through Tavily. A search sends only the problem title, the website name and the programming language, not your name, email or your own work.
+- **Reference lookups.** To give the AI a known solution for comparison, Scratchpad may fetch public pages for a problem you added: the problem link you provide, the public [doocs/leetcode](https://github.com/doocs/leetcode) repository on GitHub, or, if you turned on web search, a search through Tavily made with your own Tavily API key (so it counts against your Tavily account). A search sends only the problem title, the website name and the programming language, not your name, email or your own work.
 - **Legal and safety.** We may disclose information if required by law, or to protect the rights, safety and security of our users, the public or the service.
 - **Business transfers.** If Scratchpad is ever merged, acquired or sold, your information may transfer to the new owner, who must honour this policy.
 

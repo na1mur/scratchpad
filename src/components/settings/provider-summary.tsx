@@ -13,7 +13,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 /** Masked key: only the last four characters ever reach the client. */
 const maskKey = (last4: string) => `••••••••${last4}`;
 
-export function ProviderSummary({ ai }: { ai: PublicUser["ai"] }) {
+export function ProviderSummary({ ai, search }: { ai: PublicUser["ai"]; search: PublicUser["search"] }) {
   if (!ai) {
     return (
       <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
@@ -52,6 +52,18 @@ export function ProviderSummary({ ai }: { ai: PublicUser["ai"] }) {
           </dl>
         ) : (
           <p className="text-sm text-muted-foreground">No vision model. Notebook photo uploads are off.</p>
+        )}
+      </div>
+      <div className="border-t pt-3">
+        {search?.enabled && search.keyLast4 ? (
+          <dl className="flex flex-col gap-1.5">
+            <Row label="Web search">On · Tavily</Row>
+            <Row label="Tavily API key">
+              <span className="font-mono text-[13px]">{maskKey(search.keyLast4)}</span>
+            </Row>
+          </dl>
+        ) : (
+          <p className="text-sm text-muted-foreground">Web search is off.</p>
         )}
       </div>
     </div>

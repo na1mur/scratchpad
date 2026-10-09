@@ -37,6 +37,17 @@ const aiSchema = new Schema(
   { _id: false },
 );
 
+// Web search for reference solutions, on the user's own Tavily key. The key is kept when search is
+// turned off, so turning it back on doesn't need it again.
+const searchSchema = new Schema(
+  {
+    enabled: { type: Boolean, required: true },
+    apiKey: { type: encryptedFieldSchema, required: false },
+    keyLast4: { type: String, required: false },
+  },
+  { _id: false },
+);
+
 const userSchema = new Schema(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
@@ -56,6 +67,7 @@ const userSchema = new Schema(
     preferredLanguage: { type: String, enum: LANGUAGES.map((l) => l.id), required: false },
     onboardingStep: { type: String, enum: ONBOARDING_STEPS, default: "language", required: true },
     ai: { type: aiSchema, required: false },
+    search: { type: searchSchema, required: false },
   },
   { timestamps: true },
 );
