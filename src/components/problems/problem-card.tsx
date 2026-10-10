@@ -4,27 +4,9 @@ import { DeleteProblemButton } from "@/components/problems/delete-problem-button
 import { VerdictBadge } from "@/components/problems/verdict-badge";
 import { Badge } from "@/components/ui/badge";
 import type { ProblemSummary } from "@/lib/problems";
+import { timeAgo } from "@/lib/timeAgo";
 
 const dateFormat = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" });
-const relativeFormat = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-
-const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
-  ["year", 365 * 24 * 60 * 60],
-  ["month", 30 * 24 * 60 * 60],
-  ["week", 7 * 24 * 60 * 60],
-  ["day", 24 * 60 * 60],
-  ["hour", 60 * 60],
-  ["minute", 60],
-];
-
-/** "3 days ago", "yesterday"; the exact date stays available in the tooltip. */
-function timeAgo(iso: string, now: number) {
-  const seconds = Math.round((new Date(iso).getTime() - now) / 1000);
-  for (const [unit, size] of UNITS) {
-    if (Math.abs(seconds) >= size) return relativeFormat.format(Math.round(seconds / size), unit);
-  }
-  return "just now";
-}
 
 export function ProblemCard({ problem, now }: { problem: ProblemSummary; now: number }) {
   // The title link stretches over the whole card (a button can't live inside a link),

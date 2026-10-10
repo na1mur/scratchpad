@@ -2,6 +2,7 @@ import { NextResponse, after, type NextRequest } from "next/server";
 import type { Types } from "mongoose";
 import { ApiError, handle, parseJson, requireUser } from "@/lib/api";
 import { runSolutionPipeline } from "@/lib/ai/pipeline/solution";
+import { noKey } from "@/lib/ai/providers";
 import { deleteSolutionCascade } from "@/lib/cascade";
 import { getOwnedProblem } from "@/lib/problems";
 import { rateLimits } from "@/lib/rateLimit";
@@ -39,6 +40,7 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/problems/[id]/sol
     const problem = await getOwnedProblem(session.userId, id);
     const user = await loadUser(session);
     if (!user.ai) throw new ApiError(400, "no_provider", "Set up an AI provider in Settings first.");
+    if (!user.ai.apiKey) throw noKey();
 
     const others = await Solution.find({ problemId: problem._id, userId: session.userId })
       .select({ status: 1, updatedAt: 1, specR2Key: 1 })

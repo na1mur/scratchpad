@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeftIcon } from "lucide-react";
 import { ProviderForm } from "@/components/settings/provider-form";
+import { backfillSavedKeys, listSavedKeys } from "@/lib/providerKeys";
 import { publicUser } from "@/lib/serializers";
 import { getPageUser } from "@/lib/users";
 import { StepHeader } from "../step-header";
@@ -9,7 +10,9 @@ import { StepHeader } from "../step-header";
 export const metadata: Metadata = { title: "Connect an AI provider" };
 
 export default async function OnboardingProviderPage() {
-  const user = publicUser(await getPageUser());
+  const userDoc = await backfillSavedKeys(await getPageUser());
+  const savedKeys = await listSavedKeys(userDoc);
+  const user = publicUser(userDoc);
   return (
     <>
       <Link
@@ -23,7 +26,7 @@ export default async function OnboardingProviderPage() {
         title="Connect your AI"
         description="Scratchpad runs on your own AI account. Sign in with OpenRouter to pick from hundreds of models, free ones included, or paste a key from OpenAI, Anthropic, Google and more. You can skip this and connect later in Settings."
       />
-      <ProviderForm ai={user.ai} search={user.search} onboarding />
+      <ProviderForm ai={user.ai} search={user.search} savedKeys={savedKeys} onboarding />
     </>
   );
 }

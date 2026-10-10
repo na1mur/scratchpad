@@ -53,3 +53,9 @@ export const PROVIDER_LABELS: Record<ProviderId, string> = {
   nebius: "Nebius",
   huggingface: "Hugging Face",
 };
+
+/** What a saved key can belong to: an AI provider, or Tavily for web search. */
+export const KEY_PROVIDERS = [...PROVIDERS, "tavily"] as const;
+export type KeyProviderId = (typeof KEY_PROVIDERS)[number];
+
+export const KEY_PROVIDER_LABELS: Record<KeyProviderId, string> = { ...PROVIDER_LABELS, tavily: "Tavily (web search)" };

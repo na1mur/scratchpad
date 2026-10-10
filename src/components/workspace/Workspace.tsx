@@ -101,7 +101,8 @@ export function Workspace({
   initialAttempts: AttemptSummary[];
   initialAttempt: AttemptDetail | null;
   /** The provider and model new attempts will use. */
-  aiModel: { provider: ProviderId; model: string } | null;
+  /** `hasKey` is false once the learner deleted the key their model used. */
+  aiModel: { provider: ProviderId; model: string; hasKey: boolean } | null;
   uploadsEnabled: boolean;
   /** Whether a solution exists (or is being written), so the button opens it instead of asking first. */
   hasSolution: boolean;
@@ -323,6 +324,7 @@ export function Workspace({
   });
   // Attempts made before the model was recorded fall back to the learner's current model.
   const ranOn = viewing?.model ?? aiModel;
+  const canRun = Boolean(aiModel?.hasKey);
   const ranOnIsCurrent = !viewing?.model;
   // While drafting a new attempt nothing is selected; the trigger shows a placeholder instead.
   const selectValue = mode === "new" ? null : (viewing?.id ?? null);
@@ -367,7 +369,7 @@ export function Workspace({
                 problemId={problem.id}
                 hasSolution={hasSolution}
                 attempt={solutionBase && { id: solutionBase.id, version: solutionBase.version }}
-                canGenerate={Boolean(aiModel)}
+                canGenerate={canRun}
                 disabled={Boolean(running)}
               />
             </span>
@@ -557,16 +559,16 @@ export function Workspace({
         {mode === "new" && (
           // Sticks to the bottom of the pane so the main action stays in reach while editing a long attempt.
           <div className="sticky bottom-0 z-10 -mx-4 flex flex-col gap-2 border-t bg-background/90 px-4 py-3 backdrop-blur">
-            {aiModel ? (
+            {canRun ? (
               <LoadingButton type="submit" variant="brand" size="lg" loading={Boolean(running)} icon={<PlayIcon />}>
                 {running ? "Processing…" : "Process"}
               </LoadingButton>
             ) : (
               <Link href="/settings" className={buttonVariants({ variant: "brand", size: "lg" })}>
-                Set up an AI provider to process
+                {aiModel ? "Activate an API key to process" : "Set up an AI provider to process"}
               </Link>
             )}
-            {aiModel && (
+            {aiModel && canRun && (
               <p className="flex min-w-0 items-center justify-center gap-1.5 text-xs text-muted-foreground">
                 <CpuIcon className="size-3.5 shrink-0" aria-hidden />
                 <span className="min-w-0 truncate" title={`${PROVIDER_LABELS[aiModel.provider]} · ${aiModel.model}`}>

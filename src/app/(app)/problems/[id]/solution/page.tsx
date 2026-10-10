@@ -52,7 +52,7 @@ export default async function SolutionPage({ params, searchParams }: PageProps<"
       initialSolutions={summaries}
       initialSolution={detail}
       baseAttempt={baseAttempt ? { id: String(baseAttempt._id), version: baseAttempt.version } : null}
-      canGenerate={Boolean(user.ai)}
+      canGenerate={Boolean(user.ai?.apiKey)}
     />
   );
 }

@@ -26,6 +26,7 @@ import { ensureProblemReference, type Reference } from "@/lib/problemReference";
 import { userSearchKey } from "@/lib/tavily";
 import { ensureProblemSource } from "@/lib/problemSource";
 import { loadSpec, storeSpec } from "@/lib/specStorage";
+import { clearKeyRejected, markMainKeyRejected } from "@/lib/providerKeys";
 import { rateLimits } from "@/lib/rateLimit";
 import { Attempt } from "@/models/Attempt";
 import { Problem } from "@/models/Problem";
@@ -446,6 +447,8 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
       { _id: solutionId },
       { $set: { status: "done", content, traceMode: finalTrace.mode, ...stored, tokenUsage: meter.snapshot() } },
     );
+    // The key worked, so it's no longer one the provider refused.
+    await clearKeyRejected(user.ai?.keyId).catch(() => {});
     emit(solutionId, { type: "done" });
   } catch (err) {
     const safe =
@@ -455,6 +458,8 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
     if (!(err instanceof PipelineError || err instanceof ApiError)) {
       console.error(`[solution] ${solutionId} failed:`, err instanceof Error ? err.message : err);
     }
+    // Flag a refused key so Settings can point at it.
+    if (safe.code === "invalid_key") await markMainKeyRejected(solution.userId).catch(() => {});
     // A failed run doesn't use up the learner's hourly allowance, so they can retry with another model.
     await rateLimits.solutions().refund(String(solution.userId)).catch(() => {});
     await Solution.updateOne({ _id: solutionId }, { $set: { status: "error", error: safe, tokenUsage: meter.snapshot() } }).catch(

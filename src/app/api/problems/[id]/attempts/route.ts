@@ -3,6 +3,7 @@ import type { Types } from "mongoose";
 import { ApiError, handle, parseJson, requireUser } from "@/lib/api";
 import { emit, subscribe, type PipelineEvent } from "@/lib/ai/pipeline/events";
 import { runAttemptPipeline } from "@/lib/ai/pipeline/run";
+import { noKey } from "@/lib/ai/providers";
 import { serializeAttemptSummary } from "@/lib/attempts";
 import { getOwnedProblem } from "@/lib/problems";
 import { rateLimits } from "@/lib/rateLimit";
@@ -39,6 +40,7 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/problems/[id]/att
     const problem = await getOwnedProblem(session.userId, id);
     const user = await loadUser(session);
     if (!user.ai) throw new ApiError(400, "no_provider", "Set up an AI provider in Settings first.");
+    if (!user.ai.apiKey) throw noKey();
 
     const keyPrefix = `users/${session.userId}/problems/${id}/`;
     if (input.images.some((img) => !img.r2Key.startsWith(keyPrefix))) {

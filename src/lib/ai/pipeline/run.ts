@@ -5,6 +5,7 @@ import type { Understanding } from "@/lib/ai/schemas/pipeline";
 import { formatSpecIssues, vizSpecSchema, type VizSpec } from "@/lib/ai/schemas/vizSpec";
 import { deleteAttemptCascade } from "@/lib/cascade";
 import { connectDB } from "@/lib/db";
+import { clearKeyRejected, markMainKeyRejected } from "@/lib/providerKeys";
 import { rateLimits } from "@/lib/rateLimit";
 import { storeSpec } from "@/lib/specStorage";
 import { ensureProblemReference } from "@/lib/problemReference";
@@ -127,6 +128,8 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
     if (autoTags.length) {
       await Problem.updateOne({ _id: problem._id, tagsSource: "none" }, { $set: { tags: autoTags, tagsSource: "auto" } });
     }
+    // The key worked, so it's no longer one the provider refused.
+    await clearKeyRejected(user.ai?.keyId).catch(() => {});
     emit(attemptId, { type: "status", status: "done" });
     emit(attemptId, { type: "done", attemptId });
   } catch (err) {
@@ -137,6 +140,8 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
     if (!(err instanceof PipelineError || err instanceof ApiError)) {
       console.error(`[pipeline] attempt ${attemptId} failed:`, err instanceof Error ? err.message : err);
     }
+    // Flag a refused key so Settings can point at it.
+    if (safe.code === "invalid_key") await markMainKeyRejected(attempt.userId).catch(() => {});
     // A failed run doesn't use up the learner's hourly allowance, so they can retry with another model.
     await rateLimits.attempts().refund(String(attempt.userId)).catch(() => {});
     // A run that never produced a result isn't an attempt: remove it so it doesn't take a version number or

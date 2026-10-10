@@ -4,9 +4,11 @@ import { ArrowLeftIcon } from "lucide-react";
 import { LanguageForm } from "@/components/settings/language-form";
 import { ProviderForm } from "@/components/settings/provider-form";
 import { ProviderSummary } from "@/components/settings/provider-summary";
+import { SavedKeys } from "@/components/settings/saved-keys";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { LanguageId } from "@/lib/languages";
+import { backfillSavedKeys, listSavedKeys } from "@/lib/providerKeys";
 import { safeNextPath } from "@/lib/schemas/auth";
 import { publicUser } from "@/lib/serializers";
 import { getPageUser } from "@/lib/users";
@@ -18,7 +20,10 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   const candidate = typeof rawReturnTo === "string" && rawReturnTo.length <= 500 ? safeNextPath(rawReturnTo, "") : "";
   // Only same-site paths, and never Settings itself.
   const returnTo = candidate && !candidate.startsWith("/settings") ? candidate : null;
-  const user = publicUser(await getPageUser());
+  // Keys stored before saved keys existed get an entry first, so the form can preselect them.
+  const userDoc = await backfillSavedKeys(await getPageUser());
+  const savedKeys = await listSavedKeys(userDoc);
+  const user = publicUser(userDoc);
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-10">
       <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
@@ -49,7 +54,19 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
           <ProviderSummary ai={user.ai} search={user.search} />
-          <ProviderForm ai={user.ai} search={user.search} returnTo={returnTo} />
+          <ProviderForm ai={user.ai} search={user.search} savedKeys={savedKeys} returnTo={returnTo} />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Saved API keys</CardTitle>
+          <CardDescription>
+            Every key you enter is kept here, encrypted, so you can switch between providers and keys without pasting
+            them again.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SavedKeys keys={savedKeys} />
         </CardContent>
       </Card>
     </main>

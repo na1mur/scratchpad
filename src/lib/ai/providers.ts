@@ -88,9 +88,15 @@ export function getModel(user: Pick<UserDoc, "ai">, purpose: "reasoning" | "visi
     if (!vision) {
       throw new ApiError(400, "no_vision_model", "Pick a vision model in Settings to read notebook images.");
     }
-    const key = vision.apiKey ? decrypt(vision.apiKey) : decrypt(ai.apiKey);
-    return { model: createModel(vision.provider, key, vision.model), provider: vision.provider, modelId: vision.model };
+    const key = vision.apiKey ?? ai.apiKey;
+    if (!key) throw noKey();
+    return { model: createModel(vision.provider, decrypt(key), vision.model), provider: vision.provider, modelId: vision.model };
   }
 
+  if (!ai.apiKey) throw noKey();
   return { model: createModel(ai.provider, decrypt(ai.apiKey), ai.model), provider: ai.provider, modelId: ai.model };
 }
+
+/** The learner deleted the key their model used and hasn't activated another yet. */
+export const noKey = () =>
+  new ApiError(400, "no_key", "Your API key was deleted. Activate a saved key or add one in Settings.");

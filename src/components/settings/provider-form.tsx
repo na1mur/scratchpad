@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Controller, useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch, type Control } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { CheckCircle2Icon, ExternalLinkIcon, KeyRoundIcon, Loader2Icon, LogInIcon, PlugZapIcon, RefreshCwIcon, XCircleIcon } from "lucide-react";
@@ -21,12 +21,23 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ModelPicker, type ModelOption } from "@/components/settings/model-picker";
 import { ProviderPicker } from "@/components/settings/provider-picker";
 import { ReturnCountdown } from "@/components/settings/return-countdown";
+import {
+  KEY_DELETED_EVENT,
+  KEY_HINTS,
+  NEW_KEY,
+  SavedKeySelect,
+  USE_KEY_EVENT,
+  type KeyDeletedDetail,
+  type UseKeyDetail,
+} from "@/components/settings/saved-key-select";
 import { ApiClientError, api } from "@/lib/fetcher";
 import { finishOpenRouterConnect, startOpenRouterConnect, takeReturnTo } from "@/lib/openrouter-connect";
-import type { ProviderId } from "@/lib/providers";
+import type { SavedKeyRow } from "@/lib/providerKeys";
+import { PROVIDER_LABELS, type KeyProviderId, type ProviderId } from "@/lib/providers";
 import { providerFormSchema, type ProviderFormValues, type ProviderSettingsInput } from "@/lib/schemas/settings";
 import type { PublicUser } from "@/lib/serializers";
 import type { SearchUsage } from "@/lib/tavily";
@@ -42,58 +53,61 @@ const CARD_INK = "bg-foreground/10 text-foreground hover:bg-foreground/15";
 
 type ConnectState = { status: "idle" | "redirecting" | "connecting" | "connected" | "error"; error?: string };
 
-// Only prefixes that are known to be stable; the rest just get a generic prompt.
-const KEY_HINTS: Record<ProviderId, string> = {
-  openai: "sk-…",
-  anthropic: "sk-ant-…",
-  google: "AIza…",
-  xai: "xai-…",
-  mistral: "API key",
-  deepseek: "sk-…",
-  groq: "gsk_…",
-  cerebras: "csk-…",
-  togetherai: "API key",
-  fireworks: "fw_…",
-  deepinfra: "API key",
-  cohere: "API key",
-  perplexity: "pplx-…",
-  baseten: "API key",
-  gateway: "API key",
-  openrouter: "sk-or-…",
-  moonshotai: "sk-…",
-  zai: "API key",
-  alibaba: "sk-…",
-  minimax: "API key",
-  nvidia: "nvapi-…",
-  sambanova: "API key",
-  nebius: "API key",
-  huggingface: "hf_…",
-};
-
-/** Placeholder for a saved key: its prefix when the hint has one, then the last 4. */
-function savedKeyHint(provider: ProviderId, last4: string) {
-  const hint = KEY_HINTS[provider];
-  return `${hint.includes("…") ? hint.replace("…", "") : ""}…${last4} (saved)`;
+/** Optional note saved with a newly typed key, to remember what it's for. */
+function KeyNoteField({
+  control,
+  name,
+}: {
+  control: Control<ProviderFormValues>;
+  name: "keyNote" | "visionKeyNote" | "searchKeyNote";
+}) {
+  return (
+    <Controller
+      name={name}
+      control={control}
+      render={({ field, fieldState }) => (
+        <Field data-invalid={fieldState.invalid}>
+          <FieldLabel htmlFor={name}>Note (optional)</FieldLabel>
+          <Textarea
+            {...field}
+            id={name}
+            rows={2}
+            maxLength={500}
+            placeholder="What it's for, its credit balance, anything you want to remember"
+            aria-invalid={fieldState.invalid}
+          />
+          <FieldDescription>Only you can see it. Edit it any time under Saved API keys.</FieldDescription>
+          <FieldError errors={[fieldState.error]} />
+        </Field>
+      )}
+    />
+  );
 }
 
-function defaults(ai: PublicUser["ai"], search: PublicUser["search"]): ProviderFormValues {
+/** The learner's most recently used saved key for a provider, or NEW_KEY when there's none. */
+function latestKey(savedKeys: SavedKeyRow[], provider: KeyProviderId) {
+  return savedKeys.find((k) => k.provider === provider)?.id ?? NEW_KEY;
+}
+
+function defaults(ai: PublicUser["ai"], search: PublicUser["search"], savedKeys: SavedKeyRow[]): ProviderFormValues {
   const vision = ai?.vision;
   const visionIsSame = vision && vision.provider === ai?.provider && vision.model === ai?.model && !vision.hasOwnKey;
   return {
     provider: ai?.provider ?? "openai",
     apiKey: "",
+    keyNote: "",
+    keyId: ai ? (ai.keyId ?? NEW_KEY) : latestKey(savedKeys, "openai"),
     model: ai?.model ?? "",
     visionMode: !ai ? "same" : !vision ? "none" : visionIsSame ? "same" : "custom",
     visionProvider: vision?.provider ?? ai?.provider ?? "openai",
     visionApiKey: "",
+    visionKeyNote: "",
+    visionKeyId: vision?.hasOwnKey ? (vision.keyId ?? NEW_KEY) : "main",
     visionModel: vision && !visionIsSame ? vision.model : "",
-    hasStoredKey: Boolean(ai),
-    hasStoredVisionKey: Boolean(vision?.hasOwnKey),
-    storedProvider: ai?.provider ?? null,
-    storedVisionProvider: vision?.hasOwnKey ? vision.provider : null,
     searchEnabled: Boolean(search?.enabled),
     searchApiKey: "",
-    hasStoredSearchKey: Boolean(search?.keyLast4),
+    searchKeyNote: "",
+    searchKeyId: search?.keyId ?? latestKey(savedKeys, "tavily"),
   };
 }
 
@@ -102,11 +116,14 @@ const TAVILY_URL = "https://app.tavily.com";
 export function ProviderForm({
   ai,
   search,
+  savedKeys,
   onboarding,
   returnTo,
 }: {
   ai: PublicUser["ai"];
   search: PublicUser["search"];
+  /** Most recently used first within each provider. */
+  savedKeys: SavedKeyRow[];
   onboarding?: boolean;
   /** Where to send the learner after saving (a failed run sent them here to change model). */
   returnTo?: string | null;
@@ -114,10 +131,10 @@ export function ProviderForm({
   const router = useRouter();
   const form = useForm<ProviderFormValues>({
     resolver: zodResolver(providerFormSchema),
-    defaultValues: defaults(ai, search),
+    defaultValues: defaults(ai, search, savedKeys),
   });
   const v = useWatch({ control: form.control });
-  const initialVisionCustom = Boolean(ai?.vision) && defaults(ai, search).visionMode === "custom";
+  const initialVisionCustom = Boolean(ai?.vision) && defaults(ai, search, savedKeys).visionMode === "custom";
   const [main, setMain] = useState<LoadState>({ status: ai ? "loading" : "idle" });
   const [vision, setVision] = useState<LoadState>({ status: initialVisionCustom ? "loading" : "idle" });
   const [test, setTest] = useState<TestState>({ status: "idle" });
@@ -128,6 +145,9 @@ export function ProviderForm({
   const connectStarted = useRef(false);
   // Reveals the provider and key fields even while OpenRouter is the active provider.
   const [manual, setManual] = useState(false);
+  // Set when the learner was sent here to activate a key (theirs was deleted): says what's left to do.
+  const [prompt, setPrompt] = useState<"activate" | "add" | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const busy =
     form.formState.isSubmitting ||
     redirecting ||
@@ -135,30 +155,27 @@ export function ProviderForm({
     connect.status === "redirecting" ||
     connect.status === "connecting";
 
-  const canUseStoredMain = ai?.provider === v.provider;
-  // OpenRouter with a key in hand (just connected, or already saved): nothing to type, so hide the key fields.
-  const viaOpenRouter = !manual && v.provider === "openrouter" && (connect.status === "connected" || canUseStoredMain);
-  const canUseStoredVision =
-    v.visionProvider === v.provider || (ai?.vision?.hasOwnKey && ai.vision.provider === v.visionProvider);
+  const keysFor = (provider: KeyProviderId | undefined) => savedKeys.filter((k) => k.provider === provider);
+  // OpenRouter with a key in hand (just connected, or a saved one picked): nothing to type, so hide the key fields.
+  const viaOpenRouter = !manual && v.provider === "openrouter" && (connect.status === "connected" || Boolean(v.keyId));
   const selectedModel = main.listing?.models.find((m) => m.id === v.model);
   const modelSupportsImages = selectedModel?.supportsImages !== false;
+
+  /** The key a request should use for a slot: a typed one wins over a saved one. */
+  function keyBody(apiKey: string, keyId: string) {
+    return apiKey ? { apiKey } : keyId ? { keyId } : null;
+  }
 
   /** Fetches a model listing; returns null when there's no usable key yet. */
   async function requestModels(target: "main" | "vision"): Promise<LoadState | null> {
     const values = form.getValues();
     const provider = target === "main" ? values.provider : values.visionProvider;
-    let apiKey = (target === "main" ? values.apiKey : values.visionApiKey) || undefined;
-    // A vision model on the main provider can borrow the main key from the form.
-    if (target === "vision" && !apiKey && provider === values.provider) apiKey = values.apiKey || undefined;
-    const storedUsable =
-      target === "main"
-        ? ai?.provider === provider
-        : provider === values.provider
-          ? ai?.provider === provider
-          : ai?.vision?.hasOwnKey && ai.vision.provider === provider;
-    if (!apiKey && !storedUsable) return null;
+    // A vision model on the main provider can borrow the main key.
+    const borrowsMain = target === "main" || (values.visionKeyId === "main" && provider === values.provider);
+    const key = borrowsMain ? keyBody(values.apiKey, values.keyId) : keyBody(values.visionApiKey, values.visionKeyId);
+    if (!key) return null;
     try {
-      const listing = await api<Listing>("/api/settings/models", { method: "POST", body: { provider, apiKey } });
+      const listing = await api<Listing>("/api/settings/models", { method: "POST", body: { provider, ...key } });
       // Never blank the selected model here: the saved one may be missing from a
       // fallback or differently-named listing. Provider changes reset it themselves.
       return { status: "ready", listing };
@@ -182,6 +199,7 @@ export function ProviderForm({
     setTest({ status: "idle" });
     // Otherwise the OpenRouter key would be sent to whichever provider is picked next.
     form.setValue("apiKey", "");
+    form.setValue("keyId", NEW_KEY);
   }
 
   async function connectOpenRouter() {
@@ -206,6 +224,7 @@ export function ProviderForm({
       if (form.getValues("provider") !== "openrouter") form.setValue("model", "");
       form.setValue("provider", "openrouter");
       form.setValue("apiKey", key, { shouldValidate: true });
+      form.setValue("keyId", NEW_KEY);
       setTest({ status: "idle" });
       setManual(false);
       setConnect({ status: "connected" });
@@ -232,6 +251,59 @@ export function ProviderForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The saved-keys card deleted a key, or asks to activate one; see saved-key-select.tsx.
+  useEffect(() => {
+    function onKeyDeleted(e: Event) {
+      const { keyId, cleared, user } = (e as CustomEvent<KeyDeletedDetail>).detail;
+      const remaining = savedKeys.filter((k) => k.id !== keyId);
+      if (cleared.length) {
+        // Settings changed on the server: start again from them, which leaves the emptied slots blank.
+        form.reset(defaults(user.ai, user.search, remaining));
+        setTest({ status: "idle" });
+        return;
+      }
+      // An unused key: only a pick that wasn't saved yet can point at it.
+      for (const name of ["keyId", "visionKeyId", "searchKeyId"] as const) {
+        if (form.getValues(name) === keyId) form.setValue(name, NEW_KEY);
+      }
+    }
+
+    function onUseKey(e: Event) {
+      const { key } = (e as CustomEvent<UseKeyDetail>).detail;
+      setTest({ status: "idle" });
+      setConnect({ status: "idle" });
+      form.setValue("apiKey", "");
+      form.clearErrors("apiKey");
+      if (key && key.provider !== "tavily") {
+        if (key.provider !== form.getValues("provider")) {
+          form.setValue("provider", key.provider);
+          form.setValue("model", "");
+        }
+        form.setValue("keyId", key.id);
+        setManual(key.provider !== "openrouter");
+        setPrompt("activate");
+        void loadModels("main");
+      } else {
+        form.setValue("keyId", NEW_KEY);
+        setManual(true);
+        setPrompt("add");
+        // Drop the listing (or the refusal) that belonged to the deleted key.
+        setMain({ status: "idle" });
+      }
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      // After the fields for the new state have rendered.
+      requestAnimationFrame(() => document.getElementById(key ? "model" : "apiKey")?.focus({ preventScroll: true }));
+    }
+
+    window.addEventListener(KEY_DELETED_EVENT, onKeyDeleted);
+    window.addEventListener(USE_KEY_EVENT, onUseKey);
+    return () => {
+      window.removeEventListener(KEY_DELETED_EVENT, onKeyDeleted);
+      window.removeEventListener(USE_KEY_EVENT, onUseKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedKeys]);
+
   async function testConnection() {
     const values = form.getValues();
     if (!values.model) {
@@ -242,7 +314,7 @@ export function ProviderForm({
     try {
       const { latencyMs } = await api<{ latencyMs: number }>("/api/settings/provider/test", {
         method: "POST",
-        body: { provider: values.provider, apiKey: values.apiKey || undefined, model: values.model },
+        body: { provider: values.provider, ...keyBody(values.apiKey, values.keyId), model: values.model },
       });
       const message = `Connected in ${(latencyMs / 1000).toFixed(1)}s`;
       setTest({ status: "ok", message });
@@ -255,9 +327,13 @@ export function ProviderForm({
   }
 
   async function onSubmit(values: ProviderFormValues) {
+    const reusesMain = values.visionKeyId === "main" && values.visionProvider === values.provider;
+    // A note only goes with a newly typed key; saved keys' notes are edited under Saved API keys.
+    const note = (apiKey: string, keyNote: string) => (apiKey && keyNote ? { keyNote } : {});
     const payload: ProviderSettingsInput = {
       provider: values.provider,
-      apiKey: values.apiKey || undefined,
+      ...keyBody(values.apiKey, values.keyId),
+      ...note(values.apiKey, values.keyNote),
       model: values.model,
       vision:
         values.visionMode === "custom"
@@ -265,18 +341,32 @@ export function ProviderForm({
               mode: "custom",
               provider: values.visionProvider,
               model: values.visionModel,
-              apiKey: values.visionApiKey || undefined,
+              // No key at all means "reuse the main key".
+              ...(!reusesMain && keyBody(values.visionApiKey, values.visionKeyId)),
+              ...(!reusesMain && note(values.visionApiKey, values.visionKeyNote)),
             }
           : { mode: values.visionMode },
-      // A key typed and then hidden by unticking the box isn't sent.
-      search: { enabled: values.searchEnabled, apiKey: (values.searchEnabled && values.searchApiKey) || undefined },
+      // A key typed or picked and then hidden by unticking the box isn't sent.
+      search: {
+        enabled: values.searchEnabled,
+        ...(values.searchEnabled && keyBody(values.searchApiKey, values.searchKeyId)),
+        ...(values.searchEnabled && note(values.searchApiKey, values.searchKeyNote)),
+      },
     };
     try {
-      const { redirectTo, user, searchUsage } = await api<{
+      const { redirectTo, user, searchUsage, rejected } = await api<{
         redirectTo: string;
         user: PublicUser;
         searchUsage: SearchUsage | null;
+        rejected: ProviderId[];
       }>("/api/settings/provider", { method: "PUT", body: payload });
+      setPrompt(null);
+      // Saved anyway (some keys can run models without listing them), but a refused key usually means runs fail.
+      for (const provider of rejected) {
+        toast.warning(
+          `${PROVIDER_LABELS[provider]} rejected the new key, so it's saved but marked as rejected. If analysis fails, pick or add another key.`,
+        );
+      }
       // A new Tavily key that's already used up still saves, but say so: searches stay off until it resets.
       if (searchUsage?.limit && searchUsage.used >= searchUsage.limit) {
         toast.warning("Your Tavily key is saved, but it has no credits left this month, so web search waits until they reset.");
@@ -287,7 +377,7 @@ export function ProviderForm({
         router.push(redirectTo);
       } else {
         toast.success("AI provider saved");
-        form.reset(defaults(user.ai, user.search));
+        form.reset(defaults(user.ai, user.search, savedKeys));
         if (returnTo) setReturning(true);
       }
       router.refresh();
@@ -317,13 +407,22 @@ export function ProviderForm({
   }
 
   const mainModels = main.listing?.models ?? [];
-  const keyPlaceholder =
-    canUseStoredMain && ai ? savedKeyHint(v.provider ?? "openai", ai.keyLast4) : KEY_HINTS[v.provider ?? "openai"];
+  const mainKeys = keysFor(v.provider);
+  const visionKeys = keysFor(v.visionProvider);
+  const searchKeys = keysFor("tavily");
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-8" noValidate>
+    <form ref={formRef} onSubmit={form.handleSubmit(onSubmit)} className="flex scroll-mt-20 flex-col gap-8" noValidate>
       <fieldset disabled={busy} className="contents">
       <FieldGroup>
+        {prompt && (
+          <p role="status" className="flex items-start gap-2 rounded-lg border border-brand/40 px-3 py-2.5 text-sm">
+            <KeyRoundIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-brand-strong" />
+            {prompt === "activate"
+              ? "Check the model below, then press Save provider to activate this key."
+              : "Paste a key from any provider, or sign in with OpenRouter. Then pick a model and press Save provider."}
+          </p>
+        )}
         <div className="flex flex-col gap-3 rounded-lg border border-brand/40 bg-brand-soft p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-1">
@@ -401,9 +500,16 @@ export function ProviderForm({
                     value={field.value}
                     onChange={(value) => {
                       field.onChange(value);
-                      // A key typed for the previous provider is wrong for this one.
+                      // A key typed for the previous provider is wrong for this one; its latest saved key is right.
                       form.setValue("apiKey", "");
+                      form.setValue("keyId", latestKey(savedKeys, value));
+                      form.clearErrors("apiKey");
                       form.setValue("model", "");
+                      // A vision model that borrowed the main key can't once the providers differ.
+                      const visionProvider = form.getValues("visionProvider");
+                      if (form.getValues("visionKeyId") === "main" && visionProvider !== value) {
+                        form.setValue("visionKeyId", latestKey(savedKeys, visionProvider));
+                      }
                       setTest({ status: "idle" });
                       void loadModels("main");
                     }}
@@ -415,48 +521,72 @@ export function ProviderForm({
             <Controller
               name="apiKey"
               control={form.control}
-              render={({ field, fieldState }) => (
-                <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="apiKey">API key</FieldLabel>
-                  <div className="flex gap-2">
-                    <Input
-                      {...field}
-                      id="apiKey"
-                      type="password"
-                      autoComplete="off"
-                      spellCheck={false}
-                      placeholder={keyPlaceholder}
-                      aria-invalid={fieldState.invalid}
-                      onChange={(e) => {
-                        field.onChange(e);
-                        setTest({ status: "idle" });
-                      }}
-                      onBlur={() => {
-                        field.onBlur();
-                        if (field.value) void loadModels("main");
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      aria-label="Load models"
-                      disabled={main.status === "loading" || (!v.apiKey && !canUseStoredMain)}
-                      onClick={() => loadModels("main")}
-                    >
-                      {main.status === "loading" ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
-                    </Button>
-                  </div>
-                  <FieldDescription>
-                    {canUseStoredMain && ai
-                      ? "Leave blank to keep your saved key. Entering a new one replaces it."
-                      : "Encrypted at rest and only decrypted on the server when making AI calls."}
-                  </FieldDescription>
-                  <FieldError errors={[fieldState.error]} />
-                  {main.status === "error" && <FieldError>{main.error}</FieldError>}
-                </Field>
-              )}
+              render={({ field, fieldState }) => {
+                const keyInput = (
+                  <Input
+                    {...field}
+                    id="apiKey"
+                    type="password"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder={v.keyId ? "Leave blank to keep your saved key" : KEY_HINTS[v.provider ?? "openai"]}
+                    aria-label={mainKeys.length ? "New API key" : undefined}
+                    aria-invalid={fieldState.invalid}
+                    onChange={(e) => {
+                      field.onChange(e);
+                      setTest({ status: "idle" });
+                    }}
+                    onBlur={() => {
+                      field.onBlur();
+                      if (field.value) void loadModels("main");
+                    }}
+                  />
+                );
+                return (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor={mainKeys.length ? "keyId" : "apiKey"}>API key</FieldLabel>
+                    <div className="flex gap-2">
+                      {mainKeys.length ? (
+                        <SavedKeySelect
+                          id="keyId"
+                          keys={mainKeys}
+                          value={v.keyId ?? NEW_KEY}
+                          invalid={fieldState.invalid}
+                          onChange={(id) => {
+                            form.setValue("keyId", id);
+                            form.setValue("apiKey", "");
+                            form.clearErrors("apiKey");
+                            setTest({ status: "idle" });
+                            if (id) void loadModels("main");
+                          }}
+                        />
+                      ) : (
+                        keyInput
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        aria-label="Load models"
+                        disabled={main.status === "loading" || (!v.apiKey && !v.keyId)}
+                        onClick={() => loadModels("main")}
+                      >
+                        {main.status === "loading" ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
+                      </Button>
+                    </div>
+                    {mainKeys.length > 0 && !v.keyId && keyInput}
+                    <FieldDescription>
+                      {v.keyId
+                        ? "Saved keys are encrypted at rest and only decrypted on the server when making AI calls."
+                        : "Encrypted at rest and only decrypted on the server when making AI calls. It's saved, so you can switch back to it later without pasting it again."}
+                    </FieldDescription>
+                    <FieldError errors={[fieldState.error]} />
+                    {main.status === "error" && <FieldError>{main.error}</FieldError>}
+                  </Field>
+                );
+              }}
             />
+            {!v.keyId && <KeyNoteField control={form.control} name="keyNote" />}
           </>
         )}
 
@@ -482,6 +612,7 @@ export function ProviderForm({
                   }
                 }}
               />
+              <FieldDescription>Select a capable model for better results and analysis.</FieldDescription>
               {main.listing?.source === "fallback" && (
                 <FieldDescription>
                   Couldn&apos;t fetch the live model list, so this is a short built-in list.
@@ -570,6 +701,12 @@ export function ProviderForm({
                     onChange={(value) => {
                       field.onChange(value);
                       form.setValue("visionModel", "");
+                      form.setValue("visionApiKey", "");
+                      form.setValue(
+                        "visionKeyId",
+                        value === form.getValues("provider") ? "main" : latestKey(savedKeys, value),
+                      );
+                      form.clearErrors("visionApiKey");
                       void loadModels("vision");
                     }}
                   />
@@ -579,27 +716,50 @@ export function ProviderForm({
             <Controller
               name="visionApiKey"
               control={form.control}
-              render={({ field, fieldState }) => (
-                <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="visionApiKey">API key</FieldLabel>
-                  <Input
-                    {...field}
-                    id="visionApiKey"
-                    type="password"
-                    autoComplete="off"
-                    spellCheck={false}
-                    placeholder={canUseStoredVision ? "Leave blank to reuse the saved key" : KEY_HINTS[v.visionProvider ?? "openai"]}
-                    aria-invalid={fieldState.invalid}
-                    onBlur={() => {
-                      field.onBlur();
-                      if (field.value) void loadModels("vision");
-                    }}
-                  />
-                  <FieldError errors={[fieldState.error]} />
-                  {vision.status === "error" && <FieldError>{vision.error}</FieldError>}
-                </Field>
-              )}
+              render={({ field, fieldState }) => {
+                const sameProvider = v.visionProvider === v.provider;
+                const hasChoices = sameProvider || visionKeys.length > 0;
+                return (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor={hasChoices ? "visionKeyId" : "visionApiKey"}>API key</FieldLabel>
+                    {hasChoices && (
+                      <SavedKeySelect
+                        id="visionKeyId"
+                        keys={visionKeys}
+                        value={v.visionKeyId ?? NEW_KEY}
+                        invalid={fieldState.invalid}
+                        extra={sameProvider ? [{ value: "main", label: "Same key as the main model" }] : []}
+                        onChange={(id) => {
+                          form.setValue("visionKeyId", id);
+                          form.setValue("visionApiKey", "");
+                          form.clearErrors("visionApiKey");
+                          if (id) void loadModels("vision");
+                        }}
+                      />
+                    )}
+                    {(!hasChoices || !v.visionKeyId) && (
+                      <Input
+                        {...field}
+                        id="visionApiKey"
+                        type="password"
+                        autoComplete="off"
+                        spellCheck={false}
+                        placeholder={KEY_HINTS[v.visionProvider ?? "openai"]}
+                        aria-label={hasChoices ? "New API key" : undefined}
+                        aria-invalid={fieldState.invalid}
+                        onBlur={() => {
+                          field.onBlur();
+                          if (field.value) void loadModels("vision");
+                        }}
+                      />
+                    )}
+                    <FieldError errors={[fieldState.error]} />
+                    {vision.status === "error" && <FieldError>{vision.error}</FieldError>}
+                  </Field>
+                );
+              }}
             />
+            {!v.visionKeyId && <KeyNoteField control={form.control} name="visionKeyNote" />}
             <Controller
               name="visionModel"
               control={form.control}
@@ -655,16 +815,32 @@ export function ProviderForm({
             control={form.control}
             render={({ field, fieldState }) => (
               <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor="searchApiKey">Tavily API key</FieldLabel>
-                <Input
-                  {...field}
-                  id="searchApiKey"
-                  type="password"
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder={search?.keyLast4 ? `tvly-…${search.keyLast4} (saved)` : "tvly-…"}
-                  aria-invalid={fieldState.invalid}
-                />
+                <FieldLabel htmlFor={searchKeys.length ? "searchKeyId" : "searchApiKey"}>Tavily API key</FieldLabel>
+                {searchKeys.length > 0 && (
+                  <SavedKeySelect
+                    id="searchKeyId"
+                    keys={searchKeys}
+                    value={v.searchKeyId ?? NEW_KEY}
+                    invalid={fieldState.invalid}
+                    onChange={(id) => {
+                      form.setValue("searchKeyId", id);
+                      form.setValue("searchApiKey", "");
+                      form.clearErrors("searchApiKey");
+                    }}
+                  />
+                )}
+                {(!searchKeys.length || !v.searchKeyId) && (
+                  <Input
+                    {...field}
+                    id="searchApiKey"
+                    type="password"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder={v.searchKeyId ? "Leave blank to keep your saved key" : "tvly-…"}
+                    aria-label={searchKeys.length ? "New Tavily API key" : undefined}
+                    aria-invalid={fieldState.invalid}
+                  />
+                )}
                 <FieldDescription>
                   Tavily&apos;s free plan gives 1,000 credits a month (one per search) and needs no credit card.{" "}
                   <a
@@ -677,13 +853,14 @@ export function ProviderForm({
                     <ExternalLinkIcon className="size-3.5" aria-hidden />
                     <span className="sr-only"> (opens in a new tab)</span>
                   </a>
-                  {search?.keyLast4 ? ". Leave blank to keep your saved key." : ", then paste it here."}
+                  {v.searchKeyId ? "." : ", then paste it here."}
                 </FieldDescription>
                 <FieldError errors={[fieldState.error]} />
               </Field>
             )}
           />
         )}
+        {v.searchEnabled && !v.searchKeyId && <KeyNoteField control={form.control} name="searchKeyNote" />}
       </FieldSet>
 
       </fieldset>

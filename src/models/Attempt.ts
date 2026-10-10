@@ -30,7 +30,9 @@ const specVersionSchema = new Schema(
     vizSpec: { type: Schema.Types.Mixed, required: false },
     specR2Key: { type: String, required: false },
   },
-  { _id: false },
+  // Keep empty objects such as `vars: {}` on a step with no variables yet, which the spec requires.
+  // Subdocuments drop them by default, even in an update's `$set`.
+  { _id: false, minimize: false },
 );
 
 const attemptSchema = new Schema(

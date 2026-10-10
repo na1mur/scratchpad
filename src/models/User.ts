@@ -1,19 +1,11 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 import { LANGUAGES } from "@/lib/languages";
 import { PROVIDERS } from "@/lib/providers";
+import { encryptedFieldSchema } from "@/models/encryptedField";
 
 export const ONBOARDING_STEPS = ["language", "provider", "done"] as const;
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 
-const encryptedFieldSchema = new Schema(
-  {
-    ciphertext: { type: String, required: true },
-    iv: { type: String, required: true },
-    authTag: { type: String, required: true },
-    keyVersion: { type: Number, required: true },
-  },
-  { _id: false },
-);
 
 const visionSchema = new Schema(
   {
@@ -21,6 +13,7 @@ const visionSchema = new Schema(
     model: { type: String, required: true },
     // Absent when the vision model reuses the main provider's key.
     apiKey: { type: encryptedFieldSchema, required: false },
+    keyId: { type: Schema.Types.ObjectId, ref: "ProviderKey", required: false },
     keyLast4: { type: String, required: false },
   },
   { _id: false },
@@ -30,8 +23,11 @@ const aiSchema = new Schema(
   {
     provider: { type: String, enum: PROVIDERS, required: true },
     model: { type: String, required: true },
-    apiKey: { type: encryptedFieldSchema, required: true },
-    keyLast4: { type: String, required: true },
+    // A copy of the saved key in use (`keyId`), so a run reads it straight off the user. Absent after
+    // the learner deleted that key and before they activate another one.
+    apiKey: { type: encryptedFieldSchema, required: false },
+    keyLast4: { type: String, required: false },
+    keyId: { type: Schema.Types.ObjectId, ref: "ProviderKey", required: false },
     vision: { type: visionSchema, required: false },
   },
   { _id: false },
@@ -44,6 +40,7 @@ const searchSchema = new Schema(
     enabled: { type: Boolean, required: true },
     apiKey: { type: encryptedFieldSchema, required: false },
     keyLast4: { type: String, required: false },
+    keyId: { type: Schema.Types.ObjectId, ref: "ProviderKey", required: false },
   },
   { _id: false },
 );
@@ -76,7 +73,7 @@ const userSchema = new Schema(
 export const isUnverified = (user: Pick<UserDoc, "emailVerified">) => user.emailVerified === false;
 
 export type UserDoc = InferSchemaType<typeof userSchema> & { _id: mongoose.Types.ObjectId };
-export type EncryptedField = InferSchemaType<typeof encryptedFieldSchema>;
+export type { EncryptedField } from "@/models/encryptedField";
 
 // In dev, hot reloads keep the old registered model, whose stale schema silently
 // strips any field added since (strict mode). Re-register so schema edits apply.

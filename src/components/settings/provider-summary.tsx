@@ -1,3 +1,4 @@
+import { KeyRoundIcon } from "lucide-react";
 import { PROVIDER_LABELS } from "@/lib/providers";
 import type { PublicUser } from "@/lib/serializers";
 
@@ -31,9 +32,20 @@ export function ProviderSummary({ ai, search }: { ai: PublicUser["ai"]; search: 
           <span className="font-mono text-[13px]">{ai.model}</span>
         </Row>
         <Row label="API key">
-          <span className="font-mono text-[13px]">{maskKey(ai.keyLast4)}</span>
+          {ai.keyLast4 ? (
+            <span className="font-mono text-[13px]">{maskKey(ai.keyLast4)}</span>
+          ) : (
+            <span className="text-destructive">None</span>
+          )}
         </Row>
       </dl>
+      {!ai.keyLast4 && (
+        <p role="status" className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <KeyRoundIcon aria-hidden className="mt-0.5 size-4 shrink-0" />
+          The key this model used was deleted, so analysis is paused. Pick one of your saved keys or add a new one
+          below, then save.
+        </p>
+      )}
       <div className="border-t pt-3">
         {vision ? (
           <dl className="flex flex-col gap-1.5">
