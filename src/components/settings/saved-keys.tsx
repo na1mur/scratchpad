@@ -32,7 +32,7 @@ import type { PublicUser } from "@/lib/serializers";
 
 const USE_LABELS: Record<KeyUse, string> = {
   main: "Selected model",
-  vision: "Vision model",
+  vision: "Selected vision model",
   search: "Selected web search model",
 };
 const USE_NAMES: Record<KeyUse, string> = { main: "your main model", vision: "your vision model", search: "web search" };
