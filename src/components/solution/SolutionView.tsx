@@ -27,6 +27,7 @@ import { ProgressStepper } from "@/components/workspace/ProgressStepper";
 import { UsageBadge } from "@/components/workspace/UsageBadge";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import type { SolutionEvent } from "@/lib/ai/pipeline/events";
+import { stepAt, stepRefs } from "@/lib/ai/schemas/vizSpec";
 import { ApiClientError, api, apiRaw, toApiError } from "@/lib/fetcher";
 import type { ProblemDetail } from "@/lib/problems";
 import type { SolutionDetail, SolutionSummary } from "@/lib/solutions";
@@ -74,6 +75,7 @@ export function SolutionView({
   const [viewing, setViewing] = useState(initialSolution);
   const [loading, setLoading] = useState(false);
   const [playerIndex, setPlayerIndex] = useState(0);
+  const [caseIndex, setCaseIndex] = useState(0);
   const [tab, setTab] = useState("walkthrough");
   const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
   const [newOpen, setNewOpen] = useState(false);
@@ -96,6 +98,7 @@ export function SolutionView({
       const { solution } = await api<{ solution: SolutionDetail }>(`/api/solutions/${id}`);
       show(solution);
       setPlayerIndex(0);
+      setCaseIndex(0);
       setTab("walkthrough");
       setSelectedSteps([]);
     } catch (err) {
@@ -126,6 +129,7 @@ export function SolutionView({
       setViewing((v) => (v?.id === solution.id ? solution : v));
       setSolutions((list) => list.map((s) => (s.id === solution.id ? { ...s, ...pickSummary(solution) } : s)));
       setPlayerIndex(0);
+      setCaseIndex(0);
       if (solution.status === "done") toast.success("Solution ready.");
       else toast.error(solution.error?.message ?? "Writing the solution failed.");
       return true;
@@ -225,7 +229,7 @@ export function SolutionView({
   const busy = Boolean(pendingId) || loading;
   const spec = viewing?.status === "done" ? viewing.vizSpec : null;
   const content = viewing?.status === "done" ? viewing.content : null;
-  const currentLine = spec?.steps[Math.min(playerIndex, spec.steps.length - 1)]?.line ?? null;
+  const currentLine = (spec && stepAt(spec, caseIndex, playerIndex)?.line) ?? null;
   const viewingSummary = viewing ? (solutions.find((s) => s.id === viewing.id) ?? null) : null;
 
 
@@ -400,6 +404,8 @@ export function SolutionView({
           spec={spec}
           content={content}
           language={viewing.language}
+          caseIndex={caseIndex}
+          onCaseChange={setCaseIndex}
           playerIndex={playerIndex}
           onIndexChange={setPlayerIndex}
           tab={tab}
@@ -414,7 +420,8 @@ export function SolutionView({
           endpoint={`/api/solutions/${viewing.id}/messages`}
           title="Ask about this solution"
           example={<>e.g. &ldquo;Why does this loop start at 1?&rdquo; or &ldquo;Can it be done in O(1) space?&rdquo;</>}
-          steps={spec.steps}
+          caseId={spec.cases[Math.min(caseIndex, spec.cases.length - 1)].id}
+          stepRefs={stepRefs(spec)}
           selectedStepIds={selectedSteps}
           onToggleStep={toggleStep}
           onClearSelection={() => setSelectedSteps([])}

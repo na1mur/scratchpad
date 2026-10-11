@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { SharedViewer } from "@/components/share/fork-button";
 import { SharedProblemHeader } from "@/components/share/shared-problem-header";
 import { SolutionApproach, SolutionWalkthrough } from "@/components/solution/SolutionDetails";
+import { stepAt } from "@/lib/ai/schemas/vizSpec";
 import type { SharedSolution } from "@/lib/shares";
 
 /** Read-only view of one shared solution version: approach, code and walkthrough, without chat. */
@@ -18,9 +19,10 @@ export function SharedSolutionView({
 }) {
   const { problem, solution } = data;
   const [index, setIndex] = useState(0);
+  const [caseIndex, setCaseIndex] = useState(0);
   const [tab, setTab] = useState("walkthrough");
   const spec = solution.vizSpec;
-  const currentLine = spec.steps[Math.min(index, spec.steps.length - 1)]?.line ?? null;
+  const currentLine = stepAt(spec, caseIndex, index)?.line ?? null;
 
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6">
@@ -46,6 +48,8 @@ export function SharedSolutionView({
             spec={spec}
             content={solution.content}
             language={solution.language}
+            caseIndex={caseIndex}
+            onCaseChange={setCaseIndex}
             playerIndex={index}
             onIndexChange={setIndex}
             tab={tab}

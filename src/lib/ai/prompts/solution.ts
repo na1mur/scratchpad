@@ -1,6 +1,6 @@
 import { languageLabel } from "@/lib/languages";
 import { MAX_STEPS } from "@/lib/ai/schemas/vizSpec";
-import { TRACE_API, TRACE_EXAMPLE, TRACE_RULES } from "./pipeline";
+import { TEST_CASES_GUIDE, TRACE_API, TRACE_EXAMPLE, TRACE_RULES } from "./pipeline";
 import { REFERENCE_NOTE, SOURCE_NOTE } from "./system";
 
 /**
@@ -24,18 +24,19 @@ export function solutionInstructions(language: string | null | undefined, role: 
 }
 
 export const SOLVE_ROLE = `Your job right now: write a correct, clear solution to the problem and explain it.
-- codeLines: the complete solution as a single function (plus any small helper it needs), one line per entry, indentation preserved. Keep it short and readable: descriptive names, no clever one-liners, no comments in the code (lineNotes explain it). The function's parameter names must match the keys of testInput.argumentsJson.
+- codeLines: the complete solution as a single function (plus any small helper it needs), one line per entry, indentation preserved. Keep it short and readable: descriptive names, no clever one-liners, no comments in the code (lineNotes explain it). The function's parameter names must match the keys of the test cases' argumentsJson.
 - lineNotes: one note per meaningful line (skip blank lines and lone closing braces). Say what the line does AND why it's needed, in one or two sentences.
 - summary, keyIdeas and whyItWorks are for a learner who got stuck: name the insight that unlocks the problem, then the invariant that makes it correct.
 - timeComplexity and spaceComplexity in Big-O with n (or the problem's own variables) defined in complexityExplanation.
-- testInput: ONE small input (at most ~8 array elements, ~7 tree nodes, ~6 graph nodes, strings up to ~8 chars) that exercises the interesting parts of the solution, including at least two loop iterations. Represent trees as level-order arrays with null for gaps (e.g. [1,null,2]), linked lists as arrays, graphs as adjacency objects or edge lists, and say which in the description.
-- expectedReturnJson: exactly what your function returns for that input, as JSON.
+- testCases: ${TEST_CASES_GUIDE}
+  Put the typical case first: the learner sees it first, so it should exercise the interesting parts of the solution, including at least two loop iterations.
+  - expectedReturnJson: exactly what your function returns for that input, as JSON.
 
 When <their_attempt> is given, build from it:
 - If their approach can work (verdict works, or the scope is fix-the-details), keep their approach, structure and variable names, and change only what's broken. relationToAttempt says precisely what you changed and why their version failed.
 - If the approach itself can't work (rethink-the-approach), choose the correct approach closest to their thinking. relationToAttempt says which part of their idea carries over, and what had to change and why.
 When <existing_solutions> is given, the new solution must satisfy <request> and must not repeat an existing one: a genuinely different technique for "different approach", a strictly better Big-O for "better time" or "better space". If the request can't be met (for example the existing solution is already optimal), give the best alternative you can and say so plainly in summary. relationToAttempt is then about how it differs from the existing solutions.
-When <reference_solutions> is given and it solves this exact problem, lean on it: pick the reference approach that best fits the rules above instead of inventing one, and check it against the problem yourself. Still write the code yourself in the style asked for here (descriptive names, no comments, the learner's language), and take testInput and expectedReturnJson from your own reasoning, not from the reference.`;
+When <reference_solutions> is given and it solves this exact problem, lean on it: pick the reference approach that best fits the rules above instead of inventing one, and check it against the problem yourself. Still write the code yourself in the style asked for here (descriptive names, no comments, the learner's language), and take testCases and their expectedReturnJson from your own reasoning, not from the reference.`;
 
 export const SOLUTION_TRANSLATE_ROLE = `Your job right now: translate the given solution (<solution_code>) into an instrumented JavaScript program that behaves EXACTLY like it, line for line, so it can be run and visualized.
 
@@ -43,6 +44,8 @@ Return:
 - structures: the data worth showing (at most 6), each {id, label, kind}. kind is one of array, string, hashmap, set, stack, queue, linkedList, tree, graph, matrix, variables. Always include {id: "vars", label: "Variables", kind: "variables"} for scalar variables.
 - loops: every loop in the solution code as {id, label (e.g. "while left < right"), line (0-based index into the solution's lines)}.
 - program: plain JavaScript (ES2020; no imports, async, timers or I/O) that defines function run(input). input is the parsed arguments object. Return what the solution returns.
+
+The same program is run on every one of the <test_cases>, so it must work from whatever input it's given. Never special-case an input.
 
 The line numbers you report in trace() are 0-based indexes into the solution's lines exactly as given; never renumber them.
 

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { CodeLine } from "@/components/viz/CodePane";
 import { useHighlightedLines } from "@/hooks/use-highlighted-lines";
 import type { SolutionContent } from "@/lib/ai/schemas/solution";
-import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
+import type { CaseSpec } from "@/lib/ai/schemas/vizSpec";
 
 /**
  * The solution one line at a time: each explained line with its note, and a
@@ -21,7 +21,7 @@ export function LineBreakdown({
 }: {
   content: SolutionContent;
   language: string;
-  spec: VizSpec;
+  spec: CaseSpec;
   activeLine: number | null;
   onJumpToStep: (index: number) => void;
 }) {

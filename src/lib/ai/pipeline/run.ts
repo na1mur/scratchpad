@@ -22,8 +22,7 @@ import {
   diagnose,
   diagnosisText,
   revealsSolution,
-  traceByExecution,
-  traceBySimulation,
+  traceCases,
   understand,
   type Ctx,
   type Guidance,
@@ -41,7 +40,7 @@ export async function traceAndDiagnose(
   opts: { onStage?: (s: "tracing" | "diagnosing") => Promise<void>; guidance?: Guidance } = {},
 ): Promise<{ spec: VizSpec; mode: "execution" | "simulation" }> {
   await opts.onStage?.("tracing");
-  const trace = (await traceByExecution(ctx, u, opts.guidance)) ?? (await traceBySimulation(ctx, u, opts.guidance));
+  const trace = await traceCases(ctx, u, opts.guidance);
 
   await opts.onStage?.("diagnosing");
   let d = await diagnose(ctx, u, trace);
@@ -53,7 +52,7 @@ export async function traceAndDiagnose(
     if (recheck.reveals) d = { ...d, thinkingHints: [], shiftInThinking: "" };
   }
 
-  const spec = assemble(trace, trace.steps, d, u);
+  const spec = assemble(trace, d, u);
   const parsed = vizSpecSchema.safeParse(spec);
   if (!parsed.success) {
     console.error("[pipeline] assembled spec invalid:", formatSpecIssues(parsed.error, 5));

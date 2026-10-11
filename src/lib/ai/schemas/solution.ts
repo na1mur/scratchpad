@@ -66,13 +66,19 @@ export const solutionPlanSchema = z.object({
   lineNotes: z
     .array(z.object({ line: z.number().int(), note: z.string() }))
     .describe("One note per meaningful line (0-based line index): what it does and why it's there."),
-  testInput: z.object({
-    description: z.string().describe("Human-readable input, e.g. 'nums = [2, 7, 11, 15], target = 9'."),
-    argumentsJson: z.string().describe('JSON object of named arguments, e.g. {"nums":[2,7,11,15],"target":9}.'),
-  }),
-  expectedReturnJson: z.string().describe("The exact value the function returns for that input, as JSON, e.g. [0,1]."),
+  testCases: z
+    .array(
+      z.object({
+        label: z.string().describe("Short name for what this case covers, e.g. 'Odd length' or 'Empty list'. Max ~4 words."),
+        description: z.string().describe("Human-readable input, e.g. 'nums = [2, 7, 11, 15], target = 9'."),
+        argumentsJson: z.string().describe('JSON object of named arguments, e.g. {"nums":[2,7,11,15],"target":9}.'),
+        expectedReturnJson: z.string().describe("The exact value the function returns for this input, as JSON, e.g. [0,1]."),
+      }),
+    )
+    .min(1),
 });
 export type SolutionPlan = z.infer<typeof solutionPlanSchema>;
+export type SolutionCase = SolutionPlan["testCases"][number];
 
 export const solutionTranslationSchema = z.object({
   structures: z.array(structureDeclSchema).min(1).max(6),

@@ -11,5 +11,7 @@ export const sendMessageSchema = z.object({
   focusStepIds: z.array(z.string().max(64)).max(8).default([]),
   /** Which spec version the learner is looking at (1-based). */
   specVersion: z.number().int().min(1).optional(),
+  /** Which test case the learner is looking at. */
+  caseId: z.string().max(64).optional(),
 });
 export type SendMessageInput = z.input<typeof sendMessageSchema>;

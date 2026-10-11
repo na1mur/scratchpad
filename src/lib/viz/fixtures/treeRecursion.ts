@@ -1,4 +1,4 @@
-import type { StructureState, VizSpec } from "@/lib/ai/schemas/vizSpec";
+import type { StructureState, VizSpecV1 } from "@/lib/ai/schemas/vizSpec";
 import { recorder } from "./builder";
 
 // minDepth that takes min() over a missing child, which counts as depth 0.
@@ -12,7 +12,7 @@ const nodes: Node[] = [
 const byId = new Map(nodes.map((n) => [n.id, n]));
 const tree: StructureState = { kind: "tree", rootId: "n1", nodes };
 
-export function treeRecursionFixture(): VizSpec {
+export function treeRecursionFixture(): VizSpecV1 {
   const r = recorder();
   const stack: string[] = [];
   const done = new Set<string>();

@@ -5,7 +5,7 @@ import { ApiError, handle, parseJson, requireUser } from "@/lib/api";
 import { toFriendlyProviderError } from "@/lib/ai/errors";
 import { PipelineError, UsageMeter } from "@/lib/ai/pipeline/llm";
 import { regenerateSpec } from "@/lib/ai/pipeline/regenerate";
-import { describeSteps } from "@/lib/ai/pipeline/steps";
+import { casesContext, focusedStepsBlock } from "@/lib/ai/pipeline/steps";
 import { revealsSolution, type Ctx } from "@/lib/ai/pipeline/stages";
 import { CHAT_ROLE, STRICT_CHAT_ADDENDUM } from "@/lib/ai/prompts/chat";
 import { baseInstructions, learnerContext } from "@/lib/ai/prompts/system";
@@ -50,13 +50,10 @@ export function DELETE(req: NextRequest, ctx: RouteContext<"/api/attempts/[id]/m
   });
 }
 
-function specContext(spec: VizSpec): string {
+function specContext(spec: VizSpec, caseId: string | undefined): string {
   const d = spec.diagnosis;
   return [
     `<visualization>`,
-    `test input: ${spec.summary.testInputDescription}`,
-    `expected: ${spec.summary.expectedOutput}`,
-    `their code gives: ${spec.summary.actualOutput}`,
     `verdict: ${spec.summary.verdict}`,
     `their approach: ${spec.summary.understoodApproach}`,
     `</visualization>`,
@@ -69,9 +66,7 @@ function specContext(spec: VizSpec): string {
     `different way to think about it: ${d.rethink?.shiftInThinking || "-"}`,
     `hints: ${d.thinkingHints.join(" | ") || "-"}`,
     `</diagnosis_already_shown>`,
-    `<trace step="id = step number">`,
-    describeSteps(spec.steps, spec.codeLines, 12_000),
-    `</trace>`,
+    casesContext(spec, caseId, "their code gives"),
   ].join("\n");
 }
 
@@ -104,17 +99,9 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/attempts/[id]/mes
     if (!spec) throw new ApiError(409, "not_ready", "This attempt has no visualization yet.");
     const { model } = getModel(user, "reasoning");
 
-    const focusIds = input.focusStepIds.filter((sid) => spec.steps.some((s) => s.id === sid));
-    const focused = spec.steps.filter((s) => focusIds.includes(s.id));
-    const focusBlock = focused.length
-      ? `\n\n<focused_steps>\n${focused
-          .map((s) => {
-            const n = spec.steps.indexOf(s) + 1;
-            const states = JSON.stringify(s.states, (k, v) => (k === "ids" ? undefined : v));
-            return `step ${n} (${s.id}), line ${s.line === null ? "-" : s.line + 1}: ${s.title}\n${s.explanation}\nstate: ${states.slice(0, 1500)}`;
-          })
-          .join("\n\n")}\n</focused_steps>`
-      : "";
+    const allSteps = spec.cases.flatMap((c) => c.steps);
+    const focusIds = input.focusStepIds.filter((sid) => allSteps.some((s) => s.id === sid));
+    const focusBlock = focusedStepsBlock(spec, focusIds);
 
     const history = await Message.find({ attemptId: attempt._id, userId: session.userId })
       .sort({ createdAt: -1 })
@@ -135,7 +122,7 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/attempts/[id]/mes
       idea: attempt.idea ?? "",
       language: problem.language,
     };
-    const instructions = `${baseInstructions(problem.language, CHAT_ROLE)}\n\n${learnerContext(learner)}\n\n${specContext(spec)}`;
+    const instructions = `${baseInstructions(problem.language, CHAT_ROLE)}\n\n${learnerContext(learner)}\n\n${specContext(spec, input.caseId)}`;
     const messages: ModelMessage[] = [
       ...history.reverse().map((m) => ({ role: m.role, content: m.content }) as ModelMessage),
       { role: "user", content: `${input.content}${focusBlock}` },
@@ -182,13 +169,16 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/attempts/[id]/mes
                   inputSchema: z.object({
                     reason: z.string().describe("Why a new visualization helps, in a short phrase shown to the learner."),
                     focusStepIds: z.array(z.string()).optional().describe("Step ids the new trace should cover in detail."),
-                    newTestInput: z.string().optional().describe("A different test input, e.g. 'nums = [3, 3], target = 6'."),
+                    newTestInput: z
+                      .string()
+                      .optional()
+                      .describe("A test input to run as the first case, e.g. 'nums = [3, 3], target = 6'. The other cases are picked again."),
                   }),
                   execute: async ({ reason, focusStepIds, newTestInput }) => {
                     if (producedSpecVersion) return { error: "Already regenerated once for this question." };
                     send({ type: "regenerating", reason });
                     try {
-                      const focusSteps = spec.steps.filter((s) => focusStepIds?.includes(s.id));
+                      const focusSteps = allSteps.filter((s) => focusStepIds?.includes(s.id));
                       const regen = await regenerateSpec({
                         attempt,
                         model,
@@ -205,11 +195,15 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/attempts/[id]/mes
                       send({ type: "spec", specVersion: regen.specVersion });
                       return {
                         specVersion: regen.specVersion,
-                        testInput: regen.spec.summary.testInputDescription,
-                        actualOutput: regen.spec.summary.actualOutput,
                         verdict: regen.spec.summary.verdict,
-                        stepCount: regen.spec.steps.length,
-                        bugSteps: regen.spec.steps.filter((s) => s.isBugMoment).map((s) => s.title),
+                        cases: regen.spec.cases.map((c) => ({
+                          label: c.label,
+                          input: c.input,
+                          actualOutput: c.actualOutput,
+                          correct: c.passed,
+                          stepCount: c.steps.length,
+                          bugSteps: c.steps.filter((s) => s.isBugMoment).map((s) => s.title),
+                        })),
                       };
                     } catch (err) {
                       const message =

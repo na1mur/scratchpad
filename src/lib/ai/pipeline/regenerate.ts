@@ -1,13 +1,12 @@
 import "server-only";
 import type { LanguageModel } from "ai";
-import type { Understanding } from "@/lib/ai/schemas/pipeline";
 import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
 import { storeSpec } from "@/lib/specStorage";
 import { Attempt, type AttemptDoc } from "@/models/Attempt";
 import { Problem } from "@/models/Problem";
 import { UsageMeter } from "./llm";
 import { traceAndDiagnose } from "./run";
-import { understand, type Ctx, type Guidance } from "./stages";
+import { hasTestCases, understand, type Ctx, type Guidance } from "./stages";
 
 /**
  * Re-runs stages 2–3 for an existing attempt with guidance from a follow-up
@@ -43,8 +42,9 @@ export async function regenerateSpec(opts: {
     focus: [guidance.focus, opts.focusDescription].filter(Boolean).join("\n") || undefined,
   };
 
-  let u = attempt.understanding as Understanding | undefined;
-  if (!u || guidance.newTestInput) u = await understand(ctx, fullGuidance);
+  // Understandings from before test cases existed hold a single input, so they're redone too.
+  const prior = attempt.understanding;
+  const u = hasTestCases(prior) && !guidance.newTestInput ? prior : await understand(ctx, fullGuidance);
 
   const { spec } = await traceAndDiagnose(ctx, u, { guidance: fullGuidance });
   const nextVersion = (attempt.specVersions?.length ?? 0) + 1;

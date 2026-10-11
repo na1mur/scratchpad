@@ -39,6 +39,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { CaseBar, casesPassedText } from "@/components/viz/CaseBar";
 import { DiagnosisPanel } from "@/components/viz/DiagnosisPanel";
 import { HintsPanel } from "@/components/viz/HintsPanel";
 import { Player } from "@/components/viz/Player";
@@ -54,6 +55,7 @@ import { ProblemActions } from "@/components/workspace/ProblemActions";
 import { ProgressStepper } from "@/components/workspace/ProgressStepper";
 import { UsageBadge } from "@/components/workspace/UsageBadge";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { caseView, stepRefs } from "@/lib/ai/schemas/vizSpec";
 import type { AttemptDetail, AttemptSummary } from "@/lib/attempts";
 import { ApiClientError, api, apiRaw, toApiError } from "@/lib/fetcher";
 import type { ProblemDetail } from "@/lib/problems";
@@ -152,6 +154,7 @@ export function Workspace({
   /** Why the last run produced nothing. Such a run isn't kept as an attempt, so it's explained in the results pane. */
   const [failure, setFailure] = useState<string | null>(null);
   const [playerIndex, setPlayerIndex] = useState(0);
+  const [caseIndex, setCaseIndex] = useState(0);
   const [tab, setTab] = useState("viz");
   const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
   const toggleStep = (id: string) =>
@@ -180,6 +183,7 @@ export function Workspace({
       setMode("view");
       setFailure(null);
       setPlayerIndex(0);
+      setCaseIndex(0);
       setTab("viz");
       setSelectedSteps([]);
       setAttempts((list) => list.map((a) => (a.id === attempt.id ? { ...a, status: attempt.status, verdict: attempt.verdict } : a)));
@@ -221,6 +225,7 @@ export function Workspace({
         setViewing(attempt);
         setMode("view");
         setPlayerIndex(0);
+        setCaseIndex(0);
         setAttempts((list) => list.map((a) => (a.id === attempt.id ? { ...a, status: attempt.status, verdict: attempt.verdict } : a)));
         router.refresh();
       } catch (err) {
@@ -666,13 +671,17 @@ export function Workspace({
     );
   } else if (mode === "view" && viewing?.vizSpec) {
     const spec = viewing.vizSpec;
+    const shownCase = Math.min(caseIndex, spec.cases.length - 1);
+    const showStep = (ci: number, si: number) => {
+      setCaseIndex(ci);
+      setPlayerIndex(si);
+      setTab("viz");
+    };
     right = (
       <div className="flex flex-col gap-3 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <VerdictBadge verdict={spec.summary.verdict} />
-          <p className="min-w-0 flex-1 text-sm text-muted-foreground">
-            Input: <span className="font-mono text-foreground">{spec.summary.testInputDescription}</span>
-          </p>
+          <p className="min-w-0 flex-1 text-sm text-muted-foreground">{casesPassedText(spec)}</p>
           <UsageBadge attempt={viewing} />
           {viewing.specVersions.length > 1 && (
             <Select
@@ -701,10 +710,11 @@ export function Workspace({
             <TabsTrigger value="diagnosis">Diagnosis</TabsTrigger>
             <TabsTrigger value="hints">Hints</TabsTrigger>
           </TabsList>
-          <TabsContent value="viz" className="pt-3">
+          <TabsContent value="viz" className="flex flex-col gap-3 pt-3">
+            <CaseBar spec={spec} caseIndex={shownCase} onCaseChange={(ci) => showStep(ci, 0)} gives="Your code gives" />
             <Player
-              key={`${viewing.id}-${viewing.specVersion}`}
-              spec={spec}
+              key={`${viewing.id}-${viewing.specVersion}-${shownCase}`}
+              spec={caseView(spec, shownCase)}
               language={problem.language}
               index={playerIndex}
               onIndexChange={setPlayerIndex}
@@ -714,24 +724,10 @@ export function Workspace({
             />
           </TabsContent>
           <TabsContent value="diagnosis" className="pt-3">
-            <DiagnosisPanel
-              key={`${viewing.id}-${viewing.specVersion}`}
-              spec={spec}
-              onJumpToStep={(i) => {
-                setPlayerIndex(i);
-                setTab("viz");
-              }}
-            />
+            <DiagnosisPanel key={`${viewing.id}-${viewing.specVersion}`} spec={spec} onJumpToStep={showStep} />
           </TabsContent>
           <TabsContent value="hints" className="pt-3">
-            <HintsPanel
-              key={`${viewing.id}-${viewing.specVersion}`}
-              spec={spec}
-              onJumpToStep={(i) => {
-                setPlayerIndex(i);
-                setTab("viz");
-              }}
-            />
+            <HintsPanel key={`${viewing.id}-${viewing.specVersion}`} spec={spec} onJumpToStep={showStep} />
           </TabsContent>
         </Tabs>
         <ChatDock
@@ -739,7 +735,8 @@ export function Workspace({
           dock={chatDock}
           endpoint={`/api/attempts/${viewing.id}/messages`}
           specVersion={viewing.specVersion}
-          steps={spec.steps}
+          caseId={spec.cases[shownCase].id}
+          stepRefs={stepRefs(spec)}
           selectedStepIds={selectedSteps}
           onToggleStep={toggleStep}
           onClearSelection={() => setSelectedSteps([])}

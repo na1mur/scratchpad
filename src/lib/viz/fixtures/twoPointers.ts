@@ -1,11 +1,11 @@
-import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
+import type { VizSpecV1 } from "@/lib/ai/schemas/vizSpec";
 import { recorder } from "./builder";
 
 // Two Sum II on a sorted array, with the pointer moves inverted.
 const nums = [1, 3, 4, 6, 8, 11];
 const target = 10;
 
-export function twoPointersFixture(): VizSpec {
+export function twoPointersFixture(): VizSpecV1 {
   const r = recorder();
   const arr = { kind: "array" as const, values: nums };
   const vars = (left: number, right: number, sum: number | null) => ({

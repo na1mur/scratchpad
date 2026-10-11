@@ -24,6 +24,8 @@ import {
   type WireState,
 } from "@/lib/ai/schemas/pipeline";
 import {
+  MAX_CASES,
+  MIN_CASES,
   formatSpecIssues,
   structureStateSchema,
   vizSpecSchema,
@@ -31,6 +33,7 @@ import {
   type Step,
   type Structure,
   type StructureState,
+  type TestCase,
   type VizSpec,
 } from "@/lib/ai/schemas/vizSpec";
 import { PipelineError, generateStructured, type UsageMeter } from "./llm";
@@ -54,10 +57,12 @@ function withReference(ctx: Ctx) {
 /** Steering from a follow-up question when regenerating a visualization. */
 export type Guidance = { reason: string; focus?: string; newTestInput?: string };
 
-export type TraceResult = {
+/** A test case as the pipeline carries it. `expected` is the correct answer, in words or JSON. */
+export type PipelineCase = { id: string; label: string; description: string; args: Record<string, unknown>; expected: string };
+
+/** One case's run. Step ids carry the case id ("c2-s5"), so they're unique across cases. */
+export type CaseTrace = PipelineCase & {
   mode: "execution" | "simulation";
-  codeLines: string[];
-  addedLines: number[];
   structures: Structure[];
   loops: Loop[];
   steps: Step[];
@@ -66,16 +71,60 @@ export type TraceResult = {
   runNote: string | null;
 };
 
+export type TraceResult = {
+  /** "execution" only when every case ran in the sandbox. */
+  mode: "execution" | "simulation";
+  codeLines: string[];
+  addedLines: number[];
+  cases: CaseTrace[];
+};
+
 const instr = (ctx: Ctx, role: string) => baseInstructions(ctx.learner.language, role);
 
 function guidanceBlock(g?: Guidance) {
   if (!g) return "";
   return `\n\n<regeneration_request>\nThe learner asked for a new visualization. Reason: ${g.reason}${
     g.focus ? `\nFocus on: ${g.focus}` : ""
-  }${g.newTestInput ? `\nUse this test input instead: ${g.newTestInput}` : ""}\n</regeneration_request>`;
+  }${g.newTestInput ? `\nMake this input the first test case: ${g.newTestInput}` : ""}\n</regeneration_request>`;
 }
 
 // Stage 1 ---------------------------------------------------------------
+
+/** Understandings stored before test cases existed have a single `chosenTestInput` instead. */
+export function hasTestCases(u: unknown): u is Understanding {
+  return Boolean(u && typeof u === "object" && Array.isArray((u as Understanding).testCases));
+}
+
+function parseArgs(json: string): Record<string, unknown> | null {
+  try {
+    const args = JSON.parse(json);
+    return args && typeof args === "object" && !Array.isArray(args) ? args : null;
+  } catch {
+    return null;
+  }
+}
+
+export function casesOf(u: Understanding): PipelineCase[] {
+  return u.testCases.slice(0, MAX_CASES).map((c, i) => ({
+    id: `c${i + 1}`,
+    label: c.label.trim() || `Case ${i + 1}`,
+    description: c.description,
+    args: parseArgs(c.argumentsJson) ?? {},
+    expected: c.expectedOutput,
+  }));
+}
+
+/** Rules every model-chosen set of test cases must follow, attempts and solutions alike. */
+export function checkTestCases(cases: { argumentsJson: string }[]): string[] {
+  const issues: string[] = [];
+  if (cases.length < MIN_CASES) issues.push(`- give at least ${MIN_CASES} testCases covering different situations`);
+  cases.forEach((c, i) => {
+    if (!parseArgs(c.argumentsJson)) issues.push(`- testCases[${i}].argumentsJson must be a valid JSON object of named arguments`);
+  });
+  const unique = new Set(cases.map((c) => c.argumentsJson.replace(/\s+/g, "")));
+  if (unique.size < cases.length) issues.push("- two testCases have the same arguments; every case must be a different input");
+  return issues;
+}
 
 export function understand(ctx: Ctx, guidance?: Guidance): Promise<Understanding> {
   return generateStructured({
@@ -86,21 +135,22 @@ export function understand(ctx: Ctx, guidance?: Guidance): Promise<Understanding
     instructions: instr(ctx, UNDERSTAND_ROLE),
     prompt: `${learnerContext(ctx.learner)}${withReference(ctx)}${guidanceBlock(guidance)}`,
     check: (u) => {
-      try {
-        const args = JSON.parse(u.chosenTestInput.argumentsJson);
-        if (!args || typeof args !== "object" || Array.isArray(args)) throw new Error("not an object");
-        return { ok: true, value: u };
-      } catch {
-        return { ok: false, issues: "- chosenTestInput.argumentsJson must be a valid JSON object of named arguments" };
-      }
+      const issues = checkTestCases(u.testCases);
+      return issues.length ? { ok: false, issues: issues.join("\n") } : { ok: true, value: u };
     },
   });
 }
 
 // Stage 2: execution path ------------------------------------------------
 
-function inputBlock(u: Understanding) {
-  return `<test_input>\n${u.chosenTestInput.description}\narguments: ${u.chosenTestInput.argumentsJson}\nexpected (correct) output: ${u.expectedOutput}\n</test_input>`;
+function caseBlock(c: PipelineCase) {
+  return `<test_input case="${c.id}" label="${c.label}">\n${c.description}\narguments: ${JSON.stringify(c.args)}\nexpected (correct) output: ${c.expected}\n</test_input>`;
+}
+
+function casesBlock(cases: PipelineCase[]) {
+  return `<test_cases>\n${cases
+    .map((c) => `${c.id} (${c.label}): ${c.description}\narguments: ${JSON.stringify(c.args)}\nexpected (correct) output: ${c.expected}`)
+    .join("\n\n")}\n</test_cases>`;
 }
 
 export function checkDeclarations(t: { codeLines: string[]; addedLines: number[]; structures: Structure[]; loops: Loop[] }): string[] {
@@ -132,14 +182,61 @@ export function runNoteFor(result: SandboxResult): string | null {
   }
 }
 
-async function translate(ctx: Ctx, u: Understanding, feedback: string, guidance?: Guidance): Promise<Translation> {
+export function actualOutputOf(result: SandboxResult): string {
+  return result.outcome === "ok" ? (result.returnValue ?? "undefined") : (runNoteFor(result) ?? "error");
+}
+
+/** Gives a case's steps ids that are unique across cases. */
+export function prefixStepIds(caseId: string, steps: Step[]): Step[] {
+  return steps.map((s) => ({ ...s, id: `${caseId}-${s.id}` }));
+}
+
+/** A program's runs on every case, turned into steps. */
+export type ProgramRun = { result: SandboxResult; steps: Step[] };
+
+/**
+ * Runs one instrumented program on every case. `problem` describes what's wrong with the program
+ * itself (it should be translated again); a case it couldn't trace on its own is a null run, for the
+ * caller to simulate instead.
+ */
+export async function runOnCases(
+  t: { program: string; structures: Structure[]; loops: Loop[] },
+  cases: PipelineCase[],
+  lineCount: number,
+): Promise<{ runs: (ProgramRun | null)[]; problem: string | null }> {
+  const results = await Promise.all(cases.map((c) => runInSandbox(t.program, c.args)));
+  const parsed = results.map((r) => eventsToSteps(r.events, t.structures, t.loops, lineCount));
+
+  const invalid = results.find((r) => r.outcome === "invalid_program");
+  const unknown = new Set(parsed.flatMap((p) => [...p.problems.unknownStructures]));
+  const badStates = parsed.reduce((n, p) => n + p.problems.badStates, 0);
+  const tooManyBad = parsed.some((p) => p.problems.badStates > p.steps.length);
+  const noneTraced = parsed.every((p) => p.steps.length === 0);
+  const problem = [
+    invalid ? `The program didn't load: ${invalid.errorMessage}` : null,
+    noneTraced && !invalid
+      ? `It made no trace() calls on any case${results[0].outcome === "runtime_error" ? ` (it crashed: ${results[0].errorMessage})` : ""}.`
+      : null,
+    unknown.size ? `trace() used structure ids that aren't declared: ${[...unknown].join(", ")}` : null,
+    tooManyBad ? `${badStates} snapshots were malformed; build states only with the S.* helpers.` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return {
+    runs: results.map((result, i) => (parsed[i].steps.length ? { result, steps: parsed[i].steps } : null)),
+    problem: problem || null,
+  };
+}
+
+async function translate(ctx: Ctx, cases: PipelineCase[], feedback: string, guidance?: Guidance): Promise<Translation> {
   return generateStructured({
     model: ctx.model,
     meter: ctx.meter,
     name: "instrumented program",
     schema: translationSchema,
     instructions: instr(ctx, TRANSLATE_ROLE),
-    prompt: `${learnerContext(ctx.learner)}\n\n${inputBlock(u)}${guidanceBlock(guidance)}${
+    prompt: `${learnerContext(ctx.learner)}\n\n${casesBlock(cases)}${guidanceBlock(guidance)}${
       feedback ? `\n\n<previous_program_failed>\n${feedback}\n</previous_program_failed>` : ""
     }`,
     maxOutputTokens: 12_000,
@@ -151,69 +248,32 @@ async function translate(ctx: Ctx, u: Understanding, feedback: string, guidance?
 }
 
 /**
- * Translate to instrumented JS and run it in QuickJS. A failed translation
- * gets one retry with the error; returns null when execution isn't usable
- * so the caller can fall back to simulation.
+ * Translates to instrumented JS once and runs it in QuickJS on every case. A broken program gets one
+ * retry with the error; returns null when execution isn't usable at all, so the caller falls back to
+ * simulation. Cases the program couldn't trace come back as null runs.
  */
-export async function traceByExecution(ctx: Ctx, u: Understanding, guidance?: Guidance): Promise<TraceResult | null> {
-  const args = JSON.parse(u.chosenTestInput.argumentsJson);
+async function executeAll(
+  ctx: Ctx,
+  cases: PipelineCase[],
+  guidance?: Guidance,
+): Promise<{ t: Translation; runs: (ProgramRun | null)[] } | null> {
   let feedback = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     let t: Translation;
     try {
-      t = await translate(ctx, u, feedback, guidance);
+      t = await translate(ctx, cases, feedback, guidance);
     } catch (err) {
       if (err instanceof PipelineError && err.code === "invalid_output") return null;
       throw err;
     }
-    const result = await runInSandbox(t.program, args);
-    const { steps, problems } = eventsToSteps(result.events, t.structures, t.loops, t.codeLines.length);
-
-    const brokenProgram =
-      result.outcome === "invalid_program" ||
-      steps.length === 0 ||
-      problems.badStates > steps.length ||
-      problems.unknownStructures.size > 0;
-    if (brokenProgram) {
-      feedback = [
-        result.outcome === "invalid_program" ? `The program didn't load: ${result.errorMessage}` : null,
-        result.outcome === "runtime_error" && steps.length === 0
-          ? `It crashed before the first trace() call: ${result.errorMessage}`
-          : null,
-        steps.length === 0 && result.outcome !== "invalid_program" ? "It made no trace() calls." : null,
-        problems.unknownStructures.size
-          ? `trace() used structure ids that aren't declared: ${[...problems.unknownStructures].join(", ")}`
-          : null,
-        problems.badStates ? `${problems.badStates} snapshots were malformed; build states only with the S.* helpers.` : null,
-      ]
-        .filter(Boolean)
-        .join("\n");
-      continue;
-    }
-
-    const collapsed = collapseSteps(steps, t.loops);
-    const narrated = await narrate(ctx, u, t, collapsed, result);
-    return {
-      mode: "execution",
-      codeLines: t.codeLines,
-      addedLines: t.addedLines,
-      structures: t.structures,
-      loops: t.loops,
-      steps: narrated,
-      actualOutput: result.outcome === "ok" ? (result.returnValue ?? "undefined") : (runNoteFor(result) ?? "error"),
-      runNote: runNoteFor(result),
-    };
+    const { runs, problem } = await runOnCases(t, cases, t.codeLines.length);
+    if (!problem) return { t, runs };
+    feedback = problem;
   }
   return null;
 }
 
-async function narrate(
-  ctx: Ctx,
-  u: Understanding,
-  t: { codeLines: string[] },
-  steps: Step[],
-  result: SandboxResult,
-): Promise<Step[]> {
+async function narrate(ctx: Ctx, u: Understanding, c: PipelineCase, codeLines: string[], steps: Step[], result: SandboxResult) {
   const ids = steps.map((s) => s.id);
   const narration = await generateStructured({
     model: ctx.model,
@@ -221,11 +281,11 @@ async function narrate(
     name: "step narration",
     schema: narrationSchema,
     instructions: instr(ctx, NARRATE_ROLE),
-    prompt: `${learnerContext(ctx.learner)}\n\n${inputBlock(u)}\n\n<suspected_issue>${u.suspectedIssue}</suspected_issue>\n\n<code_lines>\n${t.codeLines
+    prompt: `${learnerContext(ctx.learner)}\n\n${caseBlock(c)}\n\n<suspected_issue>${u.suspectedIssue}</suspected_issue>\n\n<code_lines>\n${codeLines
       .map((l, i) => `${i + 1}: ${l}`)
       .join("\n")}\n</code_lines>\n\n<run_result>${
       result.outcome === "ok" ? `returned ${result.returnValue}` : runNoteFor(result)
-    }</run_result>\n\n<trace>\n${describeSteps(steps, t.codeLines)}\n</trace>\n\nNarrate every step id: ${ids.join(", ")}.`,
+    }</run_result>\n\n<trace>\n${describeSteps(steps, codeLines)}\n</trace>\n\nNarrate every step id: ${ids.join(", ")}.`,
     maxOutputTokens: 16_000,
     check: (n) => {
       const got = new Set(n.steps.map((s) => s.id));
@@ -334,80 +394,150 @@ export function simulationToSteps(sim: Simulation): { steps: Step[]; issues: str
   return { steps, issues };
 }
 
-/** Fallback: the model simulates the whole run itself. */
-export async function traceBySimulation(ctx: Ctx, u: Understanding, guidance?: Guidance): Promise<TraceResult> {
+/** Validates one case's walkthrough on its own, in the shape of a whole spec. */
+export function checkCaseShape(
+  code: { codeLines: string[]; addedLines: number[] },
+  c: Pick<TestCase, "structures" | "loops" | "steps">,
+): string | null {
+  const probe = vizSpecSchema.safeParse({
+    version: 2,
+    summary: { understoodApproach: "-", verdict: "unclear" },
+    codeLines: code.codeLines,
+    ...(code.addedLines.length && { addedLines: code.addedLines }),
+    cases: [{ id: "c1", label: "-", input: "-", expectedOutput: "", actualOutput: "", ...c }],
+    diagnosis: { whatGoesWrong: "", whyItGoesWrong: "", bugStepIds: [], thinkingHints: [] },
+  } satisfies VizSpec);
+  return probe.success ? null : formatSpecIssues(probe.error);
+}
+
+/**
+ * Fallback: the model simulates one case by hand. With `fixed`, the code was already completed (by
+ * the translation or an earlier case's simulation) and every case must use the same lines.
+ */
+async function traceBySimulation(
+  ctx: Ctx,
+  c: PipelineCase,
+  guidance?: Guidance,
+  fixed?: { codeLines: string[]; addedLines: number[] },
+): Promise<{ codeLines: string[]; addedLines: number[]; trace: CaseTrace }> {
+  const completed = fixed
+    ? `\n\n<completed_code note="0-based line numbers; added lines: ${fixed.addedLines.join(", ") || "none"}">\n${fixed.codeLines
+        .map((l, i) => `${i}: ${l}`)
+        .join("\n")}\n</completed_code>`
+    : "";
   return generateStructured({
     model: ctx.model,
     meter: ctx.meter,
     name: "simulated trace",
     schema: simulationSchema,
     instructions: instr(ctx, SIMULATE_ROLE),
-    prompt: `${learnerContext(ctx.learner)}\n\n${inputBlock(u)}${guidanceBlock(guidance)}`,
+    prompt: `${learnerContext(ctx.learner)}\n\n${caseBlock(c)}${completed}${guidanceBlock(guidance)}`,
     maxOutputTokens: 32_000,
-    check: (sim) => {
+    check: (raw) => {
+      // Line numbers must point into the shared code, whatever the model copied back.
+      const sim = fixed ? { ...raw, ...fixed } : raw;
       const decl = checkDeclarations(sim);
       const { steps, issues } = simulationToSteps(sim);
       const all = [...decl, ...issues];
-      // Validate the assembled shape with a placeholder summary/diagnosis.
-      const probe = vizSpecSchema.safeParse(assemble(sim, steps, placeholderDiagnosis(sim.actualOutput)));
-      if (!probe.success) all.push(formatSpecIssues(probe.error));
+      const shape = checkCaseShape(sim, { structures: sim.structures, loops: sim.loops, steps });
+      if (shape) all.push(shape);
       if (all.length) return { ok: false, issues: all.slice(0, 20).join("\n") };
       return {
         ok: true,
         value: {
-          mode: "simulation" as const,
           codeLines: sim.codeLines,
           addedLines: sim.addedLines,
-          structures: sim.structures,
-          loops: sim.loops,
-          steps,
-          actualOutput: sim.actualOutput,
-          runNote: null,
+          trace: {
+            ...c,
+            mode: "simulation" as const,
+            structures: sim.structures,
+            loops: sim.loops,
+            steps: prefixStepIds(c.id, steps),
+            actualOutput: sim.actualOutput,
+            runNote: null,
+          },
         },
       };
     },
   });
 }
 
-// Stage 3 ---------------------------------------------------------------
+/**
+ * Stage 2 for every case: one translation run on each case, narrated per case in parallel. A case
+ * the program can't trace is simulated by hand instead, on the same completed code.
+ */
+export async function traceCases(ctx: Ctx, u: Understanding, guidance?: Guidance): Promise<TraceResult> {
+  const cases = casesOf(u);
+  const exec = await executeAll(ctx, cases, guidance);
+  const traces: (CaseTrace | null)[] = cases.map(() => null);
+  let shared: { codeLines: string[]; addedLines: number[] };
+  if (exec) {
+    shared = { codeLines: exec.t.codeLines, addedLines: exec.t.addedLines };
+  } else {
+    // With no translation at all, the first simulation completes the code the others then share.
+    const sim = await traceBySimulation(ctx, cases[0], guidance);
+    shared = { codeLines: sim.codeLines, addedLines: sim.addedLines };
+    traces[0] = sim.trace;
+  }
 
-function placeholderDiagnosis(actualOutput: string): DiagnosisOutput {
+  await Promise.all(
+    cases.map(async (c, i) => {
+      if (traces[i]) return;
+      const run = exec?.runs[i];
+      if (exec && run) {
+        const steps = prefixStepIds(c.id, collapseSteps(run.steps, exec.t.loops));
+        traces[i] = {
+          ...c,
+          mode: "execution",
+          structures: exec.t.structures,
+          loops: exec.t.loops,
+          steps: await narrate(ctx, u, c, shared.codeLines, steps, run.result),
+          actualOutput: actualOutputOf(run.result),
+          runNote: runNoteFor(run.result),
+        };
+      } else {
+        traces[i] = (await traceBySimulation(ctx, c, guidance, shared)).trace;
+      }
+    }),
+  );
+
+  const done = traces as CaseTrace[];
   return {
-    understoodApproach: "-",
-    verdict: "unclear",
-    actualOutput,
-    whatGoesWrong: "",
-    whyItGoesWrong: "",
-    bugStepIds: [],
-    failingInputs: [],
-    thinkingHints: [],
-    rethinkScope: "none",
-    brokenAssumption: "",
-    shiftInThinking: "",
+    mode: done.every((t) => t.mode === "execution") ? "execution" : "simulation",
+    codeLines: shared.codeLines,
+    addedLines: shared.addedLines,
+    cases: done,
   };
 }
 
-export function assemble(
-  trace: Pick<TraceResult, "codeLines" | "addedLines" | "structures" | "loops">,
-  steps: Step[],
-  d: DiagnosisOutput,
-  u?: Understanding,
-  autoTags?: string[],
-): VizSpec {
+// Stage 3 ---------------------------------------------------------------
+
+/**
+ * Builds the spec. The diagnosis decides which cases fail; failing cases come first (in the order the
+ * model chose them) so the one shown by default is where the code goes wrong.
+ */
+export function assemble(trace: TraceResult, d: DiagnosisOutput, u: Understanding, autoTags?: string[]): VizSpec {
+  const failing = new Set(d.failingCaseIds);
+  const ordered = [...trace.cases.filter((c) => failing.has(c.id)), ...trace.cases.filter((c) => !failing.has(c.id))];
   return {
-    version: 1,
+    version: 2,
     summary: {
-      understoodApproach: d.understoodApproach || u?.userApproachInOwnWords || "-",
+      understoodApproach: (d.understoodApproach || u.userApproachInOwnWords || "-").slice(0, 1200),
       verdict: d.verdict,
-      testInputDescription: u?.chosenTestInput.description ?? "-",
-      expectedOutput: u?.expectedOutput ?? "",
-      actualOutput: d.actualOutput,
     },
     codeLines: trace.codeLines,
     ...(trace.addedLines.length && { addedLines: [...new Set(trace.addedLines)].sort((a, b) => a - b) }),
-    structures: trace.structures,
-    loops: trace.loops,
-    steps,
+    cases: ordered.map((c) => ({
+      id: c.id,
+      label: c.label.slice(0, 60),
+      input: c.description.slice(0, 600) || "-",
+      expectedOutput: c.expected.slice(0, 400),
+      actualOutput: c.actualOutput.slice(0, 400),
+      passed: !failing.has(c.id),
+      structures: c.structures,
+      loops: c.loops,
+      steps: c.steps,
+    })),
     diagnosis: {
       whatGoesWrong: d.whatGoesWrong,
       whyItGoesWrong: d.whyItGoesWrong,
@@ -431,19 +561,24 @@ function addedLinesBlock(t: Pick<TraceResult, "codeLines" | "addedLines">): stri
 }
 
 export async function diagnose(ctx: Ctx, u: Understanding, trace: TraceResult, stricter = false): Promise<DiagnosisOutput> {
-  const stepIds = new Set(trace.steps.map((s) => s.id));
-  return generateStructured({
+  const stepIds = new Set(trace.cases.flatMap((c) => c.steps.map((s) => s.id)));
+  const caseIds = new Set(trace.cases.map((c) => c.id));
+  // Keep the whole prompt about the size a single trace used to be.
+  const perCase = Math.max(6_000, Math.floor(30_000 / trace.cases.length));
+  const results = trace.cases.map((c) => `${c.id}: actual output: ${c.actualOutput}${c.runNote ? `\n${c.runNote}` : ""}`).join("\n");
+  const traces = trace.cases
+    .map((c) => `<trace case="${c.id}">\n${describeSteps(c.steps, trace.codeLines, perCase)}\n</trace>`)
+    .join("\n\n");
+  const d = await generateStructured({
     model: ctx.model,
     meter: ctx.meter,
     name: "diagnosis",
     schema: diagnosisOutputSchema,
     instructions: instr(ctx, stricter ? `${DIAGNOSE_ROLE}\n\n${STRICTER_ADDENDUM}` : DIAGNOSE_ROLE),
-    prompt: `${learnerContext(ctx.learner)}${withReference(ctx)}\n\n${inputBlock(u)}\n\n<their_approach>${u.userApproachInOwnWords}</their_approach>\n<assumptions>${u.keyInvariantsUserAssumes.join("; ")}</assumptions>${addedLinesBlock(trace)}\n\n<run_result>\nactual output: ${trace.actualOutput}${
-      trace.runNote ? `\n${trace.runNote}` : ""
-    }\n</run_result>\n\n<trace>\n${describeSteps(trace.steps, trace.codeLines)}\n</trace>`,
+    prompt: `${learnerContext(ctx.learner)}${withReference(ctx)}\n\n${casesBlock(trace.cases)}\n\n<their_approach>${u.userApproachInOwnWords}</their_approach>\n<assumptions>${u.keyInvariantsUserAssumes.join("; ")}</assumptions>${addedLinesBlock(trace)}\n\n<run_results>\n${results}\n</run_results>\n\n${traces}`,
     check: (d) => {
       const unknown = d.bugStepIds.filter((id) => !stepIds.has(id));
-      if (unknown.length) return { ok: false, issues: `- bugStepIds not in the trace: ${unknown.join(", ")}` };
+      if (unknown.length) return { ok: false, issues: `- bugStepIds not in the traces: ${unknown.join(", ")}` };
       if (d.verdict !== "works" && d.thinkingHints.length < 2) {
         return { ok: false, issues: "- give 2–4 progressive thinkingHints" };
       }
@@ -453,6 +588,7 @@ export async function diagnose(ctx: Ctx, u: Understanding, trace: TraceResult, s
       return { ok: true, value: d };
     },
   });
+  return { ...d, failingCaseIds: d.failingCaseIds.filter((id) => caseIds.has(id)) };
 }
 
 /** Lightweight check: does this text give away a working solution? */

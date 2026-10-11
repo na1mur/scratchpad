@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronRightIcon, ChevronsRightIcon, RepeatIcon } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
-import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
+import type { CaseSpec } from "@/lib/ai/schemas/vizSpec";
 import { outlineRows } from "@/lib/viz/prepare";
 
 /**
@@ -17,7 +17,7 @@ export function StepOutline({
   current,
   onSeek,
 }: {
-  spec: VizSpec;
+  spec: CaseSpec;
   current: number;
   onSeek: (index: number) => void;
 }) {

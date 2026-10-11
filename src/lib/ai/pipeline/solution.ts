@@ -20,7 +20,7 @@ import {
   type SolutionPlan,
   type SolutionRequestKind,
 } from "@/lib/ai/schemas/solution";
-import { formatSpecIssues, vizSpecSchema, type Loop, type Step, type Structure, type VizSpec } from "@/lib/ai/schemas/vizSpec";
+import { MAX_CASES, formatSpecIssues, vizSpecSchema, type Loop, type Step, type Structure, type VizSpec } from "@/lib/ai/schemas/vizSpec";
 import { connectDB } from "@/lib/db";
 import { ensureProblemReference, type Reference } from "@/lib/problemReference";
 import { userSearchKey } from "@/lib/tavily";
@@ -34,9 +34,19 @@ import { Solution, type SolutionStatus } from "@/models/Solution";
 import { User } from "@/models/User";
 import { emit } from "./events";
 import { PipelineError, UsageMeter, generateStructured } from "./llm";
-import { runInSandbox, type SandboxResult } from "./sandbox";
-import { checkDeclarations, runNoteFor, simulationToSteps } from "./stages";
-import { collapseSteps, describeSteps, eventsToSteps } from "./steps";
+import type { SandboxResult } from "./sandbox";
+import {
+  actualOutputOf,
+  checkCaseShape,
+  checkDeclarations,
+  checkTestCases,
+  prefixStepIds,
+  runNoteFor,
+  runOnCases,
+  simulationToSteps,
+  type PipelineCase,
+} from "./stages";
+import { collapseSteps, describeSteps } from "./steps";
 
 /**
  * `source` (the linked page's text) and `reference` (known solutions from the web) only go to the solve
@@ -51,12 +61,14 @@ type SolveCtx = {
   reference: Reference | null;
 };
 
-type Trace = {
+/** One case's walkthrough. `passed` is set only for a case that ran: whether it returned the expected value. */
+type CaseTrace = PipelineCase & {
   mode: "execution" | "simulation";
   structures: Structure[];
   loops: Loop[];
   steps: Step[];
   actualOutput: string;
+  passed?: boolean;
 };
 
 const instr = (ctx: SolveCtx, role: string) => solutionInstructions(ctx.language, role);
@@ -67,8 +79,25 @@ function codeBlock(plan: SolutionPlan) {
   return `<solution_code note="0-based line numbers">\n${numbered(plan.codeLines)}\n</solution_code>`;
 }
 
-function inputBlock(plan: SolutionPlan) {
-  return `<test_input>\n${plan.testInput.description}\narguments: ${plan.testInput.argumentsJson}\nexpected return: ${plan.expectedReturnJson}\n</test_input>`;
+/** `expected` holds the expected return value as JSON. */
+function casesOf(plan: SolutionPlan): PipelineCase[] {
+  return plan.testCases.slice(0, MAX_CASES).map((c, i) => ({
+    id: `c${i + 1}`,
+    label: c.label.trim() || `Case ${i + 1}`,
+    description: c.description,
+    args: JSON.parse(c.argumentsJson),
+    expected: c.expectedReturnJson,
+  }));
+}
+
+function caseBlock(c: PipelineCase) {
+  return `<test_input case="${c.id}" label="${c.label}">\n${c.description}\narguments: ${JSON.stringify(c.args)}\nexpected return: ${c.expected}\n</test_input>`;
+}
+
+function casesBlock(cases: PipelineCase[]) {
+  return `<test_cases>\n${cases
+    .map((c) => `${c.id} (${c.label}): ${c.description}\narguments: ${JSON.stringify(c.args)}\nexpected return: ${c.expected}`)
+    .join("\n\n")}\n</test_cases>`;
 }
 
 /** Loose equality for return values: whitespace, quote style and case don't count. */
@@ -144,17 +173,14 @@ function solve(ctx: SolveCtx, pc: PlanContext, feedback = ""): Promise<SolutionP
       if (p.codeLines.length > 200) issues.push("- codeLines is too long; keep the solution under 200 lines");
       const outside = p.lineNotes.filter((n) => n.line < 0 || n.line >= p.codeLines.length).map((n) => n.line);
       if (outside.length) issues.push(`- lineNotes lines ${outside.join(", ")} are outside codeLines`);
-      try {
-        const args = JSON.parse(p.testInput.argumentsJson);
-        if (!args || typeof args !== "object" || Array.isArray(args)) throw new Error();
-      } catch {
-        issues.push("- testInput.argumentsJson must be a valid JSON object of named arguments");
-      }
-      try {
-        JSON.parse(p.expectedReturnJson);
-      } catch {
-        issues.push("- expectedReturnJson must be valid JSON");
-      }
+      issues.push(...checkTestCases(p.testCases));
+      p.testCases.forEach((c, i) => {
+        try {
+          JSON.parse(c.expectedReturnJson);
+        } catch {
+          issues.push(`- testCases[${i}].expectedReturnJson must be valid JSON`);
+        }
+      });
       return issues.length ? { ok: false, issues: issues.join("\n") } : { ok: true, value: p };
     },
   });
@@ -162,19 +188,23 @@ function solve(ctx: SolveCtx, pc: PlanContext, feedback = ""): Promise<SolutionP
 
 // Stage 2: trace ------------------------------------------------------------
 
-type Run = { trace: Trace; result: SandboxResult; matched: boolean };
+type CaseRun = { result: SandboxResult; steps: Step[]; matched: boolean };
+type Execution = { structures: Structure[]; loops: Loop[]; runs: (CaseRun | null)[] };
+
+const matchedShare = (e: Execution) => e.runs.filter((r) => r?.matched).length / e.runs.length;
+const allMatched = (e: Execution) => e.runs.every((r) => r?.matched);
 
 /**
- * Runs an instrumented copy of the solution, without narration. Returns null
- * when execution isn't usable so the caller can fall back to simulation.
- * A run whose result disagrees with the expected one gets one more
- * translation; if that doesn't help, the mismatched run is returned.
+ * Runs an instrumented copy of the solution on every case, without narration. Returns null when
+ * execution isn't usable so the caller can fall back to simulation. A program that disagrees with an
+ * expected value gets one more translation; the run that matched more cases is returned. Cases the
+ * program couldn't trace are null runs, to be simulated.
  */
-async function traceByExecution(ctx: SolveCtx, plan: SolutionPlan): Promise<Run | null> {
-  const args = JSON.parse(plan.testInput.argumentsJson);
+async function executeAll(ctx: SolveCtx, plan: SolutionPlan): Promise<Execution | null> {
+  const cases = casesOf(plan);
   const lineCount = plan.codeLines.length;
   let feedback = "";
-  let mismatched: Run | null = null;
+  let best: Execution | null = null;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     let t;
@@ -185,7 +215,7 @@ async function traceByExecution(ctx: SolveCtx, plan: SolutionPlan): Promise<Run 
         name: "instrumented solution",
         schema: solutionTranslationSchema,
         instructions: instr(ctx, SOLUTION_TRANSLATE_ROLE),
-        prompt: `<problem>\n${ctx.statement}\n</problem>\n\n${codeBlock(plan)}\n\n${inputBlock(plan)}${
+        prompt: `<problem>\n${ctx.statement}\n</problem>\n\n${codeBlock(plan)}\n\n${casesBlock(cases)}${
           feedback ? `\n\n<previous_program_failed>\n${feedback}\n</previous_program_failed>` : ""
         }`,
         maxOutputTokens: 12_000,
@@ -195,53 +225,44 @@ async function traceByExecution(ctx: SolveCtx, plan: SolutionPlan): Promise<Run 
         },
       });
     } catch (err) {
-      if (err instanceof PipelineError && err.code === "invalid_output") return mismatched;
+      if (err instanceof PipelineError && err.code === "invalid_output") return best;
       throw err;
     }
 
-    const result = await runInSandbox(t.program, args);
-    const { steps, problems } = eventsToSteps(result.events, t.structures, t.loops, lineCount);
-    const broken =
-      result.outcome === "invalid_program" ||
-      steps.length === 0 ||
-      problems.badStates > steps.length ||
-      problems.unknownStructures.size > 0;
-    if (broken) {
-      feedback = [
-        result.outcome === "invalid_program" ? `The program didn't load: ${result.errorMessage}` : null,
-        steps.length === 0 ? `It made no trace() calls${result.errorMessage ? ` (${result.errorMessage})` : ""}.` : null,
-        problems.unknownStructures.size
-          ? `trace() used structure ids that aren't declared: ${[...problems.unknownStructures].join(", ")}`
-          : null,
-        problems.badStates ? `${problems.badStates} snapshots were malformed; build states only with the S.* helpers.` : null,
-      ]
-        .filter(Boolean)
-        .join("\n");
+    const { runs, problem } = await runOnCases(t, cases, lineCount);
+    if (problem) {
+      feedback = problem;
       continue;
     }
-
-    const run: Run = {
-      trace: {
-        mode: "execution",
-        structures: t.structures,
-        loops: t.loops,
-        steps: collapseSteps(steps, t.loops),
-        actualOutput: result.outcome === "ok" ? (result.returnValue ?? "undefined") : (runNoteFor(result) ?? "error"),
-      },
-      result,
-      matched: result.outcome === "ok" && sameResult(result.returnValue, plan.expectedReturnJson),
+    const execution: Execution = {
+      structures: t.structures,
+      loops: t.loops,
+      runs: runs.map((r, i) =>
+        r ? { ...r, matched: r.result.outcome === "ok" && sameResult(r.result.returnValue, cases[i].expected) } : null,
+      ),
     };
-    if (run.matched) return run;
-    mismatched = run;
-    feedback = `The program ${
-      result.outcome === "ok" ? `returned ${result.returnValue}` : (runNoteFor(result) ?? "failed")
-    }, but the solution should return ${plan.expectedReturnJson}. Check that the program follows <solution_code> exactly.`;
+    if (!best || matchedShare(execution) > matchedShare(best)) best = execution;
+    if (allMatched(execution)) return execution;
+    feedback = `${mismatches(cases, execution)}\nCheck that the program follows <solution_code> exactly and builds its input from the arguments it's given.`;
   }
-  return mismatched;
+  return best;
 }
 
-async function withNarration<T extends Trace>(ctx: SolveCtx, plan: SolutionPlan, trace: T, result: SandboxResult): Promise<T> {
-  const ids = trace.steps.map((s) => s.id);
+/** The cases a run got wrong, for retry prompts. */
+function mismatches(cases: PipelineCase[], e: Execution): string {
+  return cases
+    .map((c, i) => {
+      const run = e.runs[i];
+      if (run?.matched) return null;
+      const got = run ? actualOutputOf(run.result) : "made no trace() calls";
+      return `- ${c.id} (${c.description}): got ${got}, expected ${c.expected}`;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function narrate(ctx: SolveCtx, plan: SolutionPlan, c: PipelineCase, steps: Step[], result: SandboxResult): Promise<Step[]> {
+  const ids = steps.map((s) => s.id);
   const narration = await generateStructured({
     model: ctx.model,
     meter: ctx.meter,
@@ -250,9 +271,9 @@ async function withNarration<T extends Trace>(ctx: SolveCtx, plan: SolutionPlan,
     instructions: instr(ctx, SOLUTION_NARRATE_ROLE),
     prompt: `<problem>\n${ctx.statement}\n</problem>\n\n<approach>${plan.name}: ${plan.summary}\nKey ideas: ${plan.keyIdeas.join("; ")}</approach>\n\n${codeBlock(
       plan,
-    )}\n\n${inputBlock(plan)}\n\n<run_result>${
+    )}\n\n${caseBlock(c)}\n\n<run_result>${
       result.outcome === "ok" ? `returned ${result.returnValue}` : runNoteFor(result)
-    }</run_result>\n\n<trace note="line numbers here are 1-based">\n${describeSteps(trace.steps, plan.codeLines)}\n</trace>\n\nNarrate every step id: ${ids.join(", ")}.`,
+    }</run_result>\n\n<trace note="line numbers here are 1-based">\n${describeSteps(steps, plan.codeLines)}\n</trace>\n\nNarrate every step id: ${ids.join(", ")}.`,
     maxOutputTokens: 16_000,
     check: (n) => {
       const got = new Set(n.steps.map((s) => s.id));
@@ -264,39 +285,42 @@ async function withNarration<T extends Trace>(ctx: SolveCtx, plan: SolutionPlan,
     },
   });
   const byId = new Map(narration.steps.map((s) => [s.id, s]));
-  const steps = trace.steps.map((s) => {
+  return steps.map((s) => {
     const n = byId.get(s.id);
     if (!n || s.title.startsWith("…iterations")) return s;
     return { ...s, title: n.title.slice(0, 120) || s.title, explanation: n.explanation.slice(0, 600) };
   });
-  return { ...trace, steps };
 }
 
-/** Fallback: the model simulates the solution by hand. */
-function traceBySimulation(ctx: SolveCtx, plan: SolutionPlan): Promise<Trace> {
+/** Fallback: the model simulates the solution by hand on one case. */
+function traceBySimulation(ctx: SolveCtx, plan: SolutionPlan, c: PipelineCase): Promise<CaseTrace> {
   return generateStructured({
     model: ctx.model,
     meter: ctx.meter,
     name: "simulated trace",
     schema: simulationSchema,
     instructions: instr(ctx, SOLUTION_SIMULATE_ROLE),
-    prompt: `<problem>\n${ctx.statement}\n</problem>\n\n${codeBlock(plan)}\n\n${inputBlock(plan)}`,
+    prompt: `<problem>\n${ctx.statement}\n</problem>\n\n${codeBlock(plan)}\n\n${caseBlock(c)}`,
     maxOutputTokens: 32_000,
     check: (sim) => {
       // Line numbers must point into the plan's code, whatever the model copied back.
       const fixed = { ...sim, codeLines: plan.codeLines, addedLines: [] };
       const { steps, issues } = simulationToSteps(fixed);
       const all = [...checkDeclarations(fixed), ...issues];
-      const probe = vizSpecSchema.safeParse(assemble(plan, { mode: "simulation", ...fixed, steps }));
-      if (!probe.success) all.push(formatSpecIssues(probe.error));
+      const shape = checkCaseShape(fixed, { structures: sim.structures, loops: sim.loops, steps });
+      if (shape) all.push(shape);
       if (all.length) return { ok: false, issues: all.slice(0, 20).join("\n") };
       return {
         ok: true,
         value: {
+          ...c,
           mode: "simulation" as const,
           structures: sim.structures,
           loops: sim.loops,
-          steps: steps.map((s) => ({ ...s, isBugMoment: undefined })),
+          steps: prefixStepIds(
+            c.id,
+            steps.map((s) => ({ ...s, isBugMoment: undefined })),
+          ),
           actualOutput: sim.actualOutput,
         },
       };
@@ -304,20 +328,42 @@ function traceBySimulation(ctx: SolveCtx, plan: SolutionPlan): Promise<Trace> {
   });
 }
 
-function assemble(plan: SolutionPlan, trace: Trace): VizSpec {
+/** Every case's walkthrough: narrated runs where execution worked, simulations elsewhere, in parallel. */
+function traceCases(ctx: SolveCtx, plan: SolutionPlan, exec: Execution | null): Promise<CaseTrace[]> {
+  return Promise.all(
+    casesOf(plan).map(async (c, i): Promise<CaseTrace> => {
+      const run = exec?.runs[i];
+      if (!exec || !run) return traceBySimulation(ctx, plan, c);
+      const steps = prefixStepIds(c.id, collapseSteps(run.steps, exec.loops));
+      return {
+        ...c,
+        mode: "execution",
+        structures: exec.structures,
+        loops: exec.loops,
+        steps: await narrate(ctx, plan, c, steps, run.result),
+        actualOutput: actualOutputOf(run.result),
+        passed: run.matched,
+      };
+    }),
+  );
+}
+
+function assemble(plan: SolutionPlan, cases: CaseTrace[]): VizSpec {
   return {
-    version: 1,
-    summary: {
-      understoodApproach: (plan.summary || plan.name).slice(0, 1200),
-      verdict: "works",
-      testInputDescription: plan.testInput.description.slice(0, 600) || "-",
-      expectedOutput: plan.expectedReturnJson.slice(0, 400),
-      actualOutput: trace.actualOutput.slice(0, 400),
-    },
+    version: 2,
+    summary: { understoodApproach: (plan.summary || plan.name).slice(0, 1200), verdict: "works" },
     codeLines: plan.codeLines.map((l) => l.slice(0, 300)),
-    structures: trace.structures,
-    loops: trace.loops,
-    steps: trace.steps,
+    cases: cases.map((c) => ({
+      id: c.id,
+      label: c.label.slice(0, 60),
+      input: c.description.slice(0, 600) || "-",
+      expectedOutput: c.expected.slice(0, 400),
+      actualOutput: c.actualOutput.slice(0, 400),
+      ...(c.passed !== undefined && { passed: c.passed }),
+      structures: c.structures,
+      loops: c.loops,
+      steps: c.steps,
+    })),
     diagnosis: { whatGoesWrong: "", whyItGoesWrong: "", bugStepIds: [], thinkingHints: [] },
   };
 }
@@ -408,28 +454,29 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
     let plan = await solve(ctx, pc);
 
     await setStatus(solutionId, "tracing");
-    let run = await traceByExecution(ctx, plan);
-    if (run && !run.matched) {
+    let exec = await executeAll(ctx, plan);
+    if (exec && !allMatched(exec)) {
       // Even a faithful program disagrees, so the code itself may be wrong: ask for a fix once and keep
-      // whichever run checks out.
+      // whichever version gets more cases right.
       const retryPlan = await solve(
         ctx,
         pc,
-        `Running your solution on ${plan.testInput.description} returned ${run.trace.actualOutput}, but you said it returns ${plan.expectedReturnJson}. Fix the solution (or the expected value if that was wrong).`,
+        `Running your solution gave results that differ from the ones you said it returns:\n${mismatches(casesOf(plan), exec)}\nFix the solution (or an expected value if that was wrong).`,
       );
-      const retry = await traceByExecution(ctx, retryPlan);
-      if (retry?.matched) {
+      const retry = await executeAll(ctx, retryPlan);
+      if (retry && (allMatched(retry) || matchedShare(retry) > matchedShare(exec))) {
         plan = retryPlan;
-        run = retry;
+        exec = retry;
       }
     }
 
     await setStatus(solutionId, "narrating");
-    const finalTrace = run ? await withNarration(ctx, plan, run.trace, run.result) : await traceBySimulation(ctx, plan);
+    const cases = await traceCases(ctx, plan, exec);
     // A simulation has nothing to check against; only a run that disagreed counts as unverified.
-    const verified = run ? run.matched : true;
+    const verified = cases.every((c) => c.passed !== false);
+    const mode = cases.every((c) => c.mode === "execution") ? "execution" : "simulation";
 
-    const parsed = vizSpecSchema.safeParse(assemble(plan, finalTrace));
+    const parsed = vizSpecSchema.safeParse(assemble(plan, cases));
     if (!parsed.success) {
       console.error("[solution] assembled spec invalid:", formatSpecIssues(parsed.error, 5));
       throw new PipelineError("invalid_output", "The walkthrough came out malformed. Please try again.");
@@ -445,7 +492,7 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
 
     await Solution.updateOne(
       { _id: solutionId },
-      { $set: { status: "done", content, traceMode: finalTrace.mode, ...stored, tokenUsage: meter.snapshot() } },
+      { $set: { status: "done", content, traceMode: mode, ...stored, tokenUsage: meter.snapshot() } },
     );
     // The key worked, so it's no longer one the provider refused.
     await clearKeyRejected(user.ai?.keyId).catch(() => {});

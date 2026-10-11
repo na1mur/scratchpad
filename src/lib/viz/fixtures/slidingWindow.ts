@@ -1,11 +1,11 @@
-import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
+import type { VizSpecV1 } from "@/lib/ai/schemas/vizSpec";
 import { recorder } from "./builder";
 
 // Longest substring without repeating characters, where `left` can jump
 // backwards because it isn't clamped.
 const s = "abba";
 
-export function slidingWindowFixture(): VizSpec {
+export function slidingWindowFixture(): VizSpecV1 {
   const r = recorder();
   const last = new Map<string, number>();
   let left = 0;

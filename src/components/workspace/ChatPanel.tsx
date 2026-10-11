@@ -30,7 +30,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SOLUTION_REQUEST_LABELS, type SolutionRequestKind } from "@/lib/ai/schemas/solution";
-import type { Step } from "@/lib/ai/schemas/vizSpec";
+import type { StepRef } from "@/lib/ai/schemas/vizSpec";
 import { api, apiRaw, toApiError } from "@/lib/fetcher";
 import type { ChatEvent, ChatMessage } from "@/lib/messages";
 import { MAX_MESSAGE, sendMessageSchema, type SendMessageInput } from "@/lib/schemas/messages";
@@ -50,7 +50,8 @@ export function ChatPanel({
   title = "Ask about this run",
   example = <>e.g. &ldquo;Why does left move here?&rdquo; or &ldquo;What happens with duplicates?&rdquo;</>,
   specVersion,
-  steps,
+  caseId,
+  stepRefs,
   selectedStepIds,
   onToggleStep,
   onClearSelection,
@@ -64,7 +65,10 @@ export function ChatPanel({
   title?: string;
   example?: React.ReactNode;
   specVersion?: number;
-  steps: Step[];
+  /** The test case being viewed, so answers talk about it. */
+  caseId?: string;
+  /** Every step the learner can select, by id, for naming selected steps. */
+  stepRefs: Map<string, StepRef>;
   selectedStepIds: string[];
   onToggleStep: (stepId: string) => void;
   onClearSelection: () => void;
@@ -101,7 +105,7 @@ export function ChatPanel({
     bottom.current?.scrollIntoView({ block: "nearest" });
   }, [messages?.length, pending?.text]);
 
-  const stepNumber = (id: string) => steps.findIndex((s) => s.id === id) + 1;
+  const stepLabel = (id: string) => stepRefs.get(id)?.label;
   const drawer = layout === "drawer";
 
   /** Clears the conversation on the server; the next question starts without any earlier context. */
@@ -125,7 +129,7 @@ export function ChatPanel({
     try {
       const res = await apiRaw(endpoint, {
         method: "POST",
-        body: { content: values.content, focusStepIds: selectedStepIds, specVersion },
+        body: { content: values.content, focusStepIds: selectedStepIds, specVersion, caseId },
       });
       if (!res.ok) throw await toApiError(res);
       form.reset({ content: "", focusStepIds: [] });
@@ -203,7 +207,7 @@ export function ChatPanel({
           <Bubble key={m.id} role={m.role}>
             {m.focusStepIds.length > 0 && (
               <span className="mb-1 block text-xs opacity-70">
-                About step{m.focusStepIds.length > 1 ? "s" : ""} {m.focusStepIds.map(stepNumber).filter(Boolean).join(", ")}
+                About step{m.focusStepIds.length > 1 ? "s" : ""} {m.focusStepIds.map(stepLabel).filter(Boolean).join(", ")}
               </span>
             )}
             <ChatMarkdown>{m.content}</ChatMarkdown>
@@ -251,10 +255,10 @@ export function ChatPanel({
       {selectedStepIds.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {selectedStepIds.map((id) => {
-            const step = steps.find((s) => s.id === id);
+            const step = stepRefs.get(id);
             return (
               <span key={id} className="flex items-center gap-1 rounded-full border bg-sheet px-2 py-0.5 text-xs">
-                Step {stepNumber(id)}: <span className="max-w-40 truncate">{step?.title}</span>
+                Step {step?.label}: <span className="max-w-40 truncate">{step?.title}</span>
                 <button type="button" aria-label="Remove step" onClick={() => onToggleStep(id)}>
                   <XIcon className="size-3" />
                 </button>

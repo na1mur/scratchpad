@@ -1,4 +1,4 @@
-import type { StructureState, VizSpec } from "@/lib/ai/schemas/vizSpec";
+import type { StructureState, VizSpecV1 } from "@/lib/ai/schemas/vizSpec";
 import { recorder } from "./builder";
 
 // BFS that marks nodes visited when dequeued instead of when enqueued.
@@ -23,7 +23,7 @@ const graph: StructureState = {
   ],
 };
 
-export function bfsGraphFixture(): VizSpec {
+export function bfsGraphFixture(): VizSpecV1 {
   const r = recorder();
   const queue: string[] = ["A"];
   const visited: string[] = [];

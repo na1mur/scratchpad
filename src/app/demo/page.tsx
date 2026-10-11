@@ -16,7 +16,7 @@ export default function DemoPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">See it in action</h1>
           <p className="text-sm text-muted-foreground">
-            Four buggy approaches, traced step by step. Use ←/→ to step and space to play.
+            Five buggy approaches, traced step by step. Use ←/→ to step and space to play.
           </p>
         </div>
         <DemoPlayer />

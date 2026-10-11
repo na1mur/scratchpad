@@ -3,13 +3,20 @@
 import { useState } from "react";
 import { BugIcon, CompassIcon, LightbulbIcon, RefreshCwIcon, WrenchIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
+import { stepRefs, type VizSpec } from "@/lib/ai/schemas/vizSpec";
 
-export function HintsPanel({ spec, onJumpToStep }: { spec: VizSpec; onJumpToStep: (index: number) => void }) {
+export function HintsPanel({
+  spec,
+  onJumpToStep,
+}: {
+  spec: VizSpec;
+  onJumpToStep: (caseIndex: number, stepIndex: number) => void;
+}) {
   const { diagnosis } = spec;
   const { rethink, thinkingHints } = diagnosis;
   const [revealed, setRevealed] = useState(0);
-  const firstBugIndex = diagnosis.bugStepIds.map((id) => spec.steps.findIndex((s) => s.id === id)).find((i) => i >= 0);
+  const refs = stepRefs(spec);
+  const firstBug = diagnosis.bugStepIds.map((id) => refs.get(id)).find(Boolean);
 
   if (!rethink && thinkingHints.length === 0) {
     return (
@@ -44,13 +51,13 @@ export function HintsPanel({ spec, onJumpToStep }: { spec: VizSpec; onJumpToStep
           <section className="flex flex-col gap-1.5 rounded-lg border bg-tile p-3">
             <h3 className="font-medium">Why the current approach doesn&apos;t work</h3>
             <p className="text-sm">{rethink.brokenAssumption}</p>
-            {firstBugIndex !== undefined && (
+            {firstBug && (
               <Button
                 variant="link"
                 className="h-auto self-start p-0 text-viz-error"
-                onClick={() => onJumpToStep(firstBugIndex)}
+                onClick={() => onJumpToStep(firstBug.caseIndex, firstBug.index)}
               >
-                <BugIcon /> See where it breaks (step {firstBugIndex + 1})
+                <BugIcon /> See where it breaks (step {firstBug.label})
               </Button>
             )}
           </section>

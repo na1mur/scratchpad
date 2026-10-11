@@ -186,15 +186,34 @@ export type Loop = z.infer<typeof loopSchema>;
 export const summarySchema = z.object({
   understoodApproach: z.string().min(1).max(1200),
   verdict: z.enum(VERDICTS),
-  testInputDescription: z.string().min(1).max(600),
-  expectedOutput: z.string().max(400),
-  actualOutput: z.string().max(400),
 });
 export type Summary = z.infer<typeof summarySchema>;
+
+/** The prompts ask for MIN_CASES–MAX_CASES test cases; validation allows up to MAX_CASES_HARD. */
+export const MIN_CASES = 3;
+export const MAX_CASES = 5;
+export const MAX_CASES_HARD = 8;
+
+/** One input the code was run on, with its own walkthrough. */
+export const testCaseSchema = z.object({
+  id,
+  /** Short name for the picker, e.g. "Odd length" or "Empty list". */
+  label: z.string().min(1).max(60),
+  input: z.string().min(1).max(600),
+  expectedOutput: z.string().max(400),
+  actualOutput: z.string().max(400),
+  /** Whether the run gave the right answer; absent when it couldn't be judged. */
+  passed: z.boolean().optional(),
+  structures: z.array(structureSchema).min(1).max(8),
+  loops: z.array(loopSchema).max(10),
+  steps: z.array(stepSchema).min(1).max(MAX_STEPS_HARD),
+});
+export type TestCase = z.infer<typeof testCaseSchema>;
 
 export const diagnosisSchema = z.object({
   whatGoesWrong: z.string().max(1500),
   whyItGoesWrong: z.string().max(2000),
+  /** Step ids from any case; step ids are unique across cases. */
   bugStepIds: z.array(z.string()),
   failingInputs: z.array(z.string().max(300)).max(5).optional(),
   /** Progressive: vague first, more specific later. Never the solution. */
@@ -213,69 +232,76 @@ export const diagnosisSchema = z.object({
 export type Diagnosis = z.infer<typeof diagnosisSchema>;
 
 const vizSpecBaseSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(2),
   summary: summarySchema,
   codeLines: z.array(z.string().max(300)).min(1).max(200),
   /** 0-based indexes of codeLines the pipeline added to make the learner's fragment runnable. */
   addedLines: z.array(z.number().int().min(0)).optional(),
-  structures: z.array(structureSchema).min(1).max(8),
-  loops: z.array(loopSchema).max(10),
-  steps: z.array(stepSchema).min(1).max(MAX_STEPS_HARD),
+  /** The first case is the one shown by default. */
+  cases: z.array(testCaseSchema).min(1).max(MAX_CASES_HARD),
+  /** One diagnosis across every case. */
   diagnosis: diagnosisSchema,
   autoTags: z.array(z.string()).optional(),
 });
 
 /** Cross-field rules that a plain shape check can't express. */
 export const vizSpecSchema = vizSpecBaseSchema.superRefine((spec, ctx) => {
-  const kinds = new Map(spec.structures.map((s) => [s.id, s.kind]));
-  if (kinds.size !== spec.structures.length) {
-    ctx.addIssue({ code: "custom", path: ["structures"], message: "Structure ids must be unique" });
-  }
   spec.addedLines?.forEach((line, i) => {
     if (line >= spec.codeLines.length) {
       ctx.addIssue({ code: "custom", path: ["addedLines", i], message: `line ${line} is outside codeLines` });
     }
   });
-  const loopIds = new Set(spec.loops.map((l) => l.id));
+  const caseIds = new Set<string>();
   const stepIds = new Set<string>();
 
-  spec.steps.forEach((step, i) => {
-    const path = ["steps", i];
-    if (stepIds.has(step.id)) ctx.addIssue({ code: "custom", path: [...path, "id"], message: `Duplicate step id "${step.id}"` });
-    stepIds.add(step.id);
+  spec.cases.forEach((c, ci) => {
+    const casePath = ["cases", ci];
+    if (caseIds.has(c.id)) ctx.addIssue({ code: "custom", path: [...casePath, "id"], message: `Duplicate case id "${c.id}"` });
+    caseIds.add(c.id);
+    const kinds = new Map(c.structures.map((s) => [s.id, s.kind]));
+    if (kinds.size !== c.structures.length) {
+      ctx.addIssue({ code: "custom", path: [...casePath, "structures"], message: "Structure ids must be unique" });
+    }
+    const loopIds = new Set(c.loops.map((l) => l.id));
 
-    if (step.line !== null && (step.line < 0 || step.line >= spec.codeLines.length)) {
-      ctx.addIssue({
-        code: "custom",
-        path: [...path, "line"],
-        message: `line ${step.line} is outside codeLines (0..${spec.codeLines.length - 1})`,
-      });
-    }
-    if (step.iteration && !loopIds.has(step.iteration.loopId)) {
-      ctx.addIssue({ code: "custom", path: [...path, "iteration"], message: `Unknown loopId "${step.iteration.loopId}"` });
-    }
-    for (const [sid, kind] of kinds) {
-      const state = step.states[sid];
-      if (!state) {
-        ctx.addIssue({ code: "custom", path: [...path, "states"], message: `Missing state for structure "${sid}"` });
-      } else if (state.kind !== kind) {
+    c.steps.forEach((step, i) => {
+      const path = [...casePath, "steps", i];
+      if (stepIds.has(step.id)) ctx.addIssue({ code: "custom", path: [...path, "id"], message: `Duplicate step id "${step.id}"` });
+      stepIds.add(step.id);
+
+      if (step.line !== null && (step.line < 0 || step.line >= spec.codeLines.length)) {
         ctx.addIssue({
           code: "custom",
-          path: [...path, "states", sid],
-          message: `State kind "${state.kind}" doesn't match structure kind "${kind}"`,
+          path: [...path, "line"],
+          message: `line ${step.line} is outside codeLines (0..${spec.codeLines.length - 1})`,
         });
       }
-    }
-    for (const sid of Object.keys(step.states)) {
-      if (!kinds.has(sid)) {
-        ctx.addIssue({ code: "custom", path: [...path, "states", sid], message: `Unknown structure "${sid}"` });
+      if (step.iteration && !loopIds.has(step.iteration.loopId)) {
+        ctx.addIssue({ code: "custom", path: [...path, "iteration"], message: `Unknown loopId "${step.iteration.loopId}"` });
       }
-    }
-    for (const ref of [...(step.pointers ?? []), ...(step.highlights ?? [])]) {
-      if (!kinds.has(ref.structureId)) {
-        ctx.addIssue({ code: "custom", path, message: `Pointer/highlight references unknown structure "${ref.structureId}"` });
+      for (const [sid, kind] of kinds) {
+        const state = step.states[sid];
+        if (!state) {
+          ctx.addIssue({ code: "custom", path: [...path, "states"], message: `Missing state for structure "${sid}"` });
+        } else if (state.kind !== kind) {
+          ctx.addIssue({
+            code: "custom",
+            path: [...path, "states", sid],
+            message: `State kind "${state.kind}" doesn't match structure kind "${kind}"`,
+          });
+        }
       }
-    }
+      for (const sid of Object.keys(step.states)) {
+        if (!kinds.has(sid)) {
+          ctx.addIssue({ code: "custom", path: [...path, "states", sid], message: `Unknown structure "${sid}"` });
+        }
+      }
+      for (const ref of [...(step.pointers ?? []), ...(step.highlights ?? [])]) {
+        if (!kinds.has(ref.structureId)) {
+          ctx.addIssue({ code: "custom", path, message: `Pointer/highlight references unknown structure "${ref.structureId}"` });
+        }
+      }
+    });
   });
 
   spec.diagnosis.bugStepIds.forEach((sid, i) => {
@@ -286,6 +312,86 @@ export const vizSpecSchema = vizSpecBaseSchema.superRefine((spec, ctx) => {
 });
 
 export type VizSpec = z.infer<typeof vizSpecSchema>;
+
+/**
+ * One case seen as a single walkthrough: what the player and the panels
+ * around it render. `diagnosis.bugStepIds` may name steps of other cases;
+ * those simply match no step here.
+ */
+export type CaseSpec = Pick<VizSpec, "codeLines" | "addedLines" | "diagnosis"> &
+  Pick<TestCase, "structures" | "loops" | "steps">;
+
+export function caseView(spec: VizSpec, caseIndex: number): CaseSpec {
+  const c = spec.cases[Math.min(Math.max(caseIndex, 0), spec.cases.length - 1)];
+  return {
+    codeLines: spec.codeLines,
+    addedLines: spec.addedLines,
+    diagnosis: spec.diagnosis,
+    structures: c.structures,
+    loops: c.loops,
+    steps: c.steps,
+  };
+}
+
+/** The step the player shows, with both indexes clamped. */
+export function stepAt(spec: VizSpec, caseIndex: number, stepIndex: number): Step | undefined {
+  const { steps } = caseView(spec, caseIndex);
+  return steps[Math.min(Math.max(stepIndex, 0), steps.length - 1)];
+}
+
+/** Where a step lives, and how to name it to the learner ("4", or "4 (case 2)" when there are several cases). */
+export type StepRef = { id: string; caseIndex: number; index: number; title: string; label: string };
+
+export function stepRefs(spec: VizSpec): Map<string, StepRef> {
+  const many = spec.cases.length > 1;
+  const out = new Map<string, StepRef>();
+  spec.cases.forEach((c, caseIndex) =>
+    c.steps.forEach((s, index) =>
+      out.set(s.id, {
+        id: s.id,
+        caseIndex,
+        index,
+        title: s.title,
+        label: many ? `${index + 1} (case ${caseIndex + 1})` : String(index + 1),
+      }),
+    ),
+  );
+  return out;
+}
+
+/** Specs stored before test cases existed: one input, its walkthrough at the top level. */
+export type VizSpecV1 = Pick<VizSpec, "codeLines" | "addedLines" | "diagnosis" | "autoTags"> &
+  Pick<TestCase, "structures" | "loops" | "steps"> & {
+    version: 1;
+    summary: Summary & { testInputDescription: string; expectedOutput: string; actualOutput: string };
+  };
+
+/** Reads a stored spec of either version as the current one. */
+export function upgradeSpec(spec: VizSpec | VizSpecV1): VizSpec {
+  if (spec.version === 2) return spec;
+  const { summary, structures, loops, steps, codeLines, addedLines, diagnosis, autoTags } = spec;
+  return {
+    version: 2,
+    codeLines,
+    ...(addedLines && { addedLines }),
+    diagnosis,
+    ...(autoTags && { autoTags }),
+    summary: { understoodApproach: summary.understoodApproach, verdict: summary.verdict },
+    cases: [
+      {
+        id: "c1",
+        label: "Example",
+        input: summary.testInputDescription,
+        expectedOutput: summary.expectedOutput,
+        actualOutput: summary.actualOutput,
+        ...(summary.verdict === "works" && { passed: true }),
+        structures,
+        loops,
+        steps,
+      },
+    ],
+  };
+}
 
 /** Compact, model-readable list of validation problems for retry prompts. */
 export function formatSpecIssues(error: z.ZodError, max = 12): string {

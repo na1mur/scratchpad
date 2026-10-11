@@ -17,16 +17,22 @@ export const understandingSchema = z.object({
   suspectedIssue: z
     .string()
     .describe("Where you suspect the reasoning breaks, or 'none' if it looks correct. Internal only, never shown."),
-  chosenTestInput: z.object({
-    description: z.string().describe("Human-readable input, e.g. 'nums = [2, 7, 11, 15], target = 9'."),
-    argumentsJson: z
-      .string()
-      .describe('JSON object of named arguments for the function, e.g. {"nums":[2,7,11,15],"target":9}.'),
-  }),
-  expectedOutput: z.string().describe("The correct output for the chosen input."),
+  testCases: z
+    .array(
+      z.object({
+        label: z.string().describe("Short name for what this case covers, e.g. 'Odd length' or 'Target at the end'. Max ~4 words."),
+        description: z.string().describe("Human-readable input, e.g. 'nums = [2, 7, 11, 15], target = 9'."),
+        argumentsJson: z
+          .string()
+          .describe('JSON object of named arguments for the function, e.g. {"nums":[2,7,11,15],"target":9}.'),
+        expectedOutput: z.string().describe("The correct output for this input."),
+      }),
+    )
+    .min(1),
   suggestedTags: z.array(z.enum(TAGS)).max(4),
 });
 export type Understanding = z.infer<typeof understandingSchema>;
+export type UnderstoodCase = Understanding["testCases"][number];
 
 export const structureDeclSchema = z.object({
   id: z.string().describe("Short identifier, e.g. 'nums'."),
@@ -122,7 +128,7 @@ export type Simulation = z.infer<typeof simulationSchema>;
 export const diagnosisOutputSchema = z.object({
   understoodApproach: z.string().describe("Addressed to the learner: 'You're trying to…'."),
   verdict: z.enum(VERDICTS),
-  actualOutput: z.string(),
+  failingCaseIds: z.array(z.string()).describe("Ids of the test cases whose actual output is wrong (or that crashed or never finished)."),
   whatGoesWrong: z.string().describe("Empty string if the approach works."),
   whyItGoesWrong: z.string().describe("Empty string if the approach works."),
   bugStepIds: z.array(z.string()),

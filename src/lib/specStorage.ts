@@ -1,5 +1,5 @@
 import "server-only";
-import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
+import { upgradeSpec, type VizSpec, type VizSpecV1 } from "@/lib/ai/schemas/vizSpec";
 import { getJson, putJson, r2Enabled } from "@/lib/r2";
 
 const INLINE_LIMIT_BYTES = 1024 * 1024;
@@ -21,9 +21,10 @@ export async function storeSpec(
   return { specR2Key: key };
 }
 
+/** Specs from before test cases existed come back as a single case. */
 export async function loadSpec(stored: { vizSpec?: unknown; specR2Key?: string | null }): Promise<VizSpec | null> {
-  if (stored.vizSpec) return restoreEmptyObjects(stored.vizSpec as VizSpec);
-  if (stored.specR2Key) return getJson<VizSpec>(stored.specR2Key);
+  if (stored.vizSpec) return restoreEmptyObjects(upgradeSpec(stored.vizSpec as VizSpec | VizSpecV1));
+  if (stored.specR2Key) return upgradeSpec(await getJson<VizSpec | VizSpecV1>(stored.specR2Key));
   return null;
 }
 
@@ -33,7 +34,7 @@ export async function loadSpec(stored: { vizSpec?: unknown; specR2Key?: string |
  * Puts them back.
  */
 function restoreEmptyObjects(spec: VizSpec): VizSpec {
-  for (const step of spec.steps ?? []) {
+  for (const step of spec.cases.flatMap((c) => c.steps ?? [])) {
     step.states ??= {};
     for (const state of Object.values(step.states)) {
       if (state.kind === "variables") state.vars ??= {};

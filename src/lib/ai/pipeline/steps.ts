@@ -10,6 +10,7 @@ import {
   type Structure,
   type StructureKind,
   type StructureState,
+  type VizSpec,
 } from "@/lib/ai/schemas/vizSpec";
 import type { RawTraceEvent } from "./sandbox";
 
@@ -187,4 +188,43 @@ export function describeSteps(steps: Step[], codeLines: string[], maxChars = 24_
   }
   const text = lines.join("\n");
   return text.length > maxChars ? `${text.slice(0, maxChars)}\n…(truncated)` : text;
+}
+
+/**
+ * For chat prompts: every test case's result, and the trace of the one the learner is looking at.
+ * `gives` names the result ("their code gives", "returns").
+ */
+export function casesContext(spec: VizSpec, viewingCaseId: string | undefined, gives: string): string {
+  const viewing = Math.max(
+    0,
+    spec.cases.findIndex((c) => c.id === viewingCaseId),
+  );
+  const c = spec.cases[viewing];
+  return [
+    `<test_cases>`,
+    ...spec.cases.map(
+      (tc, i) =>
+        `case ${i + 1} "${tc.label}": input ${tc.input}; expected ${tc.expectedOutput}; ${gives} ${tc.actualOutput}${
+          tc.passed === undefined ? "" : tc.passed ? " (correct)" : " (wrong)"
+        }${i === viewing ? "  <- the learner is looking at this case" : ""}`,
+    ),
+    `</test_cases>`,
+    `<trace case="${viewing + 1}" note="step id ${c.id}-s4 is step 4 of this case; step numbers count within a case">`,
+    describeSteps(c.steps, spec.codeLines, 12_000),
+    `</trace>`,
+  ].join("\n");
+}
+
+/** For chat prompts: the steps the learner selected to ask about, which may come from any case. */
+export function focusedStepsBlock(spec: VizSpec, ids: string[]): string {
+  const many = spec.cases.length > 1;
+  const blocks = spec.cases.flatMap((c, ci) =>
+    c.steps.flatMap((s, i) => {
+      if (!ids.includes(s.id)) return [];
+      const states = JSON.stringify(s.states, (k, v) => (k === "ids" ? undefined : v));
+      const where = many ? `step ${i + 1} of case ${ci + 1}` : `step ${i + 1}`;
+      return [`${where} (${s.id}), line ${s.line === null ? "-" : s.line + 1}: ${s.title}\n${s.explanation}\nstate: ${states.slice(0, 1500)}`];
+    }),
+  );
+  return blocks.length ? `\n\n<focused_steps>\n${blocks.join("\n\n")}\n</focused_steps>` : "";
 }

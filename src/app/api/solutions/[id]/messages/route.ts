@@ -4,7 +4,7 @@ import { z } from "zod";
 import { ApiError, handle, parseJson, requireUser } from "@/lib/api";
 import { toFriendlyProviderError } from "@/lib/ai/errors";
 import { PipelineError, UsageMeter } from "@/lib/ai/pipeline/llm";
-import { describeSteps } from "@/lib/ai/pipeline/steps";
+import { casesContext, focusedStepsBlock } from "@/lib/ai/pipeline/steps";
 import { SOLUTION_CHAT_ROLE, solutionInstructions } from "@/lib/ai/prompts/solution";
 import { sourceBlock } from "@/lib/ai/prompts/system";
 import { getModel } from "@/lib/ai/providers";
@@ -46,7 +46,7 @@ export function DELETE(req: NextRequest, ctx: RouteContext<"/api/solutions/[id]/
   });
 }
 
-function solutionContext(c: SolutionContent, spec: VizSpec): string {
+function solutionContext(c: SolutionContent, spec: VizSpec, caseId: string | undefined): string {
   return [
     `<solution>`,
     `approach: ${c.name}`,
@@ -57,13 +57,7 @@ function solutionContext(c: SolutionContent, spec: VizSpec): string {
     `code (1-based line numbers):`,
     c.codeLines.map((l, i) => `${i + 1}: ${l}`).join("\n"),
     `</solution>`,
-    `<visualization>`,
-    `test input: ${spec.summary.testInputDescription}`,
-    `returns: ${spec.summary.actualOutput}`,
-    `</visualization>`,
-    `<trace step="id = step number">`,
-    describeSteps(spec.steps, spec.codeLines, 12_000),
-    `</trace>`,
+    casesContext(spec, caseId, "returns"),
   ].join("\n");
 }
 
@@ -100,17 +94,8 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/solutions/[id]/me
     if (!spec || !content) throw new ApiError(409, "not_ready", "This solution has no walkthrough yet.");
     const { model } = getModel(user, "reasoning");
 
-    const focusIds = input.focusStepIds.filter((sid) => spec.steps.some((s) => s.id === sid));
-    const focused = spec.steps.filter((s) => focusIds.includes(s.id));
-    const focusBlock = focused.length
-      ? `\n\n<focused_steps>\n${focused
-          .map((s) => {
-            const n = spec.steps.indexOf(s) + 1;
-            const states = JSON.stringify(s.states, (k, v) => (k === "ids" ? undefined : v));
-            return `step ${n} (${s.id}), line ${s.line === null ? "-" : s.line + 1}: ${s.title}\n${s.explanation}\nstate: ${states.slice(0, 1500)}`;
-          })
-          .join("\n\n")}\n</focused_steps>`
-      : "";
+    const focusIds = input.focusStepIds.filter((sid) => spec.cases.some((c) => c.steps.some((s) => s.id === sid)));
+    const focusBlock = focusedStepsBlock(spec, focusIds);
 
     const history = await Message.find({ solutionId: solution._id, userId: session.userId })
       .sort({ createdAt: -1 })
@@ -137,7 +122,7 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/solutions/[id]/me
             })
             .join("\n")}\n</other_solutions>`
         : "",
-      solutionContext(content, spec),
+      solutionContext(content, spec, input.caseId),
     ]
       .filter(Boolean)
       .join("\n\n");

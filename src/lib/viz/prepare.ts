@@ -1,4 +1,4 @@
-import type { Highlight, Pointer, Step, StructureKind, StructureState, Tone, VizSpec } from "@/lib/ai/schemas/vizSpec";
+import type { Highlight, Pointer, Step, StructureKind, StructureState, Tone, CaseSpec } from "@/lib/ai/schemas/vizSpec";
 
 const SEQUENCE_KINDS: ReadonlySet<StructureKind> = new Set(["array", "string", "stack", "queue"]);
 type SequenceState = Extract<StructureState, { kind: "array" | "string" | "stack" | "queue" }>;
@@ -14,7 +14,7 @@ function itemsOf(state: SequenceState): string[] {
  * matched to an unused id from the previous step holding the same value,
  * preferring the same index.
  */
-export function withStableIds(spec: VizSpec): VizSpec {
+export function withStableIds(spec: CaseSpec): CaseSpec {
   const sequenceIds = spec.structures.filter((s) => SEQUENCE_KINDS.has(s.kind)).map((s) => s.id);
   if (sequenceIds.length === 0) return spec;
 
@@ -94,7 +94,7 @@ function matchIds(prev: Prev, values: string[], fresh: () => string): string[] {
   });
 }
 
-export function bugStepIndexes(spec: VizSpec): Set<number> {
+export function bugStepIndexes(spec: CaseSpec): Set<number> {
   const bugIds = new Set(spec.diagnosis.bugStepIds);
   const out = new Set<number>();
   spec.steps.forEach((s, i) => {
@@ -104,7 +104,7 @@ export function bugStepIndexes(spec: VizSpec): Set<number> {
 }
 
 /** Steps where a new loop iteration begins, for timeline tick marks. */
-export function iterationStarts(spec: VizSpec): Map<number, { loopId: string; index: number }> {
+export function iterationStarts(spec: CaseSpec): Map<number, { loopId: string; index: number }> {
   const out = new Map<number, { loopId: string; index: number }>();
   let prev: Step["iteration"] | undefined;
   spec.steps.forEach((s, i) => {
@@ -122,7 +122,7 @@ const indentOf = (line: string) => line.length - line.trimStart().length;
  * record nesting, so it's read from indentation: a loop sits inside another
  * when it's indented deeper and no line between them steps back out.
  */
-export function loopAncestors(spec: Pick<VizSpec, "loops" | "codeLines">): Map<string, string[]> {
+export function loopAncestors(spec: Pick<CaseSpec, "loops" | "codeLines">): Map<string, string[]> {
   const loops = [...spec.loops].sort((a, b) => a.line - b.line);
   const contains = (outer: (typeof loops)[number], inner: (typeof loops)[number]) => {
     if (inner.line <= outer.line) return false;
@@ -177,7 +177,7 @@ export type OutlineRow =
  * steps indented under it, nested loops deeper. `parents` lists the keys of
  * the iteration headers a step sits under, so collapsing one hides it.
  */
-export function outlineRows(spec: VizSpec): OutlineRow[] {
+export function outlineRows(spec: CaseSpec): OutlineRow[] {
   const ancestors = loopAncestors(spec);
   const rows: OutlineRow[] = [];
   /** Iteration headers the current step sits under, outermost first. */

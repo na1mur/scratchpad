@@ -6,10 +6,11 @@ import { CheckIcon, ChevronDownIcon, CopyIcon, CpuIcon, GitBranchIcon, GlobeIcon
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CaseBar } from "@/components/viz/CaseBar";
 import { CodePane } from "@/components/viz/CodePane";
 import { Player } from "@/components/viz/Player";
 import { SOLUTION_REQUEST_LABELS, type SolutionContent, type SolutionRequestKind } from "@/lib/ai/schemas/solution";
-import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
+import { caseView, stepAt, type VizSpec } from "@/lib/ai/schemas/vizSpec";
 import { languageLabel } from "@/lib/languages";
 import { PROVIDER_LABELS, type ProviderId } from "@/lib/providers";
 import { LineBreakdown } from "./LineBreakdown";
@@ -151,6 +152,8 @@ export function SolutionWalkthrough({
   spec,
   content,
   language,
+  caseIndex,
+  onCaseChange,
   playerIndex,
   onIndexChange,
   tab,
@@ -163,6 +166,9 @@ export function SolutionWalkthrough({
   spec: VizSpec;
   content: SolutionContent;
   language: string;
+  /** Which test case the walkthrough shows. */
+  caseIndex: number;
+  onCaseChange: (index: number) => void;
   playerIndex: number;
   onIndexChange: (index: number) => void;
   tab: string;
@@ -172,17 +178,21 @@ export function SolutionWalkthrough({
   /** Shown at the end of the input row (the owner's usage badge). */
   badge?: React.ReactNode;
 }) {
-  const currentLine = spec.steps[Math.min(playerIndex, spec.steps.length - 1)]?.line ?? null;
+  const shownCase = Math.min(caseIndex, spec.cases.length - 1);
+  const view = caseView(spec, shownCase);
+  const currentLine = stepAt(spec, shownCase, playerIndex)?.line ?? null;
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="min-w-0 flex-1 text-sm text-muted-foreground">
-          Input: <span className="font-mono text-foreground">{spec.summary.testInputDescription}</span>
-          <span className="mx-1.5">→</span>
-          <span className="font-mono text-foreground">{spec.summary.actualOutput}</span>
-        </p>
-        {badge}
-      </div>
+      <CaseBar
+        spec={spec}
+        caseIndex={shownCase}
+        onCaseChange={(ci) => {
+          onCaseChange(ci);
+          onIndexChange(0);
+        }}
+        gives="Returns"
+        trailing={badge}
+      />
       <Tabs value={tab} onValueChange={(v) => onTabChange(String(v))}>
         <TabsList>
           <TabsTrigger value="walkthrough">Walkthrough</TabsTrigger>
@@ -190,8 +200,8 @@ export function SolutionWalkthrough({
         </TabsList>
         <TabsContent value="walkthrough" className="flex flex-col gap-4 pt-3">
           <Player
-            key={layoutId}
-            spec={spec}
+            key={`${layoutId}-${shownCase}`}
+            spec={view}
             language={language}
             index={playerIndex}
             onIndexChange={onIndexChange}
@@ -200,14 +210,14 @@ export function SolutionWalkthrough({
             onToggleStepSelect={onToggleStep}
             skipControls
           />
-          <Collapsible defaultOpen={spec.loops.length > 0}>
+          <Collapsible defaultOpen={view.loops.length > 0}>
             <CollapsibleTrigger
               render={<Button variant="ghost" size="sm" className="-ml-2 data-panel-open:[&_svg]:rotate-180" />}
             >
               Every step, grouped by loop iteration <ChevronDownIcon className="transition-transform" />
             </CollapsibleTrigger>
             <CollapsibleContent className="pt-2">
-              <StepOutline spec={spec} current={playerIndex} onSeek={onIndexChange} />
+              <StepOutline spec={view} current={playerIndex} onSeek={onIndexChange} />
             </CollapsibleContent>
           </Collapsible>
         </TabsContent>
@@ -215,7 +225,7 @@ export function SolutionWalkthrough({
           <LineBreakdown
             content={content}
             language={language}
-            spec={spec}
+            spec={view}
             activeLine={currentLine}
             onJumpToStep={(i) => {
               onIndexChange(i);

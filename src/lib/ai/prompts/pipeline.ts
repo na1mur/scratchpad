@@ -1,12 +1,17 @@
-import { MAX_STEPS } from "@/lib/ai/schemas/vizSpec";
+import { MAX_CASES, MAX_STEPS, MIN_CASES } from "@/lib/ai/schemas/vizSpec";
 import { TAGS } from "@/lib/tags";
+
+/** How to choose test cases. Shared by the attempt and solution pipelines. */
+export const TEST_CASES_GUIDE = `Pick ${MIN_CASES}–${MAX_CASES} small test cases that together cover the different situations this problem's inputs can be in: a typical case, plus the edge and boundary cases that behave differently (for example odd and even length when finding the middle of a list, an empty or single-element input, duplicates, negative numbers, the answer at either end, no valid answer). Use more than ${MIN_CASES} only when the problem has more such distinct situations, and never two cases for the same situation. Keep every input small (at most ~8 array elements, ~7 tree nodes, ~6 graph nodes, strings up to ~8 chars) and within the problem's constraints.
+  - label: 2–4 words naming the situation the case covers, e.g. "Even length" or "Single node".
+  - argumentsJson: a JSON object whose keys are the function's parameter names, the same keys in every case. Represent trees as level-order arrays with null for gaps (e.g. [1,null,2]), linked lists as arrays, graphs as adjacency objects or edge lists, and say which in the description.`;
 
 export const UNDERSTAND_ROLE = `Your job right now: understand what the learner is trying to do, before anything is simulated.
 - Restate the problem briefly and describe their approach back to them in their own terms, even if it's wrong.
 - List the properties their approach silently relies on.
-- Pick ONE small test input (at most ~8 array elements, ~7 tree nodes, ~6 graph nodes, strings up to ~8 chars). If you suspect a bug, choose an input that exposes it; otherwise a representative one.
-- argumentsJson must be a JSON object whose keys are the parameter names their code uses. Represent trees as level-order arrays with null for gaps (e.g. [1,null,2]), linked lists as arrays, graphs as adjacency objects or edge lists, and say which in the description.
-- expectedOutput is the CORRECT answer for that input, not what their code returns.
+- testCases: ${TEST_CASES_GUIDE}
+  The keys of argumentsJson are the parameter names their code uses. If you suspect a bug, include the inputs that expose it and put the one that shows it most clearly first; otherwise start with the typical case. The first case is the one the learner sees first.
+  - expectedOutput: the CORRECT answer for that input, not what their code returns.
 - suggestedTags: up to 4 from this list only: ${TAGS.join(", ")}.`;
 
 /** How an instrumented program reports steps. Shared by the attempt and solution translators. */
@@ -52,6 +57,8 @@ Complete the code before you trace it. Pseudo-code is often a fragment: no funct
 - any setup they clearly assumed but didn't write (e.g. a variable they read before assigning).
 Never change their approach: don't add, remove or reorder their statements, and don't add guards, edge-case checks, conditions or updates that change what their lines do. Their bugs must survive. Write added lines in the same style as theirs, and list their 0-based indexes in addedLines (empty if nothing was added).
 
+The same program is run on every one of the <test_cases>, so it must work from whatever input it's given, not just the first case. Never special-case an input.
+
 Return:
 - codeLines: their completed pseudo-code, one statement per line, with nesting shown by indentation. Keep their names and wording.
 - addedLines: 0-based indexes of the lines in codeLines that you added to complete it.
@@ -81,6 +88,8 @@ Complete the code before you trace it. Pseudo-code is often a fragment: no funct
 - any setup they clearly assumed but didn't write (e.g. a variable they read before assigning).
 Never change their approach: don't add, remove or reorder their statements, and don't add guards, edge-case checks, conditions or updates that change what their lines do. Their bugs must survive. Write added lines in the same style as theirs, and list their 0-based indexes in addedLines (empty if nothing was added).
 
+When <completed_code> is given, their code has already been completed: copy its codeLines and addedLines exactly and trace that.
+
 Return codeLines (their completed pseudo-code, one statement per line, nesting shown by indentation), addedLines, structures (at most 6, always including {id: "vars", label: "Variables", kind: "variables"}), loops (with 0-based line), steps, and actualOutput.
 Each step needs a FULL snapshot of EVERY structure in "states" (one entry per structure, same structureId and kind as declared):
 - array / string / set / stack / queue: "values" (strings: one character per entry; stack: bottom first; queue: front first)
@@ -95,13 +104,13 @@ Pointers index arrays/strings by position, tree/list/graph nodes by id, matrix c
 Keep it to at most ${MAX_STEPS} steps; if a loop repeats the same pattern many times, show the first two and last two iterations and one step saying "…iterations X–Y omitted, same pattern".
 Titles: at most ~8 words. Explanations: 1–3 sentences, second person, concrete values. Mark isBugMoment only where behavior first diverges from what the problem needs.`;
 
-export const DIAGNOSE_ROLE = `Your job right now: diagnose the learner's approach from the execution trace.
+export const DIAGNOSE_ROLE = `Your job right now: diagnose the learner's approach from the execution traces of every test case.
 - understoodApproach: their approach in a sentence or two, addressed to them ("You're trying to…").
-- verdict: "works" if it produces correct results in general, "fails" if it gives wrong results or never finishes, "partially_works" if it's correct only for some inputs or correct but wasteful in a way that matters, "unclear" if the pseudo-code is too ambiguous to judge.
-- actualOutput: what their code returned on the test input (or that it never finished / crashed).
-- whatGoesWrong: the observable failure, concretely. whyItGoesWrong: the reasoning error behind it. Empty strings if it works.
-- bugStepIds: ids of the trace steps where it goes wrong (only ids that exist in the trace).
-- failingInputs: up to 4 other small inputs that break it.
+- failingCaseIds: ids of the test cases whose actual output differs from the expected one, or that crashed or never finished. Compare by meaning, not formatting.
+- verdict, judged across all the cases and beyond them: "works" if it produces correct results in general, "fails" if it gives wrong results or never finishes, "partially_works" if it's correct only for some inputs or correct but wasteful in a way that matters, "unclear" if the pseudo-code is too ambiguous to judge.
+- whatGoesWrong: the observable failure, concretely, naming the case(s) where it shows. whyItGoesWrong: the reasoning error behind it. Empty strings if it works.
+- bugStepIds: ids of the trace steps where it goes wrong (only ids that exist in the traces), preferring the first failing case.
+- failingInputs: up to 4 other small inputs that break it, not among the test cases.
 - thinkingHints: 2–4 progressive hints, from vague to more specific. Ask questions and point at properties to notice. A hint must never state the fix, the correct condition, the right data structure swap, or code.
 - rethinkScope: "none" if it works; "fix-the-details" if the core idea can solve the problem and only details (a condition, a boundary, an update order) are off; "rethink-the-approach" if no amount of patching makes this strategy correct or efficient enough.
 - brokenAssumption: the belief their approach silently relies on, and why the problem breaks it, tied to a concrete input from the trace or failingInputs ("Your approach assumes… but on [input]…"). Empty if it works.

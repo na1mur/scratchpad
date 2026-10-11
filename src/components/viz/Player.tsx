@@ -17,7 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
+import type { CaseSpec } from "@/lib/ai/schemas/vizSpec";
 import { bugStepIndexes, iterationStarts, loopAncestors, skipTargets, withStableIds } from "@/lib/viz/prepare";
 import { CodePane } from "./CodePane";
 import { ExplanationPanel } from "./ExplanationPanel";
@@ -43,7 +43,7 @@ export function Player({
   layoutId = "player",
   skipControls = false,
 }: {
-  spec: VizSpec;
+  spec: CaseSpec;
   /** The code's language, for syntax colors. */
   language?: string | null;
   index: number;
