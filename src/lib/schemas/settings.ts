@@ -7,6 +7,10 @@ export const languageSchema = z.object({
 });
 export type LanguageInput = z.infer<typeof languageSchema>;
 
+export const preferencesSchema = z.object({
+  chatLayout: z.enum(["inline", "drawer"]),
+});
+
 export const providerIdSchema = z.enum(PROVIDERS, { error: "Pick a provider" });
 
 const apiKeyField = z.string().trim().min(8, "That doesn't look like an API key").max(400);

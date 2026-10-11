@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ApiClientError, api } from "@/lib/fetcher";
+import { problemPath } from "@/lib/slug";
 
 /**
  * Opens the problem's solutions. Before the first one exists it asks whether
@@ -23,12 +24,14 @@ import { ApiClientError, api } from "@/lib/fetcher";
  */
 export function SolutionButton({
   problemId,
+  problemSlug,
   hasSolution,
   attempt,
   canGenerate,
   disabled,
 }: {
   problemId: string;
+  problemSlug: string;
   hasSolution: boolean;
   /** The analysed attempt the first solution should build on. */
   attempt: { id: string; version: number } | null;
@@ -39,7 +42,7 @@ export function SolutionButton({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [starting, setStarting] = useState(false);
-  const href = `/problems/${problemId}/solution`;
+  const href = `${problemPath({ slug: problemSlug })}/solution`;
   // Filled brand with a soft halo, so it reads as the way out when stuck rather than another small control.
   const look = "shadow-sm ring-3 ring-brand/25 hover:ring-brand/40";
 

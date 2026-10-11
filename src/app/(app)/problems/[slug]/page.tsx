@@ -4,29 +4,29 @@ import { Workspace } from "@/components/workspace/Workspace";
 import { ApiError } from "@/lib/api";
 import { getOwnedAttempt, serializeAttempt, serializeAttemptSummary } from "@/lib/attempts";
 import { requirePageSession } from "@/lib/auth/session";
-import { getOwnedProblem, serializeProblem } from "@/lib/problems";
+import { getOwnedProblemBySlug, serializeProblem } from "@/lib/problems";
 import { r2Enabled } from "@/lib/r2";
 import { getPageUser } from "@/lib/users";
 import { Attempt } from "@/models/Attempt";
 import { Solution } from "@/models/Solution";
 
-async function loadProblem(id: string) {
+async function loadProblem(slug: string) {
   const session = await requirePageSession();
   try {
-    return await getOwnedProblem(session.userId, id);
+    return await getOwnedProblemBySlug(session.userId, slug);
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) notFound();
     throw err;
   }
 }
 
-export async function generateMetadata({ params }: PageProps<"/problems/[id]">): Promise<Metadata> {
-  const problem = await loadProblem((await params).id);
+export async function generateMetadata({ params }: PageProps<"/problems/[slug]">): Promise<Metadata> {
+  const problem = await loadProblem((await params).slug);
   return { title: problem.title };
 }
 
-export default async function WorkspacePage({ params }: PageProps<"/problems/[id]">) {
-  const problem = await loadProblem((await params).id);
+export default async function WorkspacePage({ params }: PageProps<"/problems/[slug]">) {
+  const problem = await loadProblem((await params).slug);
   const user = await getPageUser();
   const userId = String(user._id);
   const attempts = await Attempt.find({ problemId: problem._id, userId })
@@ -47,6 +47,7 @@ export default async function WorkspacePage({ params }: PageProps<"/problems/[id
       aiModel={user.ai ? { provider: user.ai.provider, model: user.ai.model, hasKey: Boolean(user.ai.apiKey) } : null}
       uploadsEnabled={r2Enabled}
       hasSolution={hasSolution}
+      chatLayout={user.preferences?.chatLayout ?? "inline"}
     />
   );
 }

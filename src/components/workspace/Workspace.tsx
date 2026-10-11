@@ -42,9 +42,10 @@ import { DiagnosisPanel } from "@/components/viz/DiagnosisPanel";
 import { HintsPanel } from "@/components/viz/HintsPanel";
 import { Player } from "@/components/viz/Player";
 import { LoadingButton } from "@/components/loading-button";
+import { ShareButton } from "@/components/share/share-button";
 import { SolutionButton } from "@/components/solution/SolutionButton";
 import { ChangeModelLink } from "@/components/workspace/ChangeModelLink";
-import { ChatPanel } from "@/components/workspace/ChatPanel";
+import { ChatDock, useChatDock } from "@/components/workspace/ChatDock";
 import { DeleteAttemptButton } from "@/components/workspace/DeleteAttemptButton";
 import { CodeEditor } from "@/components/workspace/CodeEditor";
 import { useNotebookUpload, type UploadedImage } from "@/components/workspace/NotebookUpload";
@@ -61,6 +62,7 @@ import { MAX_TEXT } from "@/lib/schemas/problems";
 import { readSSE } from "@/lib/sse";
 import { VERDICT_LABELS } from "@/lib/verdicts";
 import type { AttemptStatus } from "@/models/Attempt";
+import type { ChatLayout } from "@/models/User";
 
 type StreamEvent =
   | { type: "attempt"; attemptId: string; version: number }
@@ -96,6 +98,7 @@ export function Workspace({
   aiModel,
   uploadsEnabled,
   hasSolution,
+  chatLayout,
 }: {
   problem: ProblemDetail;
   initialAttempts: AttemptSummary[];
@@ -106,8 +109,11 @@ export function Workspace({
   uploadsEnabled: boolean;
   /** Whether a solution exists (or is being written), so the button opens it instead of asking first. */
   hasSolution: boolean;
+  /** The learner's saved choice of where the chat sits. */
+  chatLayout: ChatLayout;
 }) {
   const router = useRouter();
+  const chatDock = useChatDock(chatLayout);
   const isDesktop = useMediaQuery("(min-width: 1024px)", true);
   const [attempts, setAttempts] = useState(initialAttempts);
   const [viewing, setViewing] = useState<AttemptDetail | null>(initialAttempt);
@@ -367,6 +373,7 @@ export function Workspace({
             <span className="mr-2">
               <SolutionButton
                 problemId={problem.id}
+                problemSlug={problem.slug}
                 hasSolution={hasSolution}
                 attempt={solutionBase && { id: solutionBase.id, version: solutionBase.version }}
                 canGenerate={canRun}
@@ -414,6 +421,16 @@ export function Workspace({
           <Button variant="brand" onClick={requestNewAttempt} disabled={Boolean(running) || loadingAttempt}>
             <CopyPlusIcon /> New attempt
           </Button>
+        )}
+        {mode === "view" && viewing?.status === "done" && (
+          <ShareButton
+            key={`share-${viewing.id}`}
+            kind="attempt"
+            targetId={viewing.id}
+            token={viewing.shareToken}
+            disabled={Boolean(running) || loadingAttempt}
+            onChange={(shareToken) => setViewing((v) => (v?.id === viewing.id ? { ...v, shareToken } : v))}
+          />
         )}
         {mode === "view" && viewing && (
           <DeleteAttemptButton
@@ -691,8 +708,9 @@ export function Workspace({
             />
           </TabsContent>
         </Tabs>
-        <ChatPanel
+        <ChatDock
           key={viewing.id}
+          dock={chatDock}
           endpoint={`/api/attempts/${viewing.id}/messages`}
           specVersion={viewing.specVersion}
           steps={spec.steps}

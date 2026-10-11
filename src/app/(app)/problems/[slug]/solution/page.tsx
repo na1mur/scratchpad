@@ -3,29 +3,29 @@ import { notFound } from "next/navigation";
 import { SolutionView } from "@/components/solution/SolutionView";
 import { ApiError } from "@/lib/api";
 import { requirePageSession } from "@/lib/auth/session";
-import { getOwnedProblem, serializeProblem } from "@/lib/problems";
+import { getOwnedProblemBySlug, serializeProblem } from "@/lib/problems";
 import { SOLUTION_SUMMARY_FIELDS, getOwnedSolution, serializeSolution, serializeSolutionSummary } from "@/lib/solutions";
 import { getPageUser } from "@/lib/users";
 import { Attempt } from "@/models/Attempt";
 import { Solution } from "@/models/Solution";
 
-async function loadProblem(id: string) {
+async function loadProblem(slug: string) {
   const session = await requirePageSession();
   try {
-    return await getOwnedProblem(session.userId, id);
+    return await getOwnedProblemBySlug(session.userId, slug);
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) notFound();
     throw err;
   }
 }
 
-export async function generateMetadata({ params }: PageProps<"/problems/[id]/solution">): Promise<Metadata> {
-  const problem = await loadProblem((await params).id);
+export async function generateMetadata({ params }: PageProps<"/problems/[slug]/solution">): Promise<Metadata> {
+  const problem = await loadProblem((await params).slug);
   return { title: `Solution · ${problem.title}` };
 }
 
-export default async function SolutionPage({ params, searchParams }: PageProps<"/problems/[id]/solution">) {
-  const problem = await loadProblem((await params).id);
+export default async function SolutionPage({ params, searchParams }: PageProps<"/problems/[slug]/solution">) {
+  const problem = await loadProblem((await params).slug);
   const { v } = await searchParams;
   const user = await getPageUser();
   const userId = String(user._id);
@@ -53,6 +53,7 @@ export default async function SolutionPage({ params, searchParams }: PageProps<"
       initialSolution={detail}
       baseAttempt={baseAttempt ? { id: String(baseAttempt._id), version: baseAttempt.version } : null}
       canGenerate={Boolean(user.ai?.apiKey)}
+      chatLayout={user.preferences?.chatLayout ?? "inline"}
     />
   );
 }

@@ -7,6 +7,7 @@ import { r2Enabled, viewUrl } from "@/lib/r2";
 import { loadSpec } from "@/lib/specStorage";
 import type { Verdict } from "@/lib/verdicts";
 import { Attempt, type AttemptDoc, type AttemptStatus } from "@/models/Attempt";
+import { Share } from "@/models/Share";
 
 export const IN_PROGRESS: ReadonlySet<AttemptStatus> = new Set([
   "queued",
@@ -72,6 +73,8 @@ export async function serializeAttempt(a: AttemptDoc, specVersion?: number) {
       ? { inputTokens: a.tokenUsage.inputTokens, outputTokens: a.tokenUsage.outputTokens, totalTokens: a.tokenUsage.totalTokens }
       : null,
     error: a.status === "error" && a.error?.message ? { code: a.error.code ?? "error", message: a.error.message } : null,
+    // The public link's token while it's shared (see src/lib/shares.ts).
+    shareToken: (await Share.findOne({ kind: "attempt", targetId: a._id }).select({ token: 1 }).lean())?.token ?? null,
   };
 }
 export type AttemptDetail = Awaited<ReturnType<typeof serializeAttempt>>;

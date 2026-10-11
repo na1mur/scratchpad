@@ -4,6 +4,7 @@ import { ApiError } from "@/lib/api";
 import type { SolutionContent } from "@/lib/ai/schemas/solution";
 import { connectDB } from "@/lib/db";
 import { loadSpec } from "@/lib/specStorage";
+import { Share } from "@/models/Share";
 import { Solution, type SolutionDoc, type SolutionStatus } from "@/models/Solution";
 
 export const SOLUTION_IN_PROGRESS: ReadonlySet<SolutionStatus> = new Set(["queued", "solving", "tracing", "narrating"]);
@@ -64,6 +65,8 @@ export async function serializeSolution(s: SolutionDoc) {
       ? { inputTokens: s.tokenUsage.inputTokens, outputTokens: s.tokenUsage.outputTokens, totalTokens: s.tokenUsage.totalTokens }
       : null,
     error: s.status === "error" && s.error?.message ? { code: s.error.code ?? "error", message: s.error.message } : null,
+    // The public link's token while it's shared (see src/lib/shares.ts).
+    shareToken: (await Share.findOne({ kind: "solution", targetId: s._id }).select({ token: 1 }).lean())?.token ?? null,
   };
 }
 export type SolutionDetail = Awaited<ReturnType<typeof serializeSolution>>;

@@ -1,12 +1,11 @@
 import { NextResponse, after, type NextRequest } from "next/server";
 import { handle, parseJson, parseWith, requireUser } from "@/lib/api";
 import { getModel } from "@/lib/ai/providers";
-import { generateProblemTitle } from "@/lib/ai/pipeline/title";
+import { generateProblemMeta } from "@/lib/ai/pipeline/title";
 import { refreshProblemSource } from "@/lib/problemSource";
-import { distinctTags, listProblems, serializeProblem } from "@/lib/problems";
+import { createProblem, distinctTags, listProblems, serializeProblem } from "@/lib/problems";
 import { createProblemSchema, listProblemsQuerySchema } from "@/lib/schemas/problems";
 import { loadUser } from "@/lib/users";
-import { Problem } from "@/models/Problem";
 
 export function GET(req: NextRequest) {
   return handle(req, async () => {
@@ -23,13 +22,16 @@ export function POST(req: NextRequest) {
     const input = await parseJson(req, createProblemSchema);
     const user = await loadUser(session);
     const { model } = getModel(user, "reasoning");
-    const problem = await Problem.create({
+    // Title and tags come first because they make the slug. The learner's own tags win over suggested ones.
+    const meta = await generateProblemMeta(model, input.statement);
+    const tags = input.tags.length ? input.tags : meta.tags;
+    const problem = await createProblem({
       userId: user._id,
-      title: await generateProblemTitle(model, input.statement),
+      title: meta.title,
       statement: input.statement,
       sourceUrl: input.sourceUrl || undefined,
-      tags: input.tags,
-      tagsSource: input.tags.length ? "user" : "none",
+      tags,
+      tagsSource: input.tags.length ? "user" : tags.length ? "auto" : "none",
       language: user.preferredLanguage ?? "pseudocode",
     });
     // Fetched after responding; the pipelines fetch it themselves if a run starts before this finishes.

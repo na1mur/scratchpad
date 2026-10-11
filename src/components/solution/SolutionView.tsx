@@ -3,21 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import {
-  ArrowLeftIcon,
-  CheckIcon,
-  ChevronDownIcon,
-  CopyIcon,
-  CopyPlusIcon,
-  CpuIcon,
-  GitBranchIcon,
-  GlobeIcon,
-  LightbulbIcon,
-  RotateCcwIcon,
-  Trash2Icon,
-  TriangleAlertIcon,
-} from "lucide-react";
+import { ArrowLeftIcon, ChevronDownIcon, CopyPlusIcon, LightbulbIcon, RotateCcwIcon, Trash2Icon, TriangleAlertIcon } from "lucide-react";
 import { LoadingButton } from "@/components/loading-button";
+import { ShareButton } from "@/components/share/share-button";
 import { SourceLink } from "@/components/problems/source-link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -33,26 +21,21 @@ import {
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CodePane } from "@/components/viz/CodePane";
-import { Player } from "@/components/viz/Player";
 import { ChangeModelLink } from "@/components/workspace/ChangeModelLink";
-import { ChatPanel } from "@/components/workspace/ChatPanel";
+import { ChatDock, useChatDock } from "@/components/workspace/ChatDock";
 import { ProgressStepper } from "@/components/workspace/ProgressStepper";
 import { UsageBadge } from "@/components/workspace/UsageBadge";
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { SOLUTION_REQUEST_LABELS } from "@/lib/ai/schemas/solution";
 import type { SolutionEvent } from "@/lib/ai/pipeline/events";
 import { ApiClientError, api, apiRaw, toApiError } from "@/lib/fetcher";
-import { languageLabel } from "@/lib/languages";
 import type { ProblemDetail } from "@/lib/problems";
-import { PROVIDER_LABELS } from "@/lib/providers";
 import type { SolutionDetail, SolutionSummary } from "@/lib/solutions";
+import { problemPath } from "@/lib/slug";
 import { readSSE } from "@/lib/sse";
 import type { SolutionStatus } from "@/models/Solution";
-import { LineBreakdown } from "./LineBreakdown";
+import type { ChatLayout } from "@/models/User";
 import { NewSolutionDialog, type SolutionRequest } from "./NewSolutionDialog";
-import { StepOutline } from "./StepOutline";
+import { SolutionApproach, SolutionWalkthrough } from "./SolutionDetails";
 
 const IN_PROGRESS = new Set<SolutionStatus>(["queued", "solving", "tracing", "narrating"]);
 
@@ -74,6 +57,7 @@ export function SolutionView({
   initialSolution,
   baseAttempt,
   canGenerate,
+  chatLayout,
 }: {
   problem: ProblemDetail;
   initialSolutions: SolutionSummary[];
@@ -81,7 +65,10 @@ export function SolutionView({
   /** The attempt a first solution would build on. */
   baseAttempt: { id: string; version: number } | null;
   canGenerate: boolean;
+  /** The learner's saved choice of where the chat sits. */
+  chatLayout: ChatLayout;
 }) {
+  const chatDock = useChatDock(chatLayout);
   const isDesktop = useMediaQuery("(min-width: 1024px)", true);
   const [solutions, setSolutions] = useState(initialSolutions);
   const [viewing, setViewing] = useState(initialSolution);
@@ -240,15 +227,12 @@ export function SolutionView({
   const content = viewing?.status === "done" ? viewing.content : null;
   const currentLine = spec?.steps[Math.min(playerIndex, spec.steps.length - 1)]?.line ?? null;
   const viewingSummary = viewing ? (solutions.find((s) => s.id === viewing.id) ?? null) : null;
-  const jumpToStep = (i: number) => {
-    setPlayerIndex(i);
-    setTab("walkthrough");
-  };
+
 
   const left = (
     <div className="flex flex-col gap-4 p-4">
       <Link
-        href={`/problems/${problem.id}`}
+        href={problemPath(problem)}
         className="inline-flex w-fit items-center gap-1 rounded-sm text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
       >
         <ArrowLeftIcon className="size-4" aria-hidden /> Back to your attempts
@@ -306,6 +290,16 @@ export function SolutionView({
           >
             <CopyPlusIcon /> New solution
           </Button>
+          {viewing?.status === "done" && (
+            <ShareButton
+              key={`share-${viewing.id}`}
+              kind="solution"
+              targetId={viewing.id}
+              token={viewing.shareToken}
+              disabled={busy}
+              onChange={(shareToken) => setViewing((v) => (v?.id === viewing.id ? { ...v, shareToken } : v))}
+            />
+          )}
           {viewing && (
             <Button
               variant="destructive"
@@ -323,119 +317,17 @@ export function SolutionView({
       )}
 
       {content && viewing && (
-        <>
-          <section className="flex flex-col gap-3" aria-label="Approach">
-            <div>
-              <p className="text-xs text-muted-foreground">
-                {SOLUTION_REQUEST_LABELS[viewing.requestKind]}
-                {viewing.requestKind === "initial" && viewing.basedOnAttemptVersion
-                  ? ` v${viewing.basedOnAttemptVersion}`
-                  : viewing.requestNote
-                    ? `: ${viewing.requestNote}`
-                    : ""}
-              </p>
-              <h2 className="text-lg font-semibold tracking-tight">{content.name}</h2>
-              {viewing.model && (
-                <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                  <CpuIcon className="size-3.5 shrink-0" aria-hidden />
-                  <span className="min-w-0 truncate">
-                    Written by {PROVIDER_LABELS[viewing.model.provider]} ·{" "}
-                    <span className="font-mono">{viewing.model.model}</span>
-                  </span>
-                </p>
-              )}
-            </div>
-            <dl className="flex flex-wrap gap-2 text-sm">
-              <div className="flex items-center gap-1.5 rounded-full border bg-tile px-3 py-1">
-                <dt className="text-muted-foreground">Time</dt>
-                <dd className="font-mono font-medium">{content.complexity.time}</dd>
-              </div>
-              <div className="flex items-center gap-1.5 rounded-full border bg-tile px-3 py-1">
-                <dt className="text-muted-foreground">Space</dt>
-                <dd className="font-mono font-medium">{content.complexity.space}</dd>
-              </div>
-            </dl>
-            <p className="text-sm">{content.summary}</p>
-            {content.relationToAttempt && (
-              <div className="flex gap-2 rounded-lg border border-brand bg-brand-soft p-3 text-sm">
-                <GitBranchIcon className="mt-0.5 size-4 shrink-0 text-brand-strong" aria-hidden />
-                <div>
-                  <p className="font-medium">
-                    {viewing.requestKind === "initial"
-                      ? `From your attempt${viewing.basedOnAttemptVersion ? ` v${viewing.basedOnAttemptVersion}` : ""}`
-                      : "Compared with your other solutions"}
-                  </p>
-                  <p className="text-muted-foreground">{content.relationToAttempt}</p>
-                </div>
-              </div>
-            )}
-            {content.keyIdeas.length > 0 && (
-              <div>
-                <h3 className="mb-1 flex items-center gap-1.5 text-sm font-medium">
-                  <LightbulbIcon className="size-4 text-brand-strong" aria-hidden /> Key ideas
-                </h3>
-                <ol className="flex list-inside list-decimal flex-col gap-1 text-sm text-muted-foreground marker:text-brand-strong">
-                  {content.keyIdeas.map((k, i) => (
-                    <li key={i}>{k}</li>
-                  ))}
-                </ol>
-              </div>
-            )}
-            <div>
-              <h3 className="mb-1 text-sm font-medium">Why it works</h3>
-              <p className="text-sm text-muted-foreground">{content.whyItWorks}</p>
-            </div>
-            <div>
-              <h3 className="mb-1 text-sm font-medium">Complexity</h3>
-              <p className="text-sm text-muted-foreground">{content.complexity.explanation}</p>
-            </div>
-          </section>
-
-          <section className="flex flex-col gap-2" aria-label="Code">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-sm font-medium">
-                Code <span className="font-normal text-muted-foreground">· {languageLabel(viewing.language)}</span>
-              </h3>
-              <CopyCodeButton code={content.codeLines.join("\n")} />
-            </div>
-            <CodePane
-              lines={content.codeLines}
-              language={viewing.language}
-              activeLine={tab === "walkthrough" ? currentLine : null}
-              className="max-h-[28rem]"
-            />
-            {!content.verified && (
-              <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0 text-viz-error" aria-hidden />
-                When this code was run on the test input, its result didn&apos;t match the expected one. The problem may
-                accept several answers, but double-check it, or ask about it in the chat.
-              </p>
-            )}
-            {content.references?.length ? (
-              <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                <GlobeIcon className="mt-0.5 size-3.5 shrink-0 text-brand-strong" aria-hidden />
-                <span>
-                  Written with reference to{" "}
-                  {content.references.map((r, i) => (
-                    <span key={r.url}>
-                      {i > 0 && ", "}
-                      <a
-                        href={r.url}
-                        target="_blank"
-                        rel="noopener noreferrer nofollow"
-                        className="underline underline-offset-2 hover:text-foreground"
-                      >
-                        {r.title}
-                      </a>
-                      {r.license && ` (${r.license})`}
-                    </span>
-                  ))}
-                  .
-                </span>
-              </p>
-            ) : null}
-          </section>
-        </>
+        <SolutionApproach
+          content={content}
+          language={viewing.language}
+          model={viewing.model}
+          activeLine={tab === "walkthrough" ? currentLine : null}
+          origin={{
+            requestKind: viewing.requestKind,
+            requestNote: viewing.requestNote,
+            basedOnAttemptVersion: viewing.basedOnAttemptVersion,
+          }}
+        />
       )}
     </div>
   );
@@ -463,7 +355,7 @@ export function SolutionView({
           </p>
         </div>
         <div className="flex flex-wrap justify-center gap-2">
-          <Link href={`/problems/${problem.id}`} className={buttonVariants({ variant: "brand" })}>
+          <Link href={problemPath(problem)} className={buttonVariants({ variant: "brand" })}>
             I&apos;ll try once more
           </Link>
           <LoadingButton variant="outline" loading={starting} disabled={!canGenerate} onClick={startFirst}>
@@ -503,50 +395,22 @@ export function SolutionView({
   } else {
     right = (
       <div className="flex flex-col gap-3 p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="min-w-0 flex-1 text-sm text-muted-foreground">
-            Input: <span className="font-mono text-foreground">{spec.summary.testInputDescription}</span>
-            <span className="mx-1.5">→</span>
-            <span className="font-mono text-foreground">{spec.summary.actualOutput}</span>
-          </p>
-          <UsageBadge attempt={viewing} executionLabel="Traced by running the solution in a sandbox" />
-        </div>
-        <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
-          <TabsList>
-            <TabsTrigger value="walkthrough">Walkthrough</TabsTrigger>
-            <TabsTrigger value="lines">Line by line</TabsTrigger>
-          </TabsList>
-          <TabsContent value="walkthrough" className="flex flex-col gap-4 pt-3">
-            <Player
-              key={viewing.id}
-              spec={spec}
-              language={viewing.language}
-              index={playerIndex}
-              onIndexChange={setPlayerIndex}
-              layoutId={viewing.id}
-              selectedStepIds={new Set(selectedSteps)}
-              onToggleStepSelect={toggleStep}
-              skipControls
-            />
-            <Collapsible defaultOpen={spec.loops.length > 0}>
-              <CollapsibleTrigger
-                render={
-                  <Button variant="ghost" size="sm" className="-ml-2 data-panel-open:[&_svg]:rotate-180" />
-                }
-              >
-                Every step, grouped by loop iteration <ChevronDownIcon className="transition-transform" />
-              </CollapsibleTrigger>
-              <CollapsibleContent className="pt-2">
-                <StepOutline spec={spec} current={playerIndex} onSeek={setPlayerIndex} />
-              </CollapsibleContent>
-            </Collapsible>
-          </TabsContent>
-          <TabsContent value="lines" className="pt-3">
-            <LineBreakdown content={content} language={viewing.language} spec={spec} activeLine={currentLine} onJumpToStep={jumpToStep} />
-          </TabsContent>
-        </Tabs>
-        <ChatPanel
+        <SolutionWalkthrough
+          layoutId={viewing.id}
+          spec={spec}
+          content={content}
+          language={viewing.language}
+          playerIndex={playerIndex}
+          onIndexChange={setPlayerIndex}
+          tab={tab}
+          onTabChange={setTab}
+          selectedStepIds={selectedSteps}
+          onToggleStep={toggleStep}
+          badge={<UsageBadge attempt={viewing} executionLabel="Traced by running the solution in a sandbox" />}
+        />
+        <ChatDock
           key={viewing.id}
+          dock={chatDock}
           endpoint={`/api/solutions/${viewing.id}/messages`}
           title="Ask about this solution"
           example={<>e.g. &ldquo;Why does this loop start at 1?&rdquo; or &ldquo;Can it be done in O(1) space?&rdquo;</>}
@@ -626,27 +490,4 @@ export function SolutionView({
 
 function pickSummary(d: SolutionDetail): Partial<SolutionSummary> {
   return { status: d.status, name: d.name, time: d.time, space: d.space };
-}
-
-function CopyCodeButton({ code }: { code: string }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 1500);
-    return () => clearTimeout(t);
-  }, [copied]);
-  return (
-    <Button
-      variant="ghost"
-      size="xs"
-      onClick={() =>
-        navigator.clipboard.writeText(code).then(
-          () => setCopied(true),
-          () => toast.error("Couldn't copy."),
-        )
-      }
-    >
-      {copied ? <CheckIcon /> : <CopyIcon />} {copied ? "Copied" : "Copy"}
-    </Button>
-  );
 }

@@ -36,6 +36,20 @@ export function GET(req: NextRequest, ctx: RouteContext<"/api/attempts/[id]/mess
   });
 }
 
+/**
+ * "New conversation": drops the whole chat so the next question starts fresh. No history is kept;
+ * visualizations the chat regenerated stay in the attempt's version picker.
+ */
+export function DELETE(req: NextRequest, ctx: RouteContext<"/api/attempts/[id]/messages">) {
+  return handle(req, async () => {
+    const session = await requireUser({ onboarded: true });
+    const { id } = await ctx.params;
+    const attempt = await getOwnedAttempt(session.userId, id);
+    await Message.deleteMany({ attemptId: attempt._id, userId: session.userId });
+    return NextResponse.json({ ok: true });
+  });
+}
+
 function specContext(spec: VizSpec): string {
   const d = spec.diagnosis;
   return [

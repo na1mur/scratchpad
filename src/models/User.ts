@@ -6,6 +6,10 @@ import { encryptedFieldSchema } from "@/models/encryptedField";
 export const ONBOARDING_STEPS = ["language", "provider", "done"] as const;
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 
+/** Where the follow-up chat sits: under the run, or in a drawer from the right. */
+export const CHAT_LAYOUTS = ["inline", "drawer"] as const;
+export type ChatLayout = (typeof CHAT_LAYOUTS)[number];
+
 
 const visionSchema = new Schema(
   {
@@ -65,6 +69,10 @@ const userSchema = new Schema(
     onboardingStep: { type: String, enum: ONBOARDING_STEPS, default: "language", required: true },
     ai: { type: aiSchema, required: false },
     search: { type: searchSchema, required: false },
+    // UI choices that follow the user across problems. Absent fields mean the default.
+    preferences: {
+      chatLayout: { type: String, enum: CHAT_LAYOUTS, required: false },
+    },
   },
   { timestamps: true },
 );

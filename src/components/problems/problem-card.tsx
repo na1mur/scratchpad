@@ -4,6 +4,7 @@ import { DeleteProblemButton } from "@/components/problems/delete-problem-button
 import { VerdictBadge } from "@/components/problems/verdict-badge";
 import { Badge } from "@/components/ui/badge";
 import type { ProblemSummary } from "@/lib/problems";
+import { problemPath } from "@/lib/slug";
 import { timeAgo } from "@/lib/timeAgo";
 
 const dateFormat = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" });
@@ -15,7 +16,7 @@ export function ProblemCard({ problem, now }: { problem: ProblemSummary; now: nu
   return (
     <div className="group relative flex min-h-36 flex-col gap-3 rounded-xl border bg-plate p-4 transition-colors hover:border-foreground/30 has-[a:focus-visible]:border-foreground/40 has-[a:focus-visible]:ring-3 has-[a:focus-visible]:ring-ring/50">
       <h2 className="line-clamp-2 text-base leading-snug font-medium text-balance">
-        <Link href={`/problems/${problem.id}`} className="outline-none after:absolute after:inset-0 after:rounded-xl">
+        <Link href={problemPath(problem)} className="outline-none after:absolute after:inset-0 after:rounded-xl">
           {problem.title}
         </Link>
       </h2>

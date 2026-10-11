@@ -28,7 +28,8 @@ export async function proxy(req: NextRequest) {
     );
   }
 
-  if (PUBLIC_PAGES.has(pathname)) return NextResponse.next();
+  // Shared attempts and solutions: the page itself checks that the link is still shared.
+  if (PUBLIC_PAGES.has(pathname) || pathname.startsWith("/shared/")) return NextResponse.next();
 
   if (!session) {
     const refresh = new URL("/api/auth/refresh", req.url);

@@ -4,24 +4,46 @@ import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { Loader2Icon, MessageCircleQuestionIcon, RefreshCwIcon, SendIcon, SparklesIcon, XIcon } from "lucide-react";
+import {
+  Loader2Icon,
+  MessageCircleQuestionIcon,
+  PanelBottomIcon,
+  PanelRightIcon,
+  RefreshCwIcon,
+  SendIcon,
+  SparklesIcon,
+  SquarePenIcon,
+  XIcon,
+} from "lucide-react";
 import { cn } from "cn";
 import { ChatMarkdown } from "@/components/markdown";
+import { LoadingButton } from "@/components/loading-button";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SOLUTION_REQUEST_LABELS, type SolutionRequestKind } from "@/lib/ai/schemas/solution";
 import type { Step } from "@/lib/ai/schemas/vizSpec";
 import { api, apiRaw, toApiError } from "@/lib/fetcher";
 import type { ChatEvent, ChatMessage } from "@/lib/messages";
 import { MAX_MESSAGE, sendMessageSchema, type SendMessageInput } from "@/lib/schemas/messages";
 import { readSSE } from "@/lib/sse";
+import type { ChatLayout } from "@/models/User";
 
 type Pending = { text: string; regenerating: string | null };
 type Proposal = { kind: SolutionRequestKind; note: string };
 
 /**
  * Follow-up chat about a run. `endpoint` is the messages route of an attempt
- * or a solution; both stream the same ChatEvents.
+ * or a solution; both stream the same ChatEvents. `layout` is where it's shown
+ * (see `ChatDock`), which changes only its chrome.
  */
 export function ChatPanel({
   endpoint,
@@ -34,6 +56,9 @@ export function ChatPanel({
   onClearSelection,
   onSpecVersion,
   onProposal,
+  layout = "inline",
+  onLayoutChange,
+  onClose,
 }: {
   endpoint: string;
   title?: string;
@@ -46,11 +71,16 @@ export function ChatPanel({
   onSpecVersion?: (version: number) => void;
   /** Solution chat: the model suggested a new solution; the learner decides whether to generate it. */
   onProposal?: (proposal: Proposal) => void;
+  layout?: ChatLayout;
+  onLayoutChange?: (layout: ChatLayout) => void;
+  /** Drawer only: hides it. */
+  onClose?: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   /** The newest suggestion, shown under the answer it came with. */
   const [proposal, setProposal] = useState<Proposal | null>(null);
+  const [resetting, setResetting] = useState<"confirm" | "busy" | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const form = useForm<SendMessageInput>({
     resolver: zodResolver(sendMessageSchema),
@@ -72,6 +102,22 @@ export function ChatPanel({
   }, [messages?.length, pending?.text]);
 
   const stepNumber = (id: string) => steps.findIndex((s) => s.id === id) + 1;
+  const drawer = layout === "drawer";
+
+  /** Clears the conversation on the server; the next question starts without any earlier context. */
+  async function startOver() {
+    setResetting("busy");
+    try {
+      await api(endpoint, { method: "DELETE" });
+      setMessages([]);
+      setProposal(null);
+      onClearSelection();
+      setResetting(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't start a new conversation.");
+      setResetting("confirm");
+    }
+  }
 
   async function onSend(values: SendMessageInput) {
     setPending({ text: "", regenerating: null });
@@ -109,16 +155,45 @@ export function ChatPanel({
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border bg-tile p-3" aria-label="Ask about this run">
+    <section
+      className={cn("flex flex-col gap-3 bg-tile p-3", drawer ? "h-full min-h-0" : "rounded-lg border")}
+      aria-label={title}
+    >
       <header className="flex items-center gap-2">
-        <MessageCircleQuestionIcon className="size-4 text-muted-foreground" />
-        <h3 className="text-sm font-medium">{title}</h3>
-        <span className="ml-auto hidden text-xs text-muted-foreground sm:inline">
-          Shift-click timeline steps to ask about them
-        </span>
+        <MessageCircleQuestionIcon className="size-4 shrink-0 text-muted-foreground" />
+        <h3 className="min-w-0 truncate text-sm font-medium">{title}</h3>
+        {!drawer && (
+          <span className="ml-auto hidden text-xs text-muted-foreground xl:inline">
+            Shift-click timeline steps to ask about them
+          </span>
+        )}
+        <div className={cn("flex shrink-0 items-center", drawer ? "ml-auto" : "ml-auto xl:ml-0")}>
+          <IconButton
+            label="New conversation"
+            disabled={Boolean(pending) || !messages?.length}
+            onClick={() => setResetting("confirm")}
+          >
+            <SquarePenIcon />
+          </IconButton>
+          {onLayoutChange && (
+            <IconButton
+              label={drawer ? "Show under the run" : "Move to a side drawer"}
+              disabled={Boolean(pending)}
+              onClick={() => onLayoutChange(drawer ? "inline" : "drawer")}
+            >
+              {drawer ? <PanelBottomIcon /> : <PanelRightIcon />}
+            </IconButton>
+          )}
+          {drawer && onClose && (
+            <IconButton label="Hide chat" onClick={onClose}>
+              <XIcon />
+            </IconButton>
+          )}
+        </div>
       </header>
+      {drawer && <p className="-mt-2 text-xs text-muted-foreground">Shift-click timeline steps to ask about them.</p>}
 
-      <div className="flex max-h-96 flex-col gap-3 overflow-y-auto">
+      <div className={cn("flex flex-col gap-3 overflow-y-auto", drawer ? "min-h-0 flex-1" : "max-h-96")}>
         {messages === null ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : messages.length === 0 && !pending ? (
@@ -215,7 +290,49 @@ export function ChatPanel({
           {pending ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
         </Button>
       </form>
+
+      <Dialog open={resetting !== null} onOpenChange={(o) => !o && resetting !== "busy" && setResetting(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Start a new conversation?</DialogTitle>
+            <DialogDescription>
+              This deletes the current conversation, and the next answer won&apos;t remember it. It can&apos;t be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetting(null)} disabled={resetting === "busy"}>
+              Cancel
+            </Button>
+            <LoadingButton variant="brand" onClick={startOver} loading={resetting === "busy"}>
+              {resetting === "busy" ? "Clearing…" : "Start over"}
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
+  );
+}
+
+function IconButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<Button type="button" variant="ghost" size="icon-sm" aria-label={label} disabled={disabled} onClick={onClick} />}
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 

@@ -5,6 +5,7 @@ import { deleteKeys } from "@/lib/r2";
 import { Attempt } from "@/models/Attempt";
 import { Message } from "@/models/Message";
 import { Problem } from "@/models/Problem";
+import { Share } from "@/models/Share";
 import { Solution } from "@/models/Solution";
 
 const R2_FIELDS = { images: 1, specR2Key: 1, specVersions: 1 } as const;
@@ -36,6 +37,7 @@ export async function deleteProblemCascade(userId: string, problemId: Types.Obje
   await Message.deleteMany({ solutionId: { $in: solutions.map((s) => s._id) }, userId });
   await Attempt.deleteMany({ problemId, userId });
   await Solution.deleteMany({ problemId, userId });
+  await Share.deleteMany({ problemId, userId });
   await Problem.deleteOne({ _id: problemId, userId });
   await cleanupR2([...attempts.flatMap(attemptR2Keys), ...solutions.flatMap((s) => (s.specR2Key ? [s.specR2Key] : []))]);
 }
@@ -51,6 +53,7 @@ export async function deleteAttemptCascade(
   opts: { keepImages?: boolean } = {},
 ) {
   await Message.deleteMany({ attemptId: attempt._id, userId });
+  await Share.deleteMany({ kind: "attempt", targetId: attempt._id, userId });
   const { deletedCount } = await Attempt.deleteOne({ _id: attempt._id, userId });
   if (!deletedCount) return;
 
@@ -75,6 +78,7 @@ export async function deleteAttemptCascade(
 /** Deletes one solution, its chat and its R2 walkthrough. */
 export async function deleteSolutionCascade(userId: string, solution: { _id: Types.ObjectId; specR2Key?: string | null }) {
   await Message.deleteMany({ solutionId: solution._id, userId });
+  await Share.deleteMany({ kind: "solution", targetId: solution._id, userId });
   const { deletedCount } = await Solution.deleteOne({ _id: solution._id, userId });
   if (deletedCount && solution.specR2Key) await cleanupR2([solution.specR2Key]);
 }

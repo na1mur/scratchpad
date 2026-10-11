@@ -6,6 +6,9 @@ const problemSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
     title: { type: String, required: true, trim: true, maxlength: 200 },
+    // The page URL (/problems/<slug>): title and tags at creation, unique per user. Kept when the title is
+    // edited so links don't break. Problems from before slugs have none and are reached by id.
+    slug: { type: String, required: false },
     statement: { type: String, required: true, maxlength: 10_000 },
     // Where the problem came from (LeetCode etc.), if the learner gave a link.
     sourceUrl: { type: String, required: false, trim: true, maxlength: 2000 },
@@ -51,6 +54,7 @@ problemSchema.index(
   },
 );
 problemSchema.index({ userId: 1, tags: 1, updatedAt: -1 });
+problemSchema.index({ userId: 1, slug: 1 }, { unique: true, partialFilterExpression: { slug: { $type: "string" } } });
 
 export type ProblemDoc = InferSchemaType<typeof problemSchema> & { _id: mongoose.Types.ObjectId };
 

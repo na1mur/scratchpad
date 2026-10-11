@@ -35,6 +35,17 @@ export function GET(req: NextRequest, ctx: RouteContext<"/api/solutions/[id]/mes
   });
 }
 
+/** "New conversation": drops the whole chat so the next question starts fresh. No history is kept. */
+export function DELETE(req: NextRequest, ctx: RouteContext<"/api/solutions/[id]/messages">) {
+  return handle(req, async () => {
+    const session = await requireUser({ onboarded: true });
+    const { id } = await ctx.params;
+    const solution = await getOwnedSolution(session.userId, id);
+    await Message.deleteMany({ solutionId: solution._id, userId: session.userId });
+    return NextResponse.json({ ok: true });
+  });
+}
+
 function solutionContext(c: SolutionContent, spec: VizSpec): string {
   return [
     `<solution>`,

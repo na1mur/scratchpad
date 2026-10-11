@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/fetcher";
 import type { ProblemDetail } from "@/lib/problems";
 import { MAX_TEXT, createProblemSchema, type CreateProblemInput } from "@/lib/schemas/problems";
+import { problemPath } from "@/lib/slug";
 import type { Tag } from "@/lib/tags";
 
 export function NewProblemForm() {
@@ -29,7 +30,7 @@ export function NewProblemForm() {
       const { problem } = await api<{ problem: ProblemDetail }>("/api/problems", { method: "POST", body: values });
       setRedirecting(true);
       toast.success("Problem created. Now write your approach.");
-      router.push(`/problems/${problem.id}`);
+      router.push(problemPath(problem));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't create the problem.");
     }
