@@ -93,7 +93,7 @@ function EditorKeysHint() {
       >
         <InfoIcon className="size-3.5" aria-hidden />
       </TooltipTrigger>
-      <TooltipContent className="flex flex-col items-start gap-0.5 text-left">
+      <TooltipContent className="flex flex-col items-start gap-0.5 bg-popover px-3 py-2 text-left text-xs text-popover-foreground shadow-md ring-1 ring-foreground/10 [&>div]:hidden">
         <span>New lines keep the previous line&apos;s indentation, one level deeper after a colon.</span>
         <span>Ctrl+Backspace clears it to start from the line&apos;s beginning.</span>
       </TooltipContent>
