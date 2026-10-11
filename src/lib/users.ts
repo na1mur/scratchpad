@@ -1,6 +1,7 @@
 import "server-only";
 import type { Types } from "mongoose";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { ApiError } from "@/lib/api";
 import { requirePageSession, type Session } from "@/lib/auth/session";
 import { decrypt } from "@/lib/crypto";
@@ -49,12 +50,15 @@ export async function resolveKey(
   throw new ApiError(400, "key_required", "Enter an API key for this provider.");
 }
 
-/** For server components. The proxy has already checked the session. */
-export async function getPageUser(): Promise<UserDoc> {
+/**
+ * For server components. The proxy has already checked the session. Cached per request, so the layout
+ * and the page share one lookup.
+ */
+export const getPageUser = cache(async (): Promise<UserDoc> => {
   const session = await requirePageSession();
   await connectDB();
   const user = await User.findById(session.userId).lean();
   // A valid token for a deleted user: clear the session, or /login would bounce back here.
   if (!user) redirect("/api/auth/logout");
   return user;
-}
+});
