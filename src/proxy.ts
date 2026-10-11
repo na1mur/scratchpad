@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ACCESS_COOKIE } from "@/lib/auth/cookies";
+import { ACCESS_COOKIE, SESSION_HINT_COOKIE } from "@/lib/auth/cookies";
 import { verifyAccessToken } from "@/lib/auth/jwt";
 import { ONBOARDING_PATHS, homeFor } from "@/lib/auth/routes";
 
@@ -31,8 +31,15 @@ export async function proxy(req: NextRequest) {
   if (PUBLIC_PAGES.has(pathname)) return NextResponse.next();
 
   if (!session) {
-    if (GUEST_PAGES.has(pathname)) return NextResponse.next();
     const refresh = new URL("/api/auth/refresh", req.url);
+    if (GUEST_PAGES.has(pathname)) {
+      // A returning user whose access token has expired: refresh instead of
+      // showing the signed-out page. A failed refresh clears the hint.
+      if (!req.cookies.has(SESSION_HINT_COOKIE)) return NextResponse.next();
+      const next = pathname === "/login" ? req.nextUrl.searchParams.get("next") : null;
+      if (next) refresh.searchParams.set("next", next);
+      return NextResponse.redirect(refresh);
+    }
     refresh.searchParams.set("next", pathname + search);
     return NextResponse.redirect(refresh);
   }

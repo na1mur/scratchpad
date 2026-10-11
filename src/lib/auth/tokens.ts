@@ -23,8 +23,7 @@ function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-async function createRefreshToken(userId: string, family: string) {
-  const jti = randomUUID();
+async function createRefreshToken(userId: string, family: string, jti = randomUUID()) {
   const refresh = await signRefreshToken({ sub: userId, jti, family });
   await RefreshToken.create({
     userId,
@@ -33,13 +32,13 @@ async function createRefreshToken(userId: string, family: string) {
     family,
     expiresAt: new Date(Date.now() + REFRESH_TTL_SECONDS * 1000),
   });
-  return { refresh, jti };
+  return refresh;
 }
 
 /** Starts a new token family (login / signup). */
 export async function issueTokenPair(userId: string, onboardingStep: OnboardingStep): Promise<TokenPair> {
   await connectDB();
-  const { refresh } = await createRefreshToken(userId, randomUUID());
+  const refresh = await createRefreshToken(userId, randomUUID());
   const access = await signAccessToken({ sub: userId, onboardingStep });
   return { access, refresh };
 }
@@ -54,10 +53,13 @@ export async function rotateRefreshToken(rawToken: string | undefined): Promise<
   await connectDB();
 
   const tokenHash = sha256(rawToken);
-  // Atomically claim the token so only one request can rotate it.
+  // Atomically claim the token so only one request can rotate it. `replacedBy`
+  // is set in the same write: a racing request that sees the token revoked
+  // without it would take the race for reuse and revoke the whole family.
+  const jti = randomUUID();
   const claimed = await RefreshToken.findOneAndUpdate(
     { tokenHash, revokedAt: null },
-    { $set: { revokedAt: new Date() } },
+    { $set: { revokedAt: new Date(), replacedBy: jti } },
     { returnDocument: "after" },
   );
 
@@ -80,8 +82,7 @@ export async function rotateRefreshToken(rawToken: string | undefined): Promise<
   }
 
   const userId = String(claimed.userId);
-  const { refresh, jti } = await createRefreshToken(userId, claimed.family);
-  await RefreshToken.updateOne({ _id: claimed._id }, { $set: { replacedBy: jti } });
+  const refresh = await createRefreshToken(userId, claimed.family, jti);
   const access = await signAccessToken({ sub: userId, onboardingStep: user.onboardingStep });
   return { ok: true, tokens: { access, refresh }, userId, onboardingStep: user.onboardingStep };
 }
