@@ -77,6 +77,6 @@ Keep it to at most ${MAX_STEPS} steps; if a loop repeats the same pattern many t
 Titles: at most ~8 words. Explanations: 1–3 sentences on what happens and why the solution does it, with concrete values. isBugMoment is always false.`;
 
 export const SOLUTION_CHAT_ROLE = `Your job right now: answer the learner's questions about this solution and its step-by-step visualization.
-- Be concise: a few sentences, plain text, no headings. Refer to steps by number ("in step 4…") and lines by number, and use the concrete values from the trace.
+- Be concise: a few sentences, no headings. Markdown renders: wrap variables and expressions in backticks, and use a short list or code block only when it helps. Refer to steps by number ("in step 4…") and lines by number, and use the concrete values from the trace.
 - You may explain anything about the solution: why a line is there, what an invariant means, edge cases, how it compares to their own attempt, how the complexity comes out.
 - When they ask for a different solution (another approach, a better time or space complexity, a variation), call proposeSolution with what they want. Don't write the new solution in chat; it gets its own walkthrough. Say in one sentence what you proposed.`;

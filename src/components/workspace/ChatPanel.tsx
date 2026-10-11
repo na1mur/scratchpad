@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Loader2Icon, MessageCircleQuestionIcon, RefreshCwIcon, SendIcon, SparklesIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
+import { ChatMarkdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { SOLUTION_REQUEST_LABELS, type SolutionRequestKind } from "@/lib/ai/schemas/solution";
@@ -130,7 +131,7 @@ export function ChatPanel({
                 About step{m.focusStepIds.length > 1 ? "s" : ""} {m.focusStepIds.map(stepNumber).filter(Boolean).join(", ")}
               </span>
             )}
-            {m.content}
+            <ChatMarkdown>{m.content}</ChatMarkdown>
             {m.producedSpecVersion && (
               <Button
                 variant="link"
@@ -150,7 +151,11 @@ export function ChatPanel({
                 <Loader2Icon className="size-3 animate-spin" /> Building a new visualization: {pending.regenerating}
               </span>
             )}
-            {pending.text || (!pending.regenerating && <Loader2Icon className="size-4 animate-spin text-muted-foreground" />)}
+            {pending.text ? (
+              <ChatMarkdown>{pending.text}</ChatMarkdown>
+            ) : (
+              !pending.regenerating && <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+            )}
           </Bubble>
         )}
         {proposal && onProposal && !pending && (
@@ -218,7 +223,7 @@ function Bubble({ role, children }: { role: "user" | "assistant"; children: Reac
   return (
     <div
       className={cn(
-        "max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap",
+        "max-w-[85%] min-w-0 rounded-lg px-3 py-2 text-sm",
         role === "user" ? "self-end bg-primary text-primary-foreground" : "self-start border bg-sheet",
       )}
     >

@@ -1,8 +1,9 @@
 import Link from "next/link";
-import Markdown, { type Components } from "react-markdown";
+import Markdown from "react-markdown";
 import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
 import { Logo } from "@/components/logo";
+import { markdownComponents } from "@/components/markdown";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LEGAL_DOCS, readLegalDoc, type LegalDoc } from "@/lib/legal";
 
@@ -26,19 +27,6 @@ const prose = [
   "prose-th:whitespace-nowrap",
 ].join(" ");
 
-const components: Components = {
-  a({ href = "", children }) {
-    // Site paths and in-page anchors stay in the app; everything else opens in a new tab.
-    if (href.startsWith("/") || href.startsWith("#")) return <Link href={href}>{children}</Link>;
-    const external = /^https?:/.test(href);
-    return (
-      <a href={href} {...(external && { target: "_blank", rel: "noopener noreferrer" })}>
-        {children}
-      </a>
-    );
-  },
-};
-
 const footerLink =
   "rounded-sm outline-none hover:text-ink focus-visible:text-ink focus-visible:ring-2 focus-visible:ring-pen-blue/60";
 
@@ -54,7 +42,7 @@ export async function LegalPage({ doc }: { doc: LegalDoc }) {
       </header>
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 pt-6 pb-16 sm:px-6">
         <article className={prose}>
-          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSlug]} components={components}>
+          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSlug]} components={markdownComponents}>
             {source}
           </Markdown>
         </article>
