@@ -11,7 +11,8 @@ const LINE_HEIGHT = 24; // leading-6
 const CHROME = 16 + 2 + 14;
 
 /**
- * Textarea with a line-number gutter that scrolls in sync. Tab inserts spaces.
+ * Textarea with a line-number gutter that scrolls in sync. Tab inserts spaces, Enter keeps the
+ * current line's indentation (one level deeper after a colon), and Ctrl+Backspace on a line of only indentation clears it.
  * It grows with its content between `minLines` and `maxLines`, then scrolls.
  */
 export function CodeEditor({
@@ -43,14 +44,36 @@ export function CodeEditor({
   const lineCount = Math.max(1, value.split("\n").length);
   const visibleLines = Math.min(maxLines, Math.max(minLines, lineCount));
 
+  /** Replaces `from..to` with `text` through the browser's editing command, so Ctrl+Z still undoes it. */
+  function replaceRange(el: HTMLTextAreaElement, from: number, to: number, text: string) {
+    el.setSelectionRange(from, to);
+    if (document.execCommand(text ? "insertText" : "delete", false, text)) return;
+    onChange(`${value.slice(0, from)}${text}${value.slice(to)}`);
+    requestAnimationFrame(() => el.setSelectionRange(from + text.length, from + text.length));
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key !== "Tab" || readOnly || e.shiftKey) return;
-    e.preventDefault();
+    if (readOnly || e.nativeEvent.isComposing) return;
     const el = e.currentTarget;
     const { selectionStart: start, selectionEnd: end } = el;
-    const next = `${value.slice(0, start)}${INDENT}${value.slice(end)}`;
-    onChange(next);
-    requestAnimationFrame(() => el.setSelectionRange(start + INDENT.length, start + INDENT.length));
+    const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+    const beforeCursor = value.slice(lineStart, start);
+
+    if (e.key === "Tab" && !e.shiftKey) {
+      e.preventDefault();
+      replaceRange(el, start, end, INDENT);
+    } else if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // A new line starts at the previous line's indentation, one level deeper after a colon.
+      const opensBlock = beforeCursor.trimEnd().endsWith(":");
+      const indent = /^[ \t]*/.exec(beforeCursor)![0] + (opensBlock ? INDENT : "");
+      if (!indent) return;
+      e.preventDefault();
+      replaceRange(el, start, end, `\n${indent}`);
+    } else if (e.key === "Backspace" && (e.ctrlKey || e.metaKey) && start === end && /^[ \t]+$/.test(beforeCursor)) {
+      // On a line that's only indentation so far, drop all of it at once.
+      e.preventDefault();
+      replaceRange(el, lineStart, start, "");
+    }
   }
 
   return (

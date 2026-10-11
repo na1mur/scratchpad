@@ -11,6 +11,7 @@ import {
   CopyPlusIcon,
   CpuIcon,
   EraserIcon,
+  InfoIcon,
   LockIcon,
   PlayIcon,
   RotateCcwIcon,
@@ -77,6 +78,28 @@ const specLabel = (version: number) => (version === 1 ? "Original visualization"
 
 const dateFormat = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const shortDate = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
+
+function EditorKeysHint() {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            tabIndex={0}
+            aria-label="Editor shortcuts"
+            className="flex cursor-default rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          />
+        }
+      >
+        <InfoIcon className="size-3.5" aria-hidden />
+      </TooltipTrigger>
+      <TooltipContent className="flex flex-col items-start gap-0.5 text-left">
+        <span>New lines keep the previous line&apos;s indentation, one level deeper after a colon.</span>
+        <span>Ctrl+Backspace clears it to start from the line&apos;s beginning.</span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 function ClearButton({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
   return (
@@ -494,7 +517,10 @@ export function Workspace({
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
               <div className="flex items-center justify-between gap-2">
-                <FieldLabel htmlFor="pseudoCode">Pseudo-code</FieldLabel>
+                <div className="flex items-center gap-1">
+                  <FieldLabel htmlFor="pseudoCode">Pseudo-code</FieldLabel>
+                  {mode === "new" && <EditorKeysHint />}
+                </div>
                 {mode === "new" && (
                   <div className="flex items-center">
                     {uploadsEnabled && notebook.button}
