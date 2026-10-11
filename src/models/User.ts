@@ -10,6 +10,10 @@ export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 export const CHAT_LAYOUTS = ["inline", "drawer"] as const;
 export type ChatLayout = (typeof CHAT_LAYOUTS)[number];
 
+/** How the problems list shows problems: a grid of cards, or a table. */
+export const PROBLEM_VIEWS = ["cards", "table"] as const;
+export type ProblemView = (typeof PROBLEM_VIEWS)[number];
+
 
 const visionSchema = new Schema(
   {
@@ -72,6 +76,7 @@ const userSchema = new Schema(
     // UI choices that follow the user across problems. Absent fields mean the default.
     preferences: {
       chatLayout: { type: String, enum: CHAT_LAYOUTS, required: false },
+      problemView: { type: String, enum: PROBLEM_VIEWS, required: false },
     },
   },
   { timestamps: true },

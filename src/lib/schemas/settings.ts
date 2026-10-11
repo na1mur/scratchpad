@@ -7,9 +7,13 @@ export const languageSchema = z.object({
 });
 export type LanguageInput = z.infer<typeof languageSchema>;
 
-export const preferencesSchema = z.object({
-  chatLayout: z.enum(["inline", "drawer"]),
-});
+/** Any subset of the preferences; fields left out keep their saved value. */
+export const preferencesSchema = z
+  .object({
+    chatLayout: z.enum(["inline", "drawer"]).optional(),
+    problemView: z.enum(["cards", "table"]).optional(),
+  })
+  .refine((p) => Object.values(p).some((v) => v !== undefined), "Nothing to save");
 
 export const providerIdSchema = z.enum(PROVIDERS, { error: "Pick a provider" });
 
