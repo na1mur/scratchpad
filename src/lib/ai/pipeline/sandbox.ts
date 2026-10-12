@@ -3,7 +3,7 @@ import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { HARNESS_RUNTIME } from "@/lib/harness/runtime";
 import { AUTO_TRACE_LIMIT, AUTO_TRACE_RUNTIME } from "@/lib/trace/runtime";
-import type { ValueType } from "@/lib/harness/types";
+import type { CallSpec, ValueType } from "@/lib/harness/types";
 
 const TIME_LIMIT_MS = 2_000;
 const MEMORY_LIMIT_BYTES = 64 * 1024 * 1024;
@@ -198,6 +198,12 @@ function wrap(call: string): string {
   `;
 }
 
+/** JS for the call's arguments, built from the JSON object named `raw`; a cycle list gets its `pos`. */
+export function callArgs(call: Pick<CallSpec, "params" | "cycle">, raw: string): string {
+  const cycle = call.cycle ? JSON.stringify(call.cycle) : "null";
+  return `${JSON.stringify(call.params)}.map(function (p) { var c = ${cycle}; return __hIn(p.type, ${raw}[p.name], c && c.param === p.name ? ${raw}[c.pos] : undefined); })`;
+}
+
 const literal = (value: unknown) => `JSON.parse(${JSON.stringify(JSON.stringify(value ?? {}))})`;
 
 /**
@@ -210,31 +216,23 @@ export function runInSandbox(program: string, input: unknown, returnType?: Value
   return execute(program, wrapped, { check: "typeof run === 'function'", name: "run(input)" });
 }
 
-/** How to call a solution: a ReadyHarness with its types parsed. */
-export type FunctionCall = {
-  functionName: string;
-  params: { name: string; type: ValueType }[];
-  returnType: ValueType;
-  /** Index of the parameter that holds the answer of a void function. */
-  outputIndex?: number;
-};
 
 /**
  * Calls a plain solution function (no trace() calls needed) on one case's arguments, built into
  * ListNodes and TreeNodes as the types say, and returns the answer as harness JSON in `returnJson`.
  * Finds `functionName` at the top level or as a method of a LeetCode-style `Solution` class.
  */
-export function runFunction(program: string, call: FunctionCall, args: Record<string, unknown>): Promise<SandboxResult> {
+export function runFunction(program: string, call: CallSpec, args: Record<string, unknown>): Promise<SandboxResult> {
   const name = call.functionName;
   if (!/^[A-Za-z_$][\w$]*$/.test(name)) return Promise.resolve(failed("invalid_program", `bad function name ${name}`));
   const output = call.outputIndex;
   const wrapped = wrap(`var __fn = typeof ${name} === "function" ? ${name} : null;
       if (!__fn) { var __s = new Solution(); __fn = __s.${name}.bind(__s); }
       var __raw = ${literal(args)};
-      var __args = ${JSON.stringify(call.params)}.map(function (p) { return __hIn(p.type, __raw[p.name]); });
+      var __args = ${callArgs(call, "__raw")};
       var __r = __fn.apply(null, __args);
       var __v = ${output !== undefined ? `__args[${output}]` : "__r"};
-      ${captureReturn(output !== undefined ? call.params[output].type : call.returnType)}`);
+      ${captureReturn(call.answerType)}`);
   return execute(program, wrapped, {
     check: `typeof ${name} === "function" || (typeof Solution === "function" && typeof Solution.prototype.${name} === "function")`,
     name,

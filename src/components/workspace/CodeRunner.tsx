@@ -19,7 +19,7 @@ import { Player } from "@/components/viz/Player";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { sameAnswer, type HarnessView } from "@/lib/harness/types";
+import { answerText, sameAnswer, type HarnessView } from "@/lib/harness/types";
 import { languageLabel } from "@/lib/languages";
 import { providedCode } from "@/lib/runner/entry";
 import type { CaseResult, RunLanguage } from "@/lib/runner/protocol";
@@ -257,12 +257,12 @@ export function CodeRunner({
                     <p className="mt-1 font-mono break-all text-muted-foreground">{c.input}</p>
                     <p className="mt-0.5 font-mono break-all">
                       <span className="text-muted-foreground">expected </span>
-                      {c.expected}
+                      {answerText(view, c.expected)}
                     </p>
                     {r?.actualJson !== undefined && (
                       <p className={cn("mt-0.5 font-mono break-all", verdict === "fail" && "text-viz-error")}>
                         <span className="text-muted-foreground">got </span>
-                        {r.actualJson}
+                        {answerText(view, r.actualJson)}
                       </p>
                     )}
                     {r?.error && <p className="mt-1 font-mono break-all whitespace-pre-wrap text-viz-error">{r.error}</p>}

@@ -111,12 +111,15 @@ for (var __i = __loaded ? ${o.from} : __cases.length; __i < __cases.length; __i+
   var __t0 = performance.now(), __res;
   try {
     var __f = __fn();
-    var __args = __call.params.map(function (p) { return __hIn(p.type, structuredClone(__cases[__i][p.name])); });
+    var __raw = structuredClone(__cases[__i]);
+    var __args = __call.params.map(function (p) {
+      var c = __call.cycle;
+      return __hIn(p.type, __raw[p.name], c && c.param === p.name ? __raw[c.pos] : undefined);
+    });
     var __r = __f.apply(null, __args);
     var __oi = __call.outputIndex;
     var __v = __oi !== undefined && __oi !== null ? __args[__oi] : __r;
-    var __t = __oi !== undefined && __oi !== null ? __call.params[__oi].type : __call.returnType;
-    __res = { status: "ok", actualJson: JSON.stringify(__hOut(__t, __v)) };
+    __res = { status: "ok", actualJson: JSON.stringify(__hOut(__call.answerType, __v)) };
   } catch (e) {
     __res = e && e.message === "__TRACE_LIMIT__"
       ? { status: "trace_limit", error: "Stopped after ${AUTO_TRACE_LIMIT} steps: the run is too long to show step by step" }

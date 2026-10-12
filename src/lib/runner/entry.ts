@@ -1,5 +1,5 @@
 import type { Node } from "acorn";
-import { parseType, type HarnessParam, type ValueType } from "@/lib/harness/types";
+import { parseType, type HarnessCycle, type HarnessParam, type ValueType } from "@/lib/harness/types";
 import type { RunLanguage } from "./protocol";
 
 /** A function the learner defined: top level, or a method of a LeetCode-style Solution class. */
@@ -83,6 +83,8 @@ function typeName(language: RunLanguage, t: ValueType): string {
       return py ? "Optional[TreeNode]" : "TreeNode | null";
     case "void":
       return py ? "None" : "void";
+    case "nodeIndex":
+      return py ? "Optional[ListNode]" : "ListNode | null";
     case "array": {
       const inner = typeName(language, t.of);
       return py ? `List[${inner}]` : inner.includes("|") ? `(${inner})[]` : `${inner}[]`;
@@ -138,7 +140,7 @@ const PROVIDED: Record<RunLanguage, { list: string; tree: string; note: string }
  */
 export function providedCode(
   language: RunLanguage,
-  sig: { functionName: string; params: HarnessParam[]; returnType: string; outputParam?: string },
+  sig: { functionName: string; params: HarnessParam[]; returnType: string; outputParam?: string; cycle?: HarnessCycle },
 ): { signature: string; definitions: string } {
   const params = sig.params.map((p) => ({ name: p.name, type: parseType(p.type) }));
   const ret = parseType(sig.returnType);
@@ -156,6 +158,12 @@ export function providedCode(
         ? `function ${sig.functionName}(${args}): ${retName}${inPlace.replace("#", "//")}`
         : `function ${sig.functionName}(${args})${inPlace.replace("#", "//")}`;
   const p = PROVIDED[language];
-  const definitions = [p.note, used.has("list") && p.list, used.has("tree") && p.tree].filter(Boolean).join("\n\n");
+  const comment = language === "python" ? "#" : "//";
+  const cycle = sig.cycle
+    ? `${comment} ${sig.cycle.param}'s tail links back to the node at index ${sig.cycle.pos} from each test case (-1: no cycle).\n${comment} ${sig.cycle.pos} isn't passed to your function.${
+        parseType(sig.returnType)?.kind === "list" ? `\n${comment} Return the node itself; the results show it as its index.` : ""
+      }`
+    : "";
+  const definitions = [p.note, cycle, used.has("list") && p.list, used.has("tree") && p.tree].filter(Boolean).join("\n\n");
   return { signature, definitions };
 }

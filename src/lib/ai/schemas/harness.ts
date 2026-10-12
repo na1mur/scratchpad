@@ -16,6 +16,9 @@ export const harnessDraftSchema = z.object({
   params: z.array(z.object({ name: z.string(), type: z.string() })).describe("In call order, with types from the list."),
   returnType: z.string().describe("A type from the list, or 'void' when the function changes an argument in place."),
   outputParam: z.string().describe("For a void function: the name of the argument it changes, which holds the answer. Otherwise empty."),
+  cycleParam: z
+    .string()
+    .describe("For a linked-list cycle problem: the ListNode parameter whose tail links back to the node at index pos. Otherwise empty."),
   compare: z.enum(COMPARE_MODES),
   cases: z.array(
     z.object({

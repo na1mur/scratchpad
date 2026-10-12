@@ -23,7 +23,16 @@ import {
   type SolutionRequestKind,
 } from "@/lib/ai/schemas/solution";
 import { MAX_CASES_HARD, formatSpecIssues, vizSpecSchema, type Loop, type Step, type Structure, type VizSpec } from "@/lib/ai/schemas/vizSpec";
-import { describeArgs, isReady, parseType, sameAnswer, type ReadyHarness, type ValueType } from "@/lib/harness/types";
+import {
+  answerType as harnessAnswer,
+  callSpec,
+  describeArgs,
+  isReady,
+  sameAnswer,
+  signatureText,
+  type ReadyHarness,
+  type ValueType,
+} from "@/lib/harness/types";
 import { jsDefinitions, resolveEntry } from "@/lib/runner/entry";
 import { instrumentJs, parseProgram } from "@/lib/trace/instrument";
 import { connectDB } from "@/lib/db";
@@ -50,7 +59,7 @@ import {
   generateStructured,
   throwIfCancelled,
 } from "./llm";
-import type { SandboxResult } from "./sandbox";
+import { callArgs, type SandboxResult } from "./sandbox";
 import {
   checkCaseShape,
   checkDeclarations,
@@ -183,15 +192,14 @@ function planPrompt(ctx: SolveCtx, pc: PlanContext): string {
 }
 
 function signatureBlock(h: ReadyHarness): string {
-  const params = h.params.map((p) => `${p.name}: ${p.type}`).join(", ");
-  return `<signature>\n${h.functionName}(${params}) -> ${h.returnType}${h.outputParam ? ` (changes ${h.outputParam} in place)` : ""}\n</signature>`;
+  return `<signature>\n${signatureText(h)}\n</signature>`;
 }
 
 /** The problem's fixed cases, in the shape the plan carries them. */
 function harnessCases(h: ReadyHarness): SolutionPlan["testCases"] {
   return h.cases.map((c) => ({
     label: c.label,
-    description: describeArgs(h.params, c.argsJson),
+    description: describeArgs(h.params, c.argsJson, h.cycle),
     argumentsJson: c.argsJson,
     expectedReturnJson: c.expectedJson,
   }));
@@ -278,9 +286,7 @@ const allMatched = (e: Execution) => e.runs.every(ok);
 
 /** What run(input) hands back, as the harness types it: the return value, or the argument changed in place. */
 function answerType(h: ReadyHarness | undefined): ValueType | undefined {
-  if (!h) return undefined;
-  const t = parseType(h.outputParam ? (h.params.find((p) => p.name === h.outputParam)?.type ?? "") : h.returnType);
-  return t ?? undefined;
+  return (h && harnessAnswer(h)) ?? undefined;
 }
 
 /** Whether a run returned the case's answer: the harness's comparison when there is one, else loosely. */
@@ -319,11 +325,12 @@ async function directProgram(ctx: SolveCtx, plan: SolutionPlan): Promise<Program
     const fn = found.entry.method
       ? `(function () { var s = new Solution(); return s.${found.entry.name}.bind(s); })()`
       : found.entry.name;
-    const types = h.params.map((p) => ({ name: p.name, type: parseType(p.type) }));
-    const out = h.outputParam ? h.params.findIndex((p) => p.name === h.outputParam) : -1;
+    const spec = callSpec(h);
+    if (!spec) return null;
+    const out = spec.outputIndex ?? -1;
     const adapter = `
 function run(input) {
-  var __args = ${JSON.stringify(types)}.map(function (p) { return __hIn(p.type, input[p.name]); });
+  var __args = ${callArgs(spec, "input")};
   var __r = (${fn}).apply(null, __args);
   return ${out >= 0 ? `__args[${out}]` : "__r"};
 }`;

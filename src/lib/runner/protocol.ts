@@ -1,4 +1,4 @@
-import type { ValueType } from "@/lib/harness/types";
+import type { CallSpec } from "@/lib/harness/types";
 import type { AutoEvent } from "@/lib/trace/steps";
 
 /**
@@ -14,12 +14,7 @@ export function isRunLanguage(language: string | null | undefined): language is 
 }
 
 /** How to call the learner's function: the harness's signature with its types parsed. */
-export type RunCall = {
-  functionName: string;
-  params: { name: string; type: ValueType }[];
-  returnType: ValueType;
-  outputIndex?: number;
-};
+export type RunCall = CallSpec;
 
 export type CaseStatus = "ok" | "error" | "timeout" | "trace_limit" | "skipped";
 

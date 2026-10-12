@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2Icon } from "lucide-react";
 import { api } from "@/lib/fetcher";
-import type { CompareMode, HarnessView } from "@/lib/harness/types";
+import { answerText, type CompareMode, type HarnessView } from "@/lib/harness/types";
 import type { ProblemDetail } from "@/lib/problems";
 import { providedCode } from "@/lib/runner/entry";
 import { isRunLanguage } from "@/lib/runner/protocol";
@@ -90,7 +90,7 @@ export function TestCases({ problemId, initial, language }: { problemId: string;
             <p className="mt-1 font-mono text-xs break-all">{c.input}</p>
             <p className="mt-0.5 font-mono text-xs break-all">
               <span className="text-muted-foreground">expected </span>
-              {c.expected}
+              {answerText(harness, c.expected)}
             </p>
           </li>
         ))}

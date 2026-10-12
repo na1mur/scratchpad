@@ -49,6 +49,8 @@ _ns = None
 _loops = []
 # The functions the learner defined: (name, number of parameters, is a Solution method).
 _defs = []
+# The nodes of the list built last, so a node answer can be given as its index (cycle problems).
+_last_nodes = []
 
 def _val(n):
     for k in ("val", "value", "data"):
@@ -62,11 +64,15 @@ def _is_list(v):
 def _is_tree(v):
     return (hasattr(v, "left") or hasattr(v, "right")) and not isinstance(v, type)
 
-def _to_list(a):
-    head = None
-    for x in reversed(a or []):
-        head = _ns["ListNode"](x, head)
-    return head
+def _to_list(a, pos=None):
+    global _last_nodes
+    nodes = [_ns["ListNode"](x) for x in (a or [])]
+    for i in range(len(nodes) - 1):
+        nodes[i].next = nodes[i + 1]
+    if isinstance(pos, int) and 0 <= pos < len(nodes):
+        nodes[-1].next = nodes[pos]
+    _last_nodes = nodes
+    return nodes[0] if nodes else None
 
 def _to_tree(a):
     a = a or []
@@ -85,8 +91,9 @@ def _to_tree(a):
     return root
 
 def _from_list(h):
-    out = []
-    while h is not None and len(out) < 2000:
+    out, seen = [], set()
+    while h is not None and id(h) not in seen and len(out) < 2000:
+        seen.add(id(h))
         out.append(_plain(_val(h)))
         h = getattr(h, "next", None)
     return out
@@ -122,12 +129,12 @@ def _plain(v):
         return _from_tree(v)
     return str(v)
 
-def _hin(t, v):
+def _hin(t, v, pos=None):
     if v is None:
         return None
     k = t["kind"]
     if k == "list":
-        return _to_list(v)
+        return _to_list(v, pos)
     if k == "tree":
         return _to_tree(v)
     if k == "array":
@@ -136,6 +143,13 @@ def _hin(t, v):
 
 def _hout(t, v):
     k = t["kind"]
+    if k == "nodeIndex":
+        # Anything but a node (a boolean, a number) is kept as is, so it can't pass for "no node".
+        if v is not None and not hasattr(v, "next"):
+            return _plain(v)
+        if v is None:
+            return None
+        return {"node": next((i for i, n in enumerate(_last_nodes) if n is v), None)}
     if v is None:
         return [] if k in ("list", "tree") else None
     if k == "list":
@@ -353,7 +367,11 @@ def _run_case(call_json, case_json, trace):
     events = [] if trace else None
     try:
         fn, note = _find(call["functionName"], [p["name"] for p in call["params"]])
-        args = [_hin(p["type"], raw.get(p["name"])) for p in call["params"]]
+        cycle = call.get("cycle")
+        args = [
+            _hin(p["type"], raw.get(p["name"]), raw.get(cycle["pos"]) if cycle and cycle["param"] == p["name"] else None)
+            for p in call["params"]
+        ]
         if trace:
             sys.settrace(_tracer(events))
         try:
@@ -362,8 +380,7 @@ def _run_case(call_json, case_json, trace):
             sys.settrace(None)
         oi = call.get("outputIndex")
         v = args[oi] if oi is not None else r
-        t = call["params"][oi]["type"] if oi is not None else call["returnType"]
-        res = {"status": "ok", "actualJson": json.dumps(_hout(t, v), separators=(",", ":"))}
+        res = {"status": "ok", "actualJson": json.dumps(_hout(call["answerType"], v), separators=(",", ":"))}
         if note:
             res["note"] = note
     except _NoEntry as e:

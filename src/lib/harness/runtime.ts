@@ -29,12 +29,18 @@ globalThis.TreeNode = function TreeNode(val, left, right) {
 });
 var __H_LIMIT = 2000;
 // For programs that build their own input: toList([1, 2]) and toTree([1, null, 2]) as LeetCode would.
-globalThis.toList = function (a) { return __hToList(a || []); };
+// toList(values, pos) links the tail back to the node at index pos, for cycle problems (-1: no cycle).
+globalThis.toList = function (a, pos) { return __hToList(a || [], pos); };
 globalThis.toTree = function (a) { return __hToTree(a || []); };
-function __hToList(a) {
-  var head = null;
-  for (var i = a.length - 1; i >= 0; i--) head = new ListNode(a[i], head);
-  return head;
+// The nodes of the list built last, so a node answer can be given as its index (cycle problems).
+var __hLastNodes = [];
+function __hToList(a, pos) {
+  var nodes = [];
+  for (var i = 0; i < a.length; i++) nodes.push(new ListNode(a[i], null));
+  for (var j = 0; j + 1 < nodes.length; j++) nodes[j].next = nodes[j + 1];
+  if (typeof pos === "number" && pos >= 0 && pos < nodes.length) nodes[nodes.length - 1].next = nodes[pos];
+  __hLastNodes = nodes;
+  return nodes.length ? nodes[0] : null;
 }
 function __hToTree(a) {
   if (!a.length || a[0] === null) return null;
@@ -51,8 +57,12 @@ function __hToTree(a) {
 // Code that builds its own nodes may call the value something else.
 function __hVal(n) { return n.val !== undefined ? n.val : n.value !== undefined ? n.value : n.data !== undefined ? n.data : null; }
 function __hFromList(head) {
-  var out = [];
-  while (head && typeof head === "object" && out.length < __H_LIMIT) { out.push(__hVal(head)); head = head.next; }
+  var out = [], seen = new Set();
+  while (head && typeof head === "object" && !seen.has(head) && out.length < __H_LIMIT) {
+    seen.add(head);
+    out.push(__hVal(head));
+    head = head.next;
+  }
   return out;
 }
 function __hFromTree(root) {
@@ -68,11 +78,11 @@ function __hFromTree(root) {
   while (out.length && out[out.length - 1] === null) out.pop();
   return out;
 }
-/** JSON value -> what the function takes. */
-function __hIn(t, v) {
+/** JSON value -> what the function takes. pos links a list tail back (cycle problems). */
+function __hIn(t, v, pos) {
   if (v === null || v === undefined) return null;
   switch (t.kind) {
-    case "list": return __hToList(v);
+    case "list": return __hToList(v, pos);
     case "tree": return __hToTree(v);
     case "array": return v.map(function (x) { return __hIn(t.of, x); });
     default: return v;
@@ -85,6 +95,11 @@ function __hOut(t, v) {
   switch (t.kind) {
     case "list": return __hFromList(v);
     case "tree": return __hFromTree(v);
+    // Anything but a node (a boolean, a number) is kept as is, so it can't pass for "no node".
+    case "nodeIndex":
+      if (typeof v !== "object") return __hPlain(v);
+      var at = __hLastNodes.indexOf(v);
+      return { node: at >= 0 ? at : null };
     case "array":
       if (typeof v === "string") v = v.split("");
       else if (!Array.isArray(v) && typeof v === "object" && typeof v[Symbol.iterator] === "function") v = Array.from(v);

@@ -4,7 +4,7 @@ import { HARNESS_ROLE } from "@/lib/ai/prompts/harness";
 import { referenceBlock, sourceBlock } from "@/lib/ai/prompts/system";
 import { getModel } from "@/lib/ai/providers";
 import { PipelineError, UsageMeter, formatRunStats, generateStructured } from "@/lib/ai/pipeline/llm";
-import { runFunction, type FunctionCall } from "@/lib/ai/pipeline/sandbox";
+import { runFunction } from "@/lib/ai/pipeline/sandbox";
 import { HARNESS_MAX_CASES, harnessDraftSchema, type HarnessDraft } from "@/lib/ai/schemas/harness";
 import { MIN_CASES } from "@/lib/ai/schemas/vizSpec";
 import { connectDB } from "@/lib/db";
@@ -14,14 +14,18 @@ import { userSearchKey } from "@/lib/tavily";
 import { Problem, type ProblemDoc } from "@/models/Problem";
 import { User } from "@/models/User";
 import {
+  answerType,
+  callSpec,
   checkValue,
+  nodeAnswer,
   parseType,
   sameAnswer,
+  type CallSpec,
   type Harness,
   type HarnessCase,
+  type HarnessCycle,
   type HarnessParam,
   type ReadyHarness,
-  type ValueType,
 } from "./types";
 
 /**
@@ -32,7 +36,7 @@ import {
  * background (on create, on edit, on visiting an older problem) so attempts find it ready.
  */
 
-type Signature = { functionName: string; params: HarnessParam[]; returnType: string; outputParam?: string };
+type Signature = { functionName: string; params: HarnessParam[]; returnType: string; outputParam?: string; cycle?: HarnessCycle };
 
 type LeetCodeInfo = { signature: Signature; examples: Record<string, unknown>[] } | { unsupported: string };
 
@@ -63,19 +67,30 @@ async function leetCodeInfo(slug: string): Promise<LeetCodeInfo | null> {
   if (!q?.metaData) return null;
   const meta = JSON.parse(q.metaData) as LeetCodeMeta;
   if (meta.classname || meta.systemdesign) return { unsupported: "It's a design problem: a class with several methods." };
-  // The judge passes inputs the function doesn't take (e.g. where a list's cycle starts).
-  if (meta.manual) return { unsupported: "Its tests build the input in a way a plain function call can't." };
   if (!meta.name || !meta.params || !meta.return) return null;
+  // `manual`: the judge builds the input from something the function doesn't take. The one shape handled is a
+  // list whose tail links back to index `pos` (Linked List Cycle I and II); the rest stay unsupported.
+  let cycle: HarnessCycle | undefined;
+  if (meta.manual) {
+    const lists = meta.params.filter((p) => p.type === "ListNode");
+    const pos = meta.params.find((p) => p.name === "pos" && p.type === "integer");
+    if (lists.length !== 1 || !pos || meta.params.length !== 2) {
+      return { unsupported: "Its tests build the input in a way a plain function call can't." };
+    }
+    cycle = { param: lists[0].name, pos: pos.name };
+  }
   const unknown = [...meta.params.map((p) => p.type), meta.return.type].filter((t) => !parseType(t));
   if (unknown.length) return { unsupported: `It uses types the runner doesn't support: ${[...new Set(unknown)].join(", ")}.` };
 
-  const params = meta.params.map((p) => ({ name: p.name, type: p.type }));
+  const all = meta.params.map((p) => ({ name: p.name, type: p.type }));
+  // A cycle's `pos` is in every example but isn't passed to the function.
+  const params = all.filter((p) => p.name !== cycle?.pos);
   const outputIndex = meta.output?.paramindex;
   const examples = (q.exampleTestcaseList ?? []).flatMap((text) => {
     const lines = text.split("\n");
-    if (lines.length !== params.length) return [];
+    if (lines.length !== all.length) return [];
     try {
-      return [Object.fromEntries(params.map((p, i) => [p.name, JSON.parse(lines[i])]))];
+      return [Object.fromEntries(all.map((p, i) => [p.name, JSON.parse(lines[i])]))];
     } catch {
       return [];
     }
@@ -85,7 +100,8 @@ async function leetCodeInfo(slug: string): Promise<LeetCodeInfo | null> {
       functionName: meta.name,
       params,
       returnType: meta.return.type,
-      ...(outputIndex !== undefined && params[outputIndex] && { outputParam: params[outputIndex].name }),
+      ...(outputIndex !== undefined && all[outputIndex] && { outputParam: all[outputIndex].name }),
+      ...(cycle && { cycle }),
     },
     examples,
   };
@@ -103,7 +119,7 @@ function parseObject(json: string): Record<string, unknown> | null {
 }
 
 /** The draft as a callable signature, or the issues the model has to fix. */
-function checkDraft(d: HarnessDraft, fixed: Signature | null): { issues: string[]; call?: FunctionCall } {
+function checkDraft(d: HarnessDraft, fixed: Signature | null): { issues: string[]; call?: CallSpec } {
   if (!d.fits) return { issues: [] };
   const issues: string[] = [];
   const sig: Signature = fixed ?? {
@@ -111,10 +127,17 @@ function checkDraft(d: HarnessDraft, fixed: Signature | null): { issues: string[
     params: d.params,
     returnType: d.returnType,
     ...(d.outputParam && { outputParam: d.outputParam }),
+    ...(d.cycleParam && { cycle: { param: d.cycleParam, pos: "pos" } }),
   };
+  if (sig.cycle) {
+    if (sig.params.find((p) => p.name === sig.cycle!.param)?.type !== "ListNode") {
+      issues.push(`- cycleParam "${sig.cycle.param}" must name a ListNode parameter`);
+    }
+    if (sig.params.some((p) => p.name === sig.cycle!.pos)) issues.push(`- "${sig.cycle.pos}" isn't a parameter; leave it out of params`);
+  }
   if (!IDENT.test(sig.functionName)) issues.push(`- functionName "${sig.functionName}" isn't a valid identifier`);
   const names = new Set<string>();
-  const params: FunctionCall["params"] = [];
+  const params: CallSpec["params"] = [];
   for (const p of sig.params) {
     if (!IDENT.test(p.name) || names.has(p.name)) issues.push(`- parameter name "${p.name}" is invalid or repeated`);
     names.add(p.name);
@@ -131,47 +154,42 @@ function checkDraft(d: HarnessDraft, fixed: Signature | null): { issues: string[
   if (d.cases.length < MIN_CASES || d.cases.length > HARNESS_MAX_CASES) {
     issues.push(`- give ${MIN_CASES}–${HARNESS_MAX_CASES} cases`);
   }
-  const answerType = outputIndex >= 0 ? params[outputIndex]?.type : returnType;
+  const answer = answerType(sig);
+  // Every case gives the parameters, plus `pos` for a cycle list.
+  const keysWanted = [...names, ...(sig.cycle ? [sig.cycle.pos] : [])];
   const seen = new Set<string>();
   d.cases.forEach((c, i) => {
     const args = parseObject(c.argumentsJson);
     if (!args) return issues.push(`- cases[${i}].argumentsJson must be a JSON object`);
     const keys = Object.keys(args).sort().join(",");
-    if (keys !== [...names].sort().join(",")) {
-      return issues.push(`- cases[${i}].argumentsJson must have exactly the keys ${[...names].join(", ")}`);
+    if (keys !== [...keysWanted].sort().join(",")) {
+      return issues.push(`- cases[${i}].argumentsJson must have exactly the keys ${keysWanted.join(", ")}`);
     }
     for (const p of params) {
       const issue = checkValue(p.type, args[p.name], `cases[${i}] argument ${p.name}`);
       if (issue) issues.push(`- ${issue}`);
     }
-    const key = JSON.stringify(params.map((p) => args[p.name]));
+    if (sig.cycle && !Number.isInteger(args[sig.cycle.pos])) issues.push(`- cases[${i}].${sig.cycle.pos} must be an integer (-1 for no cycle)`);
+    const key = JSON.stringify(keysWanted.map((k) => args[k]));
     if (seen.has(key)) issues.push(`- cases[${i}] repeats another case's arguments`);
     seen.add(key);
     try {
       const expected = JSON.parse(c.expectedJson);
-      const issue = answerType && answerType.kind !== "void" ? checkValue(answerType, expected, `cases[${i}].expectedJson`) : null;
+      const issue = answer && answer.kind !== "void" ? checkValue(answer, expected, `cases[${i}].expectedJson`) : null;
       if (issue) issues.push(`- ${issue}`);
     } catch {
       issues.push(`- cases[${i}].expectedJson isn't valid JSON`);
     }
   });
   if (!d.referenceSolution.trim()) issues.push("- referenceSolution is empty");
-  if (issues.length || !returnType) return { issues };
-  return {
-    issues,
-    call: {
-      functionName: sig.functionName,
-      params,
-      returnType,
-      ...(outputIndex >= 0 && { outputIndex }),
-    },
-  };
+  const call = issues.length ? null : callSpec(sig);
+  return call ? { issues, call } : { issues: issues.length ? issues : ["- the signature's types can't be run"] };
 }
 
-type Verified = { draft: HarnessDraft; call: FunctionCall; cases: (HarnessCase | null)[]; disagreements: string[] };
+type Verified = { draft: HarnessDraft; call: CallSpec; cases: (HarnessCase | null)[]; disagreements: string[] };
 
 /** Runs the reference solution on every case; a case keeps the computed answer when it agrees with the stated one. */
-async function verify(draft: HarnessDraft, call: FunctionCall): Promise<Verified> {
+async function verify(draft: HarnessDraft, call: CallSpec): Promise<Verified> {
   const disagreements: string[] = [];
   const cases = await Promise.all(
     draft.cases.map(async (c, i): Promise<HarnessCase | null> => {
@@ -183,7 +201,8 @@ async function verify(draft: HarnessDraft, call: FunctionCall): Promise<Verified
         return null;
       }
       const actual = JSON.parse(run.returnJson);
-      const agrees = sameAnswer(draft.compare, actual, JSON.parse(c.expectedJson));
+      const stated = JSON.parse(c.expectedJson);
+      const agrees = sameAnswer(draft.compare, actual, call.answerType.kind === "nodeIndex" ? nodeAnswer(stated) : stated);
       if (agrees === false) {
         disagreements.push(`${where}: you said ${c.expectedJson} but referenceSolution returned ${run.returnJson}`);
         return null;
@@ -196,9 +215,14 @@ async function verify(draft: HarnessDraft, call: FunctionCall): Promise<Verified
 
 function signatureBlock(sig: Signature): string {
   const params = sig.params.map((p) => `${p.name}: ${p.type}`).join(", ");
+  const cycle = sig.cycle
+    ? `\n${sig.cycle.param}'s tail links back to the node at index ${sig.cycle.pos} (-1: no cycle). Every case's argumentsJson gives ${sig.cycle.pos}, but it isn't passed to the function.${
+        parseType(sig.returnType)?.kind === "list" ? " The function returns a node of that list: give expectedJson as the node's index in the list, or null." : ""
+      }`
+    : "";
   return `<signature>\n${sig.functionName}(${params}) -> ${sig.returnType}${
     sig.outputParam ? ` (changes ${sig.outputParam} in place; that's the answer)` : ""
-  }\n</signature>`;
+  }${cycle}\n</signature>`;
 }
 
 export async function buildHarness(opts: {
@@ -211,7 +235,7 @@ export async function buildHarness(opts: {
 }): Promise<Harness> {
   const slug = leetCodeSlug(opts.sourceUrl);
   const lc = slug ? await leetCodeInfo(slug).catch(() => null) : null;
-  if (lc && "unsupported" in lc) return { status: "unsupported", reason: lc.unsupported, builtAt: new Date() };
+  if (lc && "unsupported" in lc) return { status: "unsupported", reason: lc.unsupported, builtAt: new Date(), version: HARNESS_VERSION };
   const fixed = lc?.signature ?? null;
 
   const prompt = [
@@ -227,7 +251,7 @@ export async function buildHarness(opts: {
   let feedback = "";
   let best: Verified | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
-    let call: FunctionCall | undefined;
+    let call: CallSpec | undefined;
     const draft = await generateStructured({
       model: opts.model,
       meter: opts.meter,
@@ -243,7 +267,12 @@ export async function buildHarness(opts: {
       },
     });
     if (!draft.fits || !call) {
-      return { status: "unsupported", reason: draft.whyNot.slice(0, 300) || "It isn't a single function call.", builtAt: new Date() };
+      return {
+        status: "unsupported",
+        reason: draft.whyNot.slice(0, 300) || "It isn't a single function call.",
+        builtAt: new Date(),
+        version: HARNESS_VERSION,
+      };
     }
     const verified = await verify(draft, call);
     const agreed = (v: Verified) => v.cases.filter(Boolean).length;
@@ -267,6 +296,7 @@ export async function buildHarness(opts: {
     params: (fixed ?? draft).params.map((p) => ({ name: p.name, type: p.type })),
     returnType: fixed?.returnType ?? draft.returnType,
     ...(call.outputIndex !== undefined && { outputParam: (fixed ?? draft).params[call.outputIndex].name }),
+    ...(call.cycle && { cycle: call.cycle }),
     compare: draft.compare,
     cases,
     referenceJs: draft.referenceSolution,
@@ -274,6 +304,12 @@ export async function buildHarness(opts: {
   };
   return harness;
 }
+
+/**
+ * Raised whenever the runner learns to handle problems it used to call unsupported, so those get another
+ * try. 2: linked-list cycle problems.
+ */
+const HARNESS_VERSION = 2;
 
 /** A build that died (a crashed or timed-out function) is taken over after this. */
 const STALE_BUILD_MS = 10 * 60_000;
@@ -284,6 +320,7 @@ const RETRY_FAILED_MS = 24 * 60 * 60_000;
 export function needsHarness(h: unknown, now = Date.now()): boolean {
   const harness = h as Harness | null | undefined;
   if (!harness) return true;
+  if (harness.status === "unsupported") return (harness.version ?? 1) < HARNESS_VERSION;
   if (harness.status === "building") return now - new Date(harness.startedAt).getTime() > STALE_BUILD_MS;
   if (harness.status === "failed") return now - new Date(harness.builtAt).getTime() > RETRY_FAILED_MS;
   return false;
@@ -305,6 +342,8 @@ export async function ensureProblemHarness(problemId: string | ProblemDoc["_id"]
         { harness: null },
         { "harness.status": "building", "harness.startedAt": { $lt: new Date(startedAt.getTime() - STALE_BUILD_MS) } },
         { "harness.status": "failed", "harness.builtAt": { $lt: new Date(startedAt.getTime() - RETRY_FAILED_MS) } },
+        // Judged unsupported by an older version, before the runner handled more kinds of problem.
+        { "harness.status": "unsupported", "harness.version": { $not: { $gte: HARNESS_VERSION } } },
       ],
     },
     { $set: { harness: { status: "building", startedAt } } },
@@ -352,13 +391,6 @@ export async function ensureProblemHarness(problemId: string | ProblemDoc["_id"]
 }
 
 /** The ready harness's call, with its types parsed. */
-export function harnessCall(h: ReadyHarness): FunctionCall {
-  const params = h.params.map((p) => ({ name: p.name, type: parseType(p.type) as ValueType }));
-  const outputIndex = h.outputParam ? h.params.findIndex((p) => p.name === h.outputParam) : -1;
-  return {
-    functionName: h.functionName,
-    params,
-    returnType: parseType(h.returnType) as ValueType,
-    ...(outputIndex >= 0 && { outputIndex }),
-  };
+export function harnessCall(h: ReadyHarness): CallSpec | null {
+  return callSpec(h);
 }

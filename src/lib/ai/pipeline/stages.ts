@@ -38,7 +38,7 @@ import {
   type TestCase,
   type VizSpec,
 } from "@/lib/ai/schemas/vizSpec";
-import { describeArgs, parseType, sameAnswer, type ReadyHarness, type ValueType } from "@/lib/harness/types";
+import { answerType as harnessAnswer, describeArgs, sameAnswer, signatureText, type ReadyHarness, type ValueType } from "@/lib/harness/types";
 import { PipelineError, generateStructured, type UsageMeter } from "./llm";
 import type { ProgressTracker } from "./progress";
 import { instrumentJs, markerLines, parseProgram } from "@/lib/trace/instrument";
@@ -150,7 +150,7 @@ export function casesFromHarness(h: ReadyHarness): PipelineCase[] {
   return h.cases.slice(0, MAX_CASES_HARD).map((c, i) => ({
     id: `c${i + 1}`,
     label: c.label,
-    description: describeArgs(h.params, c.argsJson),
+    description: describeArgs(h.params, c.argsJson, h.cycle),
     args: parseArgs(c.argsJson) ?? {},
     expected: c.expectedJson,
   }));
@@ -311,10 +311,7 @@ async function translate(ctx: Ctx, cases: PipelineCase[], feedback: string, guid
 function signatureBlock(ctx: Ctx): string {
   const h = ctx.harness;
   if (!h) return "";
-  const params = h.params.map((p) => `${p.name}: ${p.type}`).join(", ");
-  return `\n\n<signature>\n${h.functionName}(${params}) -> ${h.returnType}${
-    h.outputParam ? ` (changes ${h.outputParam} in place)` : ""
-  }\n</signature>`;
+  return `\n\n<signature>\n${signatureText(h, true)}\n</signature>`;
 }
 
 /** One case's run: its own structures (whatever its variables held) and steps. */
@@ -394,7 +391,7 @@ async function executeAll(ctx: Ctx, cases: PipelineCase[], guidance?: Guidance):
  */
 function answerType(ctx: Ctx): ValueType | undefined {
   const h = ctx.harness;
-  return h && !h.outputParam ? (parseType(h.returnType) ?? undefined) : undefined;
+  return h && !h.outputParam ? (harnessAnswer(h) ?? undefined) : undefined;
 }
 
 /** Whether a run answered the case, checked against the harness's expected answer; undefined when that can't be told. */

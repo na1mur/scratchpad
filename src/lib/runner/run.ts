@@ -1,4 +1,4 @@
-import { parseType, type HarnessView, type ValueType } from "@/lib/harness/types";
+import { callSpec, type HarnessView } from "@/lib/harness/types";
 import { JS_RUNTIME, jsWorkerSource, prepareJs } from "./js";
 import type { CaseResult, PythonRunMessage, RunCall, RunLanguage, WorkerMessage } from "./protocol";
 import { pythonWorkerSource } from "./python";
@@ -24,13 +24,9 @@ export type RunState = {
 };
 
 export function runCall(view: ReadyView): RunCall {
-  const outputIndex = view.outputParam ? view.params.findIndex((p) => p.name === view.outputParam) : -1;
-  return {
-    functionName: view.functionName,
-    params: view.params.map((p) => ({ name: p.name, type: parseType(p.type) as ValueType })),
-    returnType: parseType(view.returnType) as ValueType,
-    ...(outputIndex >= 0 && { outputIndex }),
-  };
+  const call = callSpec(view);
+  if (!call) throw new Error("This problem's test cases use a type the runner doesn't know.");
+  return call;
 }
 
 // Pyodide takes seconds to start, so its worker outlives a run; one that hung is replaced.
