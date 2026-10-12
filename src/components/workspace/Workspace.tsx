@@ -164,7 +164,10 @@ export function Workspace({
       : null,
   );
   const [streaming, setStreaming] = useState(false);
-  const [stopping, setStopping] = useState(false);
+  /** The run a stop was sent for. It stays "Stopping…" until the run is gone, since the server may take a moment to notice. */
+  const [stoppingId, setStoppingId] = useState<string | null>(null);
+  const stoppingRef = useRef<string | null>(null);
+  const stopping = stoppingId !== null && stoppingId === running?.attemptId;
   /** Why the last run produced nothing. Such a run isn't kept as an attempt, so it's explained in the results pane. */
   const [failure, setFailure] = useState<string | null>(null);
   const [playerIndex, setPlayerIndex] = useState(0);
@@ -251,7 +254,8 @@ export function Workspace({
           setAttempts((list) => list.filter((a) => a.id !== attemptId));
           setViewing((v) => (v?.id === attemptId ? null : v));
           setMode("new");
-          setFailure("The run didn't finish.");
+          // A run the learner stopped is gone on purpose; only an unexplained disappearance is a failure.
+          setFailure(stoppingRef.current === attemptId ? null : "The run didn't finish.");
           router.refresh();
         }
         // Otherwise keep polling; transient failures are fine.
@@ -337,26 +341,45 @@ export function Workspace({
     }
   }
 
-  /** Stops the run in progress. The draft stays in the form, ready to edit and process again. */
+  /**
+   * Stops the run in progress. The draft stays in the form, ready to edit and process again. The button stays
+   * on "Stopping…" until the run is gone: the server answers as soon as it's told, but a step that can't be
+   * interrupted may still be finishing.
+   */
   async function stopRun() {
     const attemptId = running?.attemptId;
-    if (!attemptId) return;
-    setStopping(true);
+    if (!attemptId || stopping) return;
+    stoppingRef.current = attemptId;
+    setStoppingId(attemptId);
+    /** Back to the draft if there's no stream to say so; a polled run has none. */
+    const settled = () => {
+      if (streaming) return;
+      pollToken.current++;
+      discardRun(attemptId, null);
+    };
     try {
-      const { stopped } = await api<{ stopped: boolean }>(`/api/attempts/${attemptId}/cancel`, { method: "POST" });
-      if (!stopped) toast.info("It finished before it could be stopped.");
-      // While streaming, the stream's own "cancelled" event resets the view; a polled run has no stream to say so.
-      else if (!streaming) {
-        pollToken.current++;
-        discardRun(attemptId, null);
+      const { stopped, pending } = await api<{ stopped: boolean; pending: boolean }>(`/api/attempts/${attemptId}/cancel`, {
+        method: "POST",
+      });
+      if (stopped) settled();
+      else if (!pending) {
+        stoppingRef.current = null;
+        setStoppingId(null);
+        toast.info("It finished before it could be stopped.");
       }
+      // Pending: still winding down. The stream's cancelled event or the poll clears the view.
     } catch (err) {
+      if (err instanceof ApiClientError && err.status === 404) {
+        // Already removed, by an earlier stop or by the run itself failing.
+        settled();
+        return;
+      }
+      stoppingRef.current = null;
+      setStoppingId(null);
       // Already finished: the stream or the poll brings in the result.
       if (!(err instanceof ApiClientError && err.code === "finished")) {
         toast.error(err instanceof Error ? err.message : "Couldn't stop it.");
       }
-    } finally {
-      setStopping(false);
     }
   }
 

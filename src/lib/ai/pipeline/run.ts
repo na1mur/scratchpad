@@ -17,7 +17,7 @@ import { Problem } from "@/models/Problem";
 import { User } from "@/models/User";
 import { emit } from "./events";
 import { endRun, startRun } from "./cancel";
-import { PipelineError, RunCancelledError, UsageMeter, throwIfCancelled } from "./llm";
+import { PipelineError, RunCancelledError, UsageMeter, abortable, throwIfCancelled } from "./llm";
 import { ProgressTracker } from "./progress";
 import {
   assemble,
@@ -104,10 +104,13 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
     if (!problem || !user) throw new PipelineError("not_found", "This problem no longer exists.");
 
     const { model } = getModel(user, "reasoning");
-    const [source, reference] = await Promise.all([
-      ensureProblemSource(problem),
-      ensureProblemReference(problem, problem.language, userSearchKey(user)),
-    ]);
+    const [source, reference] = await abortable(
+      Promise.all([
+        ensureProblemSource(problem),
+        ensureProblemReference(problem, problem.language, userSearchKey(user)),
+      ]),
+      signal,
+    );
     const ctx: Ctx = {
       model,
       meter,

@@ -37,7 +37,7 @@ import { User } from "@/models/User";
 import { emit } from "./events";
 import { endRun, startRun } from "./cancel";
 import { ProgressTracker } from "./progress";
-import { PipelineError, RunCancelledError, UsageMeter, generateStructured, throwIfCancelled } from "./llm";
+import { PipelineError, RunCancelledError, UsageMeter, abortable, generateStructured, throwIfCancelled } from "./llm";
 import type { SandboxResult } from "./sandbox";
 import {
   actualOutputOf,
@@ -489,10 +489,13 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
     if (!problem || !user) throw new PipelineError("not_found", "This problem no longer exists.");
 
     const { model } = getModel(user, "reasoning");
-    const [source, reference] = await Promise.all([
-      ensureProblemSource(problem),
-      ensureProblemReference(problem, solution.language, userSearchKey(user)),
-    ]);
+    const [source, reference] = await abortable(
+      Promise.all([
+        ensureProblemSource(problem),
+        ensureProblemReference(problem, solution.language, userSearchKey(user)),
+      ]),
+      signal,
+    );
     const ctx: SolveCtx = {
       model,
       meter,

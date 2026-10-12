@@ -10,7 +10,8 @@ import { Solution } from "@/models/Solution";
 /**
  * Stops a solution being written. The runner deletes it, so it takes no
  * version number, and refunds the hourly allowance. `stopped` is false when
- * the run got to the end first.
+ * the run got to the end first, or when it hasn't noticed the stop yet
+ * (`pending`): the progress stream brings the outcome.
  */
 export function POST(req: NextRequest, ctx: RouteContext<"/api/solutions/[id]/cancel">) {
   return handle(req, async () => {
@@ -26,6 +27,8 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/solutions/[id]/ca
       emit(id, { type: "error", code: "cancelled", message: "Stopped." });
     }
     const stopped = !(await Solution.exists({ _id: solution._id }));
-    return NextResponse.json({ stopped });
+    const pending =
+      !stopped && Boolean(await Solution.exists({ _id: solution._id, status: { $in: [...SOLUTION_IN_PROGRESS] } }));
+    return NextResponse.json({ stopped, pending });
   });
 }

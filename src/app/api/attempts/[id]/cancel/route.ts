@@ -10,7 +10,8 @@ import { Attempt } from "@/models/Attempt";
 /**
  * Stops a running attempt. The runner discards it like a failed run (the form
  * keeps the learner's text and photos) and refunds the hourly allowance.
- * `stopped` is false when the run got to the end first.
+ * `stopped` is false when the run got to the end first, or when it hasn't
+ * noticed the stop yet (`pending`): the stream or the poll brings the outcome.
  */
 export function POST(req: NextRequest, ctx: RouteContext<"/api/attempts/[id]/cancel">) {
   return handle(req, async () => {
@@ -26,6 +27,7 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/attempts/[id]/can
       emit(id, { type: "error", code: "cancelled", message: "Stopped.", discarded: true });
     }
     const stopped = !(await Attempt.exists({ _id: attempt._id }));
-    return NextResponse.json({ stopped });
+    const pending = !stopped && Boolean(await Attempt.exists({ _id: attempt._id, status: { $in: [...IN_PROGRESS] } }));
+    return NextResponse.json({ stopped, pending });
   });
 }

@@ -40,6 +40,21 @@ export function throwIfCancelled(signal: AbortSignal | undefined) {
   if (signal?.aborted) throw new RunCancelledError();
 }
 
+/**
+ * Settles with `work`, or rejects with `RunCancelledError` the moment the signal fires, so a stop doesn't
+ * wait for work that can't be interrupted (page fetches, searches). The work itself runs on unobserved.
+ */
+export function abortable<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return work;
+  work.catch(() => {});
+  return new Promise<T>((resolve, reject) => {
+    if (signal.aborted) return reject(new RunCancelledError());
+    const onAbort = () => reject(new RunCancelledError());
+    signal.addEventListener("abort", onAbort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 const CALL_TIMEOUT_MS = 180_000;
 /** Plan: retry up to 2 times with the validation error appended. */
 const MAX_FIX_RETRIES = 2;

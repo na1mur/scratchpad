@@ -90,7 +90,9 @@ export function SolutionView({
   const [prefill, setPrefill] = useState<SolutionRequest | null>(null);
   const [deleting, setDeleting] = useState<"confirm" | "busy" | null>(null);
   const [starting, setStarting] = useState(false);
-  const [stopping, setStopping] = useState(false);
+  /** The solution a stop was sent for. It stays "Stopping…" until the run is gone, since the server may take a moment to notice. */
+  const [stoppingId, setStoppingId] = useState<string | null>(null);
+  const stopping = stoppingId !== null && stoppingId === viewing?.id;
   const toggleStep = (id: string) =>
     setSelectedSteps((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id].slice(-8)));
 
@@ -128,9 +130,9 @@ export function SolutionView({
     }
   }
 
-  // Stopped elsewhere (another tab): the run deleted it. A stop from this page is handled by stopSolution().
+  // Stopped (here or in another tab): the run deleted it. Skipped when stopSolution() already took it out.
   const onStopped = useEffectEvent((id: string) => {
-    if (!stopping) void drop(id);
+    if (solutions.some((s) => s.id === id)) void drop(id);
   });
 
   // While a solution is being written, follow its progress stream. Polling is only the fallback for a
@@ -183,7 +185,14 @@ export function SolutionView({
       timer = setInterval(() => {
         settle()
           .then((finished) => finished && clearInterval(timer))
-          .catch(() => {}); // Transient failures are fine; keep polling.
+          .catch((err) => {
+            // Gone: stopped, or discarded by the run itself.
+            if (err instanceof ApiClientError && err.status === 404) {
+              clearInterval(timer);
+              onStopped(pendingId);
+            }
+            // Otherwise transient; keep polling.
+          });
       }, 3000);
     })();
 
@@ -254,22 +263,35 @@ export function SolutionView({
     }
   }
 
-  /** Stops the solution being written. The stopped run is deleted, so it takes no version number. */
+  /**
+   * Stops the solution being written. The stopped run is deleted, so it takes no version number. The button
+   * stays on "Stopping…" until the run is gone: the server answers as soon as it's told, but a step that can't
+   * be interrupted may still be finishing, and the progress stream then reports the stop.
+   */
   async function stopSolution() {
-    if (!viewing) return;
+    if (!viewing || stopping) return;
     const id = viewing.id;
-    setStopping(true);
+    setStoppingId(id);
     try {
-      const { stopped } = await api<{ stopped: boolean }>(`/api/solutions/${id}/cancel`, { method: "POST" });
+      const { stopped, pending } = await api<{ stopped: boolean; pending: boolean }>(`/api/solutions/${id}/cancel`, {
+        method: "POST",
+      });
       if (stopped) await drop(id);
-      else toast.info("It finished before it could be stopped.");
+      else if (!pending) {
+        setStoppingId(null);
+        toast.info("It finished before it could be stopped.");
+      }
     } catch (err) {
+      if (err instanceof ApiClientError && err.status === 404) {
+        // Already removed, by an earlier stop or by the run itself failing.
+        await drop(id);
+        return;
+      }
+      setStoppingId(null);
       // Already finished: the progress stream brings in the result.
       if (!(err instanceof ApiClientError && err.code === "finished")) {
         toast.error(err instanceof Error ? err.message : "Couldn't stop it.");
       }
-    } finally {
-      setStopping(false);
     }
   }
 
