@@ -6,6 +6,7 @@ import { getOwnedAttempt, serializeAttempt, serializeAttemptSummary } from "@/li
 import { requirePageSession } from "@/lib/auth/session";
 import { getOwnedProblemBySlug, serializeProblem } from "@/lib/problems";
 import { r2Enabled } from "@/lib/r2";
+import { toursSeenBy } from "@/lib/tours";
 import { getPageUser } from "@/lib/users";
 import { Attempt } from "@/models/Attempt";
 import { Solution } from "@/models/Solution";
@@ -48,6 +49,7 @@ export default async function WorkspacePage({ params }: PageProps<"/problems/[sl
       uploadsEnabled={r2Enabled}
       hasSolution={hasSolution}
       chatLayout={user.preferences?.chatLayout ?? "inline"}
+      toursSeen={toursSeenBy(user)}
     />
   );
 }

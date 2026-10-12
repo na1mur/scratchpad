@@ -40,7 +40,7 @@ export function SolutionApproach({
 }) {
   return (
     <>
-      <section className="flex flex-col gap-3" aria-label="Approach">
+      <section className="flex flex-col gap-3" aria-label="Approach" data-tour="approach">
         <div>
           {origin && (
             <p className="text-xs text-muted-foreground">
@@ -108,7 +108,7 @@ export function SolutionApproach({
         </div>
       </section>
 
-      <section className="flex flex-col gap-2" aria-label="Code">
+      <section className="flex flex-col gap-2" aria-label="Code" data-tour="code">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-medium">
             Code <span className="font-normal text-muted-foreground">· {languageLabel(language)}</span>
@@ -188,18 +188,20 @@ export function SolutionWalkthrough({
   const currentLine = stepAt(spec, shownCase, playerIndex)?.line ?? null;
   return (
     <>
-      <CaseBar
-        spec={spec}
-        caseIndex={shownCase}
-        onCaseChange={(ci) => {
-          onCaseChange(ci);
-          onIndexChange(0);
-        }}
-        gives="Returns"
-        trailing={badge}
-      />
+      <div data-tour="cases">
+        <CaseBar
+          spec={spec}
+          caseIndex={shownCase}
+          onCaseChange={(ci) => {
+            onCaseChange(ci);
+            onIndexChange(0);
+          }}
+          gives="Returns"
+          trailing={badge}
+        />
+      </div>
       <Tabs value={tab} onValueChange={(v) => onTabChange(String(v))}>
-        <TabsList>
+        <TabsList data-tour="tabs">
           <TabsTrigger value="walkthrough">Walkthrough</TabsTrigger>
           <TabsTrigger value="lines">Line by line</TabsTrigger>
         </TabsList>

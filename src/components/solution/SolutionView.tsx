@@ -25,6 +25,7 @@ import { ChangeModelLink } from "@/components/workspace/ChangeModelLink";
 import { ChatDock, useChatDock } from "@/components/workspace/ChatDock";
 import { ProgressStepper } from "@/components/workspace/ProgressStepper";
 import { UsageBadge } from "@/components/workspace/UsageBadge";
+import { useTour } from "@/components/tour/use-tour";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import type { SolutionEvent } from "@/lib/ai/pipeline/events";
 import { buildsOnAttempt } from "@/lib/ai/schemas/solution";
@@ -34,6 +35,7 @@ import type { ProblemDetail } from "@/lib/problems";
 import type { SolutionDetail, SolutionSummary } from "@/lib/solutions";
 import { problemPath } from "@/lib/slug";
 import { playCompletionSound } from "@/lib/sounds";
+import type { TourId } from "@/lib/tours";
 import { readSSE } from "@/lib/sse";
 import type { SolutionStatus } from "@/models/Solution";
 import type { ChatLayout } from "@/models/User";
@@ -61,6 +63,7 @@ export function SolutionView({
   baseAttempt,
   canGenerate,
   chatLayout,
+  toursSeen,
 }: {
   problem: ProblemDetail;
   initialSolutions: SolutionSummary[];
@@ -70,6 +73,8 @@ export function SolutionView({
   canGenerate: boolean;
   /** The learner's saved choice of where the chat sits. */
   chatLayout: ChatLayout;
+  /** First-run tours the learner has already been shown. */
+  toursSeen: TourId[];
 }) {
   const chatDock = useChatDock(chatLayout);
   const isDesktop = useMediaQuery("(min-width: 1024px)", true);
@@ -272,6 +277,7 @@ export function SolutionView({
   const currentLine = (spec && stepAt(spec, caseIndex, playerIndex)?.line) ?? null;
   const viewingSummary = viewing ? (solutions.find((s) => s.id === viewing.id) ?? null) : null;
 
+  useTour("solution", { seen: toursSeen, ready: Boolean(spec && content) && !loading });
 
   const left = (
     <div className="flex flex-col gap-4 p-4">
@@ -305,7 +311,7 @@ export function SolutionView({
       </Collapsible>
 
       {solutions.length > 0 && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" data-tour="versions">
           <Select
             items={solutions.map((s) => ({ value: s.id, label: versionLabel(s) }))}
             value={viewing?.id ?? null}

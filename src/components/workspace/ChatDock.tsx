@@ -41,7 +41,13 @@ export function ChatDock({
 }: { dock: ChatDockState } & Omit<React.ComponentProps<typeof ChatPanel>, "layout" | "onLayoutChange" | "onClose">) {
   const title = chat.title ?? "Ask about this run";
 
-  if (dock.layout === "inline") return <ChatPanel {...chat} layout="inline" onLayoutChange={dock.setLayout} />;
+  if (dock.layout === "inline") {
+    return (
+      <div data-tour="chat">
+        <ChatPanel {...chat} layout="inline" onLayoutChange={dock.setLayout} />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -62,6 +68,7 @@ export function ChatDock({
           variant="brand"
           className="fixed top-1/2 right-0 z-30 h-auto -translate-y-1/2 flex-col gap-2 rounded-r-none px-2 py-3 shadow-lg"
           aria-label={title}
+          data-tour="chat"
           onClick={() => dock.setOpen(true)}
         >
           <MessageCircleQuestionIcon />

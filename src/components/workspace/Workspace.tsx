@@ -57,6 +57,7 @@ import { ProblemActions } from "@/components/workspace/ProblemActions";
 import { ProgressStepper } from "@/components/workspace/ProgressStepper";
 import { attemptProgressDetails } from "@/components/workspace/RunProgressDetails";
 import { UsageBadge } from "@/components/workspace/UsageBadge";
+import { useTour } from "@/components/tour/use-tour";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { caseView, stepRefs } from "@/lib/ai/schemas/vizSpec";
 import type { AttemptDetail, AttemptSummary } from "@/lib/attempts";
@@ -67,6 +68,7 @@ import { createAttemptSchema, type CreateAttemptInput } from "@/lib/schemas/atte
 import { MAX_TEXT } from "@/lib/schemas/problems";
 import { playCompletionSound } from "@/lib/sounds";
 import { readSSE } from "@/lib/sse";
+import type { TourId } from "@/lib/tours";
 import { VERDICT_LABELS } from "@/lib/verdicts";
 import type { RunProgress } from "@/lib/runProgress";
 import type { AttemptStatus } from "@/models/Attempt";
@@ -132,6 +134,7 @@ export function Workspace({
   uploadsEnabled,
   hasSolution,
   chatLayout,
+  toursSeen,
 }: {
   problem: ProblemDetail;
   initialAttempts: AttemptSummary[];
@@ -144,6 +147,8 @@ export function Workspace({
   hasSolution: boolean;
   /** The learner's saved choice of where the chat sits. */
   chatLayout: ChatLayout;
+  /** First-run tours the learner has already been shown. */
+  toursSeen: TourId[];
 }) {
   const router = useRouter();
   const chatDock = useChatDock(chatLayout);
@@ -415,6 +420,13 @@ export function Workspace({
   const solutionBase =
     mode === "view" && viewing?.status === "done" ? viewing : (attempts.find((a) => a.status === "done") ?? null);
 
+  // First time on a problem: the form. First finished analysis: the results.
+  useTour("workspace", { seen: toursSeen, ready: mode === "new" && !running && !confirmingNew });
+  useTour("analysis", {
+    seen: toursSeen,
+    ready: mode === "view" && viewing?.status === "done" && Boolean(viewing.vizSpec) && !running && !loadingAttempt,
+  });
+
   const left = (
     <div className="flex flex-col gap-4 p-4">
       <Collapsible defaultOpen={!initialAttempt}>
@@ -442,7 +454,7 @@ export function Workspace({
             )}
           </div>
           <div className="flex shrink-0 items-center">
-            <span className="mr-2">
+            <span className="mr-2" data-tour="solution">
               <SolutionButton
                 problemId={problem.id}
                 problemSlug={problem.slug}
@@ -453,6 +465,7 @@ export function Workspace({
               />
             </span>
             <CollapsibleTrigger
+              data-tour="statement"
               render={<Button variant="soft" size="sm" className="data-panel-open:[&_svg]:rotate-180" />}
             >
               Statement <ChevronDownIcon className="transition-transform" />
@@ -467,7 +480,7 @@ export function Workspace({
         </CollapsibleContent>
       </Collapsible>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" data-tour="attempts">
         {attempts.length > 0 ? (
           <Select
             items={attemptItems}
@@ -564,7 +577,7 @@ export function Workspace({
           name="pseudoCode"
           control={form.control}
           render={({ field, fieldState }) => (
-            <Field data-invalid={fieldState.invalid}>
+            <Field data-invalid={fieldState.invalid} data-tour="pseudo">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1">
                   <FieldLabel htmlFor="pseudoCode">Pseudo-code</FieldLabel>
@@ -572,7 +585,7 @@ export function Workspace({
                 </div>
                 {mode === "new" && (
                   <div className="flex items-center">
-                    {uploadsEnabled && notebook.button}
+                    {uploadsEnabled && <span data-tour="notebook">{notebook.button}</span>}
                     <ClearButton
                       label="Clear pseudo-code"
                       disabled={Boolean(running) || !draftCode?.trim()}
@@ -606,7 +619,7 @@ export function Workspace({
           name="idea"
           control={form.control}
           render={({ field, fieldState }) => (
-            <Field data-invalid={fieldState.invalid}>
+            <Field data-invalid={fieldState.invalid} data-tour="idea">
               <div className="flex items-center justify-between gap-2">
                 <FieldLabel htmlFor="idea">Idea / explanation</FieldLabel>
                 {mode === "new" && (
@@ -652,11 +665,18 @@ export function Workspace({
           // Sticks to the bottom of the pane so the main action stays in reach while editing a long attempt.
           <div className="sticky bottom-0 z-10 -mx-4 flex flex-col gap-2 border-t bg-background/90 px-4 py-3 backdrop-blur">
             {canRun ? (
-              <LoadingButton type="submit" variant="brand" size="lg" loading={Boolean(running)} icon={<PlayIcon />}>
+              <LoadingButton
+                type="submit"
+                variant="brand"
+                size="lg"
+                loading={Boolean(running)}
+                icon={<PlayIcon />}
+                data-tour="process"
+              >
                 {running ? "Processing…" : "Process"}
               </LoadingButton>
             ) : (
-              <Link href="/settings" className={buttonVariants({ variant: "brand", size: "lg" })}>
+              <Link href="/settings" className={buttonVariants({ variant: "brand", size: "lg" })} data-tour="process">
                 {aiModel ? "Activate an API key to process" : "Set up an AI provider to process"}
               </Link>
             )}
@@ -733,19 +753,21 @@ export function Workspace({
     };
     right = (
       <div className="flex flex-col gap-3 p-4">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2" data-tour="verdict">
           <VerdictBadge verdict={spec.summary.verdict} />
           <p className="min-w-0 flex-1 text-sm text-muted-foreground">{casesPassedText(spec)}</p>
           <UsageBadge attempt={viewing} />
           {spec.summary.verdict !== "works" && (
-            <FixAttemptButton
-              key={`fix-${viewing.id}`}
-              problemId={problem.id}
-              problemSlug={problem.slug}
-              attempt={{ id: viewing.id, version: viewing.version }}
-              canGenerate={canRun}
-              disabled={Boolean(running) || loadingAttempt}
-            />
+            <span className="inline-flex" data-tour="fix">
+              <FixAttemptButton
+                key={`fix-${viewing.id}`}
+                problemId={problem.id}
+                problemSlug={problem.slug}
+                attempt={{ id: viewing.id, version: viewing.version }}
+                canGenerate={canRun}
+                disabled={Boolean(running) || loadingAttempt}
+              />
+            </span>
           )}
           {viewing.specVersions.length > 1 && (
             <Select
@@ -769,23 +791,27 @@ export function Workspace({
           )}
         </div>
         <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
-          <TabsList>
+          <TabsList data-tour="tabs">
             <TabsTrigger value="viz">Visualization</TabsTrigger>
             <TabsTrigger value="diagnosis">Diagnosis</TabsTrigger>
             <TabsTrigger value="hints">Hints</TabsTrigger>
           </TabsList>
           <TabsContent value="viz" className="flex flex-col gap-3 pt-3">
-            <CaseBar spec={spec} caseIndex={shownCase} onCaseChange={(ci) => showStep(ci, 0)} gives="Your code gives" />
-            <Player
-              key={`${viewing.id}-${viewing.specVersion}-${shownCase}`}
-              spec={caseView(spec, shownCase)}
-              language={problem.language}
-              index={playerIndex}
-              onIndexChange={setPlayerIndex}
-              layoutId={viewing.id}
-              selectedStepIds={new Set(selectedSteps)}
-              onToggleStepSelect={toggleStep}
-            />
+            <div data-tour="cases">
+              <CaseBar spec={spec} caseIndex={shownCase} onCaseChange={(ci) => showStep(ci, 0)} gives="Your code gives" />
+            </div>
+            <div data-tour="player">
+              <Player
+                key={`${viewing.id}-${viewing.specVersion}-${shownCase}`}
+                spec={caseView(spec, shownCase)}
+                language={problem.language}
+                index={playerIndex}
+                onIndexChange={setPlayerIndex}
+                layoutId={viewing.id}
+                selectedStepIds={new Set(selectedSteps)}
+                onToggleStepSelect={toggleStep}
+              />
+            </div>
           </TabsContent>
           <TabsContent value="diagnosis" className="pt-3">
             <DiagnosisPanel key={`${viewing.id}-${viewing.specVersion}`} spec={spec} onJumpToStep={showStep} />

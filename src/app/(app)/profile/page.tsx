@@ -4,6 +4,7 @@ import { ShieldCheckIcon } from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
 import { AvatarUploader } from "@/components/profile/avatar-uploader";
 import { ProfileForm } from "@/components/profile/profile-form";
+import { ReplayToursButton } from "@/components/tour/replay-tours-button";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,6 +64,7 @@ export default async function ProfilePage() {
                 <ShieldCheckIcon /> Admin dashboard
               </Link>
             )}
+            <ReplayToursButton />
             <LogoutButton withLabel />
           </div>
         </CardContent>

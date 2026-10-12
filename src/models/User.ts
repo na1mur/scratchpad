@@ -1,6 +1,7 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 import { LANGUAGES } from "@/lib/languages";
 import { PROVIDERS } from "@/lib/providers";
+import { TOURS } from "@/lib/tours";
 import { encryptedFieldSchema } from "@/models/encryptedField";
 
 export const ONBOARDING_STEPS = ["language", "provider", "done"] as const;
@@ -85,6 +86,8 @@ const userSchema = new Schema(
     preferences: {
       chatLayout: { type: String, enum: CHAT_LAYOUTS, required: false },
       problemView: { type: String, enum: PROBLEM_VIEWS, required: false },
+      // First-run tours already shown (see `toursSeenBy()`). Absent on accounts that never had one.
+      toursSeen: { type: [{ type: String, enum: TOURS }], default: undefined },
     },
   },
   { timestamps: true },

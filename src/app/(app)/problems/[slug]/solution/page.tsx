@@ -5,6 +5,7 @@ import { ApiError } from "@/lib/api";
 import { requirePageSession } from "@/lib/auth/session";
 import { getOwnedProblemBySlug, serializeProblem } from "@/lib/problems";
 import { SOLUTION_SUMMARY_FIELDS, getOwnedSolution, serializeSolution, serializeSolutionSummary } from "@/lib/solutions";
+import { toursSeenBy } from "@/lib/tours";
 import { getPageUser } from "@/lib/users";
 import { Attempt } from "@/models/Attempt";
 import { Solution } from "@/models/Solution";
@@ -54,6 +55,7 @@ export default async function SolutionPage({ params, searchParams }: PageProps<"
       baseAttempt={baseAttempt ? { id: String(baseAttempt._id), version: baseAttempt.version } : null}
       canGenerate={Boolean(user.ai?.apiKey)}
       chatLayout={user.preferences?.chatLayout ?? "inline"}
+      toursSeen={toursSeenBy(user)}
     />
   );
 }

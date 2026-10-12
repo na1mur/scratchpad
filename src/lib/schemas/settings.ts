@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { LANGUAGE_IDS } from "@/lib/languages";
 import { PROVIDERS } from "@/lib/providers";
+import { TOURS } from "@/lib/tours";
 
 export const languageSchema = z.object({
   language: z.enum(LANGUAGE_IDS, { error: "Pick a language" }),
@@ -14,6 +15,9 @@ export const preferencesSchema = z
     problemView: z.enum(["cards", "table"]).optional(),
   })
   .refine((p) => Object.values(p).some((v) => v !== undefined), "Nothing to save");
+
+/** A first-run tour the learner has been shown. */
+export const tourSeenSchema = z.object({ tour: z.enum(TOURS) });
 
 export const providerIdSchema = z.enum(PROVIDERS, { error: "Pick a provider" });
 
