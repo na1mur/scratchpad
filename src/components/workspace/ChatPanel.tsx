@@ -122,18 +122,34 @@ export function ChatPanel({
   }
 
   async function onSend(values: SendMessageInput) {
+    // Show the question at once; the server's saved copy replaces it when the "user" event arrives.
+    // Only one question is in flight at a time (the form is disabled while pending), so a fixed id is enough.
+    const tempId = "pending-question";
+    const focusStepIds = selectedStepIds;
+    setMessages((m) => [
+      ...(m ?? []),
+      {
+        id: tempId,
+        role: "user",
+        content: values.content,
+        focusStepIds,
+        producedSpecVersion: null,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+    const dropTemp = () => setMessages((m) => (m ?? []).filter((x) => x.id !== tempId));
+    form.reset({ content: "", focusStepIds: [] });
+    onClearSelection();
     setPending({ text: "", regenerating: null });
     setProposal(null);
     try {
       const res = await apiRaw(endpoint, {
         method: "POST",
-        body: { content: values.content, focusStepIds: selectedStepIds, specVersion, caseId },
+        body: { content: values.content, focusStepIds, specVersion, caseId },
       });
       if (!res.ok) throw await toApiError(res);
-      form.reset({ content: "", focusStepIds: [] });
-      onClearSelection();
       for await (const e of readSSE<ChatEvent>(res)) {
-        if (e.type === "user") setMessages((m) => [...(m ?? []), e.message]);
+        if (e.type === "user") setMessages((m) => (m ?? []).map((x) => (x.id === tempId ? e.message : x)));
         else if (e.type === "delta") setPending((p) => (p ? { ...p, text: p.text + e.text } : p));
         else if (e.type === "replace") setPending((p) => (p ? { ...p, text: e.text } : p));
         else if (e.type === "regenerating") setPending((p) => (p ? { ...p, regenerating: e.reason } : p));
@@ -144,12 +160,15 @@ export function ChatPanel({
         } else if (e.type === "proposal") setProposal({ kind: e.kind, note: e.note });
         else if (e.type === "done") setMessages((m) => [...(m ?? []), e.message]);
         else if (e.type === "error") {
-          setMessages((m) => (m ?? []).filter((x) => x.id !== e.discardedMessageId));
+          setMessages((m) => (m ?? []).filter((x) => x.id !== e.discardedMessageId && x.id !== tempId));
           form.setValue("content", values.content);
           toast.error(e.message);
         }
       }
     } catch (err) {
+      dropTemp();
+      form.setValue("content", values.content);
+      focusStepIds.forEach(onToggleStep);
       toast.error(err instanceof Error ? err.message : "Couldn't send your question.");
     } finally {
       setPending(null);
