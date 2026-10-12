@@ -682,14 +682,14 @@ export function Workspace({
         </div>
         <ProgressStepper status={running.status} details={attemptProgressDetails(running.progress)} />
         <LoadingButton
-          variant="outline"
+          variant="destructive"
           className="self-start"
           loading={stopping}
           disabled={!running.attemptId}
           icon={<SquareIcon />}
           onClick={() => void stopRun()}
         >
-          {stopping ? "Stopping…" : "Stop"}
+          {stopping ? "Stopping…" : "Stop processing"}
         </LoadingButton>
       </div>
     );

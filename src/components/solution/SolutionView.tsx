@@ -413,13 +413,13 @@ export function SolutionView({
         </div>
         <ProgressStepper status={viewing.status} stages={STAGES} order={ORDER} />
         <LoadingButton
-          variant="outline"
+          variant="destructive"
           className="self-start"
           loading={stopping}
           icon={<SquareIcon />}
           onClick={() => void stopSolution()}
         >
-          {stopping ? "Stopping…" : "Stop"}
+          {stopping ? "Stopping…" : "Stop processing"}
         </LoadingButton>
       </div>
     );
