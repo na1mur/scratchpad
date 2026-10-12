@@ -2,33 +2,24 @@ import "server-only";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { HARNESS_RUNTIME } from "@/lib/harness/runtime";
-import { AUTO_TRACE_RUNTIME } from "@/lib/trace/runtime";
+import { AUTO_TRACE_LIMIT, AUTO_TRACE_RUNTIME } from "@/lib/trace/runtime";
 import type { ValueType } from "@/lib/harness/types";
 
-export const TRACE_EVENT_LIMIT = 500;
 const TIME_LIMIT_MS = 2_000;
 const MEMORY_LIMIT_BYTES = 64 * 1024 * 1024;
 const STACK_LIMIT_BYTES = 512 * 1024;
 
-export type RawTraceEvent = {
-  line?: unknown;
-  loop?: unknown;
-  event?: unknown;
-  states?: unknown;
-  pointers?: unknown;
-  highlights?: unknown;
-};
-
 export type SandboxOutcome =
   | "ok"
   | "timeout" // hit the time limit: most likely an infinite loop
-  | "trace_limit" // more than TRACE_EVENT_LIMIT trace() calls
+  | "trace_limit" // more steps than AUTO_TRACE_LIMIT
   | "runtime_error" // the learner's logic threw (null access, stack overflow…)
   | "invalid_program"; // our translation is broken: syntax error, no run()
 
 export type SandboxResult = {
   outcome: SandboxOutcome;
-  events: RawTraceEvent[];
+  /** Steps the run recorded (AutoEvent in src/lib/trace/steps.ts). */
+  events: unknown[];
   /** Short display form of what it returned. */
   returnValue: string | null;
   /** The whole return value as JSON, in the harness's form (lists and trees as arrays); null if it didn't return. */
@@ -37,23 +28,14 @@ export type SandboxResult = {
 };
 
 /**
- * Runs inside QuickJS before the generated program. Helpers snapshot live
- * values into StructureState objects, so the program only has to say what
- * to show, not how to serialize it. Nothing from the host is exposed.
+ * Runs inside QuickJS before the program: silences console and gives __short() for display values.
+ * Steps are recorded by AUTO_TRACE_RUNTIME (src/lib/trace/runtime.ts) into __events. Nothing from the
+ * host is exposed.
  */
 const PRELUDE = String.raw`
 "use strict";
 var console = { log: function () {}, warn: function () {}, error: function () {}, info: function () {} };
 var __events = [];
-var __ids = new WeakMap();
-var __idc = 0;
-function __nodeId(o) {
-  if (o === null || o === undefined) return null;
-  if (typeof o !== "object") return String(o);
-  var v = __ids.get(o);
-  if (!v) { v = "n" + (++__idc); __ids.set(o, v); }
-  return v;
-}
 function __short(v) {
   try {
     var s = JSON.stringify(v, function (k, x) {
@@ -64,105 +46,6 @@ function __short(v) {
     if (s === undefined) return String(v);
     return s.length > 60 ? s.slice(0, 57) + "..." : s;
   } catch (e) { return String(v); }
-}
-function __prim(v) {
-  if (v === undefined || v === null) return null;
-  if (typeof v === "number") return isFinite(v) ? v : String(v);
-  if (typeof v === "string" || typeof v === "boolean") return v;
-  if (typeof v === "bigint") return String(v);
-  return __short(v);
-}
-function __scalar(v) { var p = __prim(v); return typeof p === "boolean" ? String(p) : p; }
-function __disp(v) {
-  if (v instanceof Set) v = Array.from(v);
-  if (Array.isArray(v)) return v.slice(0, 20).map(__prim);
-  return __prim(v);
-}
-function __list(x) {
-  if (x === null || x === undefined) return [];
-  if (typeof x === "string") return x.split("");
-  return Array.from(x);
-}
-var S = {
-  array: function (a) { return { kind: "array", values: __list(a).map(__scalar) }; },
-  string: function (s) { return { kind: "string", values: __list(s).map(__scalar) }; },
-  hashmap: function (m) {
-    var e = m instanceof Map ? Array.from(m.entries()) : Object.entries(m || {});
-    return { kind: "hashmap", entries: e.map(function (kv) {
-      var k = typeof kv[0] === "number" ? kv[0] : String(__prim(kv[0]));
-      return [k, __disp(kv[1])];
-    }) };
-  },
-  set: function (s) { return { kind: "set", values: __list(s).map(__prim) }; },
-  stack: function (a) { return { kind: "stack", items: __list(a).map(__disp) }; },
-  queue: function (a) { return { kind: "queue", items: __list(a).map(__disp) }; },
-  linkedList: function (head, o) {
-    o = o || {};
-    var vk = o.value || "val", nk = o.next || "next";
-    var nodes = [], seen = new Set(), cur = head;
-    while (cur && typeof cur === "object" && !seen.has(cur) && nodes.length < 50) {
-      seen.add(cur);
-      var nx = cur[nk];
-      nodes.push({ id: __nodeId(cur), value: __scalar(cur[vk]), next: nx ? __nodeId(nx) : null });
-      cur = nx;
-    }
-    return { kind: "linkedList", nodes: nodes, headId: head ? __nodeId(head) : null };
-  },
-  tree: function (root, o) {
-    o = o || {};
-    var vk = o.value || "val", lk = o.left || "left", rk = o.right || "right", ck = o.children || "children";
-    var nodes = [], seen = new Set(), queue = root ? [root] : [];
-    while (queue.length && nodes.length < 63) {
-      var n = queue.shift();
-      if (!n || typeof n !== "object" || seen.has(n)) continue;
-      seen.add(n);
-      var entry = { id: __nodeId(n), value: __scalar(n[vk]) };
-      if (Array.isArray(n[ck])) {
-        entry.children = n[ck].filter(Boolean).map(__nodeId);
-        n[ck].forEach(function (c) { if (c) queue.push(c); });
-      } else {
-        entry.left = n[lk] ? __nodeId(n[lk]) : null;
-        entry.right = n[rk] ? __nodeId(n[rk]) : null;
-        if (n[lk]) queue.push(n[lk]);
-        if (n[rk]) queue.push(n[rk]);
-      }
-      nodes.push(entry);
-    }
-    return { kind: "tree", nodes: nodes, rootId: root ? __nodeId(root) : null };
-  },
-  graph: function (adj, directed) {
-    var entries = adj instanceof Map ? Array.from(adj.entries()) : Object.entries(adj || {});
-    var ids = [], seenIds = new Set(), edges = [], seenEdges = new Set();
-    function addNode(x) { var s = String(x); if (!seenIds.has(s)) { seenIds.add(s); ids.push(s); } return s; }
-    entries.forEach(function (kv) {
-      var from = addNode(kv[0]);
-      __list(kv[1]).forEach(function (nb) {
-        var to, w;
-        if (Array.isArray(nb)) { to = nb[0]; w = nb[1]; }
-        else if (nb && typeof nb === "object") { to = nb.to !== undefined ? nb.to : nb.node; w = nb.weight; }
-        else { to = nb; }
-        to = addNode(to);
-        var key = directed ? from + ">" + to : [from, to].sort().join("~");
-        if (seenEdges.has(key)) return;
-        seenEdges.add(key);
-        var e = { from: from, to: to };
-        if (typeof w === "number") e.weight = w;
-        edges.push(e);
-      });
-    });
-    return { kind: "graph", nodes: ids.map(function (s) { return { id: s, label: s }; }), edges: edges, directed: !!directed };
-  },
-  matrix: function (rows) { return { kind: "matrix", rows: __list(rows).map(function (r) { return __list(r).map(__scalar); }) }; },
-  vars: function (o) { var out = {}; for (var k in o) out[k] = __prim(o[k]); return { kind: "variables", vars: out }; }
-};
-function nodeId(o) { return __nodeId(o); }
-function trace(ev) {
-  if (__events.length >= ${TRACE_EVENT_LIMIT}) throw new Error("__TRACE_LIMIT__");
-  ev = ev || {};
-  __events.push(JSON.parse(JSON.stringify({
-    line: ev.line, loop: ev.loop || null, event: ev.event || null,
-    states: ev.states || {}, pointers: ev.pointers || [], highlights: ev.highlights || []
-  })));
 }
 `;
 
@@ -261,7 +144,7 @@ function execute(program: string, wrapped: string, entry: { check: string; name:
         entryCheck: entry.check,
         entryName: entry.name,
         timeLimit: TIME_LIMIT_MS,
-        traceLimit: TRACE_EVENT_LIMIT,
+        traceLimit: AUTO_TRACE_LIMIT,
         memoryLimit: MEMORY_LIMIT_BYTES,
         stackLimit: STACK_LIMIT_BYTES,
       },

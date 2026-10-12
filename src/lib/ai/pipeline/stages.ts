@@ -44,7 +44,7 @@ import type { ProgressTracker } from "./progress";
 import { instrumentJs, markerLines, parseProgram } from "@/lib/trace/instrument";
 import { autoSteps, isAutoEvent, type ShowDecl } from "@/lib/trace/steps";
 import { runInSandbox, type SandboxResult } from "./sandbox";
-import { collapseSteps, describeSteps, eventsToSteps } from "./steps";
+import { collapseSteps, describeSteps } from "./steps";
 
 /** `source` is the linked page's text (src/lib/problemSource.ts), "" if there's none. */
 export type LearnerInput = { statement: string; source?: string; pseudoCode: string; idea: string; language: string };
@@ -246,48 +246,8 @@ export function prefixStepIds(caseId: string, steps: Step[]): Step[] {
   return steps.map((s) => ({ ...s, id: `${caseId}-${s.id}` }));
 }
 
-/** A program's runs on every case, turned into steps. */
-export type ProgramRun = { result: SandboxResult; steps: Step[] };
-
-/**
- * Runs one instrumented program on every case. `problem` describes what's wrong with the program
- * itself (it should be translated again); a case it couldn't trace on its own is a null run, for the
- * caller to simulate instead. `results` holds every case's raw result, null runs included.
- */
-export async function runOnCases(
-  t: { program: string; structures: Structure[]; loops: Loop[] },
-  cases: PipelineCase[],
-  lineCount: number,
-  returnType?: ValueType,
-): Promise<{ runs: (ProgramRun | null)[]; results: SandboxResult[]; problem: string | null }> {
-  const results = await Promise.all(cases.map((c) => runInSandbox(t.program, c.args, returnType)));
-  const parsed = results.map((r) => eventsToSteps(r.events, t.structures, t.loops, lineCount));
-
-  const invalid = results.find((r) => r.outcome === "invalid_program");
-  const unknown = new Set(parsed.flatMap((p) => [...p.problems.unknownStructures]));
-  const badStates = parsed.reduce((n, p) => n + p.problems.badStates, 0);
-  const tooManyBad = parsed.some((p) => p.problems.badStates > p.steps.length);
-  const noneTraced = parsed.every((p) => p.steps.length === 0);
-  const problem = [
-    invalid ? `The program didn't load: ${invalid.errorMessage}` : null,
-    noneTraced && !invalid
-      ? `It made no trace() calls on any case${results[0].outcome === "runtime_error" ? ` (it crashed: ${results[0].errorMessage})` : ""}.`
-      : null,
-    unknown.size ? `trace() used structure ids that aren't declared: ${[...unknown].join(", ")}` : null,
-    tooManyBad ? `${badStates} snapshots were malformed; build states only with the S.* helpers.` : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  return {
-    runs: results.map((result, i) => (parsed[i].steps.length ? { result, steps: parsed[i].steps } : null)),
-    results,
-    problem: problem || null,
-  };
-}
-
 /** The model's plain-JS translation, instrumented in code and ready to run. */
-type Program = {
+export type Program = {
   codeLines: string[];
   addedLines: number[];
   program: string;
@@ -296,7 +256,7 @@ type Program = {
 };
 
 /** Checks a translation and instruments it; issues go back to the model. */
-function prepareProgram(t: Translation): { program?: Program; issues: string[] } {
+export function prepareProgram(t: Translation): { program?: Program; issues: string[] } {
   const issues: string[] = [];
   if (!t.codeLines.length) issues.push("- codeLines is empty");
   const outsideAdded = t.addedLines.filter((i) => i < 0 || i >= t.codeLines.length);
@@ -358,13 +318,13 @@ function signatureBlock(ctx: Ctx): string {
 }
 
 /** One case's run: its own structures (whatever its variables held) and steps. */
-type AutoRun = { result: SandboxResult; structures: Structure[]; steps: Step[] };
+export type AutoRun = { result: SandboxResult; structures: Structure[]; steps: Step[] };
 
 /**
  * Runs the instrumented program on every case. `problem` says what's wrong with the program itself (it
  * should be translated again); a case that recorded no steps is a null run.
  */
-async function runProgram(
+export async function runProgram(
   p: Program,
   cases: PipelineCase[],
   returnType?: ValueType,
@@ -480,7 +440,7 @@ function crashTrace(c: PipelineCase, result: SandboxResult): CaseTrace | null {
 }
 
 /** Bounds a case's actual output for prompts and the spec; a whole return value can be long. */
-function shownOutput(result: SandboxResult): string {
+export function shownOutput(result: SandboxResult): string {
   return result.outcome === "ok" && result.returnJson && result.returnJson.length <= 400 ? result.returnJson : actualOutputOf(result);
 }
 
