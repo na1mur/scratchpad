@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeftIcon, ChevronDownIcon, CopyPlusIcon, LightbulbIcon, RotateCcwIcon, Trash2Icon, TriangleAlertIcon } from "lucide-react";
+import { ArrowLeftIcon, ChevronDownIcon, CopyPlusIcon, LightbulbIcon, RotateCcwIcon, SquareIcon, Trash2Icon, TriangleAlertIcon } from "lucide-react";
 import { LoadingButton } from "@/components/loading-button";
 import { ShareButton } from "@/components/share/share-button";
 import { SourceLink } from "@/components/problems/source-link";
@@ -82,6 +82,7 @@ export function SolutionView({
   const [prefill, setPrefill] = useState<SolutionRequest | null>(null);
   const [deleting, setDeleting] = useState<"confirm" | "busy" | null>(null);
   const [starting, setStarting] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const toggleStep = (id: string) =>
     setSelectedSteps((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id].slice(-8)));
 
@@ -107,6 +108,22 @@ export function SolutionView({
       setLoading(false);
     }
   }
+
+  /** Takes a solution out of the list and shows the newest one left, or the empty state. */
+  async function drop(id: string) {
+    const remaining = solutions.filter((s) => s.id !== id);
+    setSolutions(remaining);
+    if (remaining.length) await load(remaining[0].id);
+    else {
+      setViewing(null);
+      window.history.replaceState(null, "", "?");
+    }
+  }
+
+  // Stopped elsewhere (another tab): the run deleted it. A stop from this page is handled by stopSolution().
+  const onStopped = useEffectEvent((id: string) => {
+    if (!stopping) void drop(id);
+  });
 
   // While a solution is being written, follow its progress stream. Polling is only the fallback for a
   // stream that drops before the run settles.
@@ -141,6 +158,10 @@ export function SolutionView({
         if (!res.ok) throw await toApiError(res);
         for await (const e of readSSE<SolutionEvent>(res)) {
           if (e.type === "status") setStatus(e.status);
+          else if (e.type === "error" && e.code === "cancelled") {
+            onStopped(pendingId);
+            return;
+          }
           // Done or failed: the stored solution has the result (or the error message).
           else if (await settle()) return;
         }
@@ -212,17 +233,30 @@ export function SolutionView({
     try {
       await api(`/api/solutions/${viewing.id}`, { method: "DELETE" });
       toast.success(`Solution v${viewing.version} deleted`);
-      const remaining = solutions.filter((s) => s.id !== viewing.id);
-      setSolutions(remaining);
       setDeleting(null);
-      if (remaining.length) await load(remaining[0].id);
-      else {
-        setViewing(null);
-        window.history.replaceState(null, "", "?");
-      }
+      await drop(viewing.id);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't delete.");
       setDeleting("confirm");
+    }
+  }
+
+  /** Stops the solution being written. The stopped run is deleted, so it takes no version number. */
+  async function stopSolution() {
+    if (!viewing) return;
+    const id = viewing.id;
+    setStopping(true);
+    try {
+      const { stopped } = await api<{ stopped: boolean }>(`/api/solutions/${id}/cancel`, { method: "POST" });
+      if (stopped) await drop(id);
+      else toast.info("It finished before it could be stopped.");
+    } catch (err) {
+      // Already finished: the progress stream brings in the result.
+      if (!(err instanceof ApiClientError && err.code === "finished")) {
+        toast.error(err instanceof Error ? err.message : "Couldn't stop it.");
+      }
+    } finally {
+      setStopping(false);
     }
   }
 
@@ -378,6 +412,15 @@ export function SolutionView({
           </p>
         </div>
         <ProgressStepper status={viewing.status} stages={STAGES} order={ORDER} />
+        <LoadingButton
+          variant="outline"
+          className="self-start"
+          loading={stopping}
+          icon={<SquareIcon />}
+          onClick={() => void stopSolution()}
+        >
+          {stopping ? "Stopping…" : "Stop"}
+        </LoadingButton>
       </div>
     );
   } else if (viewing.status === "error" || !spec || !content) {

@@ -16,7 +16,8 @@ import { Attempt, type AttemptStatus } from "@/models/Attempt";
 import { Problem } from "@/models/Problem";
 import { User } from "@/models/User";
 import { emit } from "./events";
-import { PipelineError, UsageMeter } from "./llm";
+import { endRun, startRun } from "./cancel";
+import { PipelineError, RunCancelledError, UsageMeter, throwIfCancelled } from "./llm";
 import {
   assemble,
   diagnose,
@@ -28,8 +29,11 @@ import {
   type Guidance,
 } from "./stages";
 
-async function setStatus(attemptId: string, status: AttemptStatus) {
-  await Attempt.updateOne({ _id: attemptId }, { $set: { status } });
+/** Also where a stop lands: the signal is checked, and an attempt the cancel route already removed ends the run. */
+async function setStatus(attemptId: string, status: AttemptStatus, signal: AbortSignal) {
+  throwIfCancelled(signal);
+  const { matchedCount } = await Attempt.updateOne({ _id: attemptId }, { $set: { status } });
+  if (!matchedCount) throw new RunCancelledError();
   emit(attemptId, { type: "status", status });
 }
 
@@ -71,6 +75,7 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
   const attempt = await Attempt.findById(attemptId);
   if (!attempt) return;
   const meter = new UsageMeter();
+  const signal = startRun(attemptId);
 
   try {
     const [problem, user] = await Promise.all([
@@ -95,16 +100,18 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
         language: problem.language,
       },
       reference: reference?.text,
+      signal,
     };
 
-    await setStatus(attemptId, "understanding");
+    await setStatus(attemptId, "understanding", signal);
     const u = await understand(ctx);
     await Attempt.updateOne({ _id: attemptId }, { $set: { understanding: u } });
 
-    const { spec, mode } = await traceAndDiagnose(ctx, u, { onStage: (s) => setStatus(attemptId, s) });
+    const { spec, mode } = await traceAndDiagnose(ctx, u, { onStage: (s) => setStatus(attemptId, s, signal) });
 
     // Auto-tags only fill in for problems the learner left untagged.
     const autoTags = problem.tagsSource === "none" ? normalizeTags(u.suggestedTags) : [];
+    throwIfCancelled(signal);
     const finalSpec: VizSpec = autoTags.length ? { ...spec, autoTags } : spec;
     const stored = await storeSpec(String(attempt.userId), String(attempt.problemId), attemptId, 1, finalSpec);
 
@@ -159,5 +166,7 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
       emit(attemptId, { type: "status", status: "error" });
     }
     emit(attemptId, { type: "error", ...safe, discarded });
+  } finally {
+    endRun(attemptId);
   }
 }

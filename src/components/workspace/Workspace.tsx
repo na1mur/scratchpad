@@ -16,6 +16,7 @@ import {
   PlayIcon,
   RotateCcwIcon,
   SparklesIcon,
+  SquareIcon,
   TriangleAlertIcon,
 } from "lucide-react";
 import { SourceLink } from "@/components/problems/source-link";
@@ -151,6 +152,7 @@ export function Workspace({
       : null,
   );
   const [streaming, setStreaming] = useState(false);
+  const [stopping, setStopping] = useState(false);
   /** Why the last run produced nothing. Such a run isn't kept as an attempt, so it's explained in the results pane. */
   const [failure, setFailure] = useState<string | null>(null);
   const [playerIndex, setPlayerIndex] = useState(0);
@@ -246,8 +248,8 @@ export function Workspace({
     return () => clearInterval(timer);
   }, [running?.attemptId, streaming, router]);
 
-  /** Drops a failed run that the server discarded and returns to the editable draft. */
-  function discardRun(attemptId: string | null, message: string) {
+  /** Drops a failed or stopped run that the server discarded and returns to the editable draft. */
+  function discardRun(attemptId: string | null, message: string | null) {
     setRunning(null);
     setAttempts((list) => list.filter((a) => a.id !== attemptId));
     setViewing((v) => (v?.id === attemptId ? null : v));
@@ -290,14 +292,18 @@ export function Workspace({
           router.refresh();
         } else if (e.type === "error") {
           finished = true;
-          if (e.discarded) {
+          if (e.code === "cancelled") {
+            // Stopped by the learner, who already knows: back to the draft without an error.
+            discardRun(attemptId, null);
+          } else if (e.discarded) {
             // Nothing was saved: the learner stays on their draft and can press Process again.
             discardRun(attemptId, e.message);
+            toast.error(e.message);
           } else {
             setRunning(null);
             if (attemptId) await loadAttempt(attemptId);
+            toast.error(e.message);
           }
-          toast.error(e.message);
         }
       }
     } catch (err) {
@@ -308,6 +314,29 @@ export function Workspace({
       setStreaming(false);
       // Stream dropped mid-run: the polling effect takes over.
       if (!finished && attemptId) setRunning({ attemptId, status: "tracing" });
+    }
+  }
+
+  /** Stops the run in progress. The draft stays in the form, ready to edit and process again. */
+  async function stopRun() {
+    const attemptId = running?.attemptId;
+    if (!attemptId) return;
+    setStopping(true);
+    try {
+      const { stopped } = await api<{ stopped: boolean }>(`/api/attempts/${attemptId}/cancel`, { method: "POST" });
+      if (!stopped) toast.info("It finished before it could be stopped.");
+      // While streaming, the stream's own "cancelled" event resets the view; a polled run has no stream to say so.
+      else if (!streaming) {
+        pollToken.current++;
+        discardRun(attemptId, null);
+      }
+    } catch (err) {
+      // Already finished: the stream or the poll brings in the result.
+      if (!(err instanceof ApiClientError && err.code === "finished")) {
+        toast.error(err instanceof Error ? err.message : "Couldn't stop it.");
+      }
+    } finally {
+      setStopping(false);
     }
   }
 
@@ -642,6 +671,16 @@ export function Workspace({
           <p className="text-sm text-muted-foreground">This usually takes under a minute. Keep this tab open until it finishes.</p>
         </div>
         <ProgressStepper status={running.status} />
+        <LoadingButton
+          variant="outline"
+          className="self-start"
+          loading={stopping}
+          disabled={!running.attemptId}
+          icon={<SquareIcon />}
+          onClick={() => void stopRun()}
+        >
+          {stopping ? "Stopping…" : "Stop"}
+        </LoadingButton>
       </div>
     );
   } else if (loadingAttempt) {

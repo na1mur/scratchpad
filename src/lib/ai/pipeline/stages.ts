@@ -47,7 +47,14 @@ export type LearnerInput = { statement: string; source?: string; pseudoCode: str
  * `reference` is known solutions from the web (src/lib/problemReference.ts), "" if none were found. Only
  * understand and diagnose see it: they need to know what correct looks like, the tracing stages don't.
  */
-export type Ctx = { model: LanguageModel; meter: UsageMeter; learner: LearnerInput; reference?: string };
+export type Ctx = {
+  model: LanguageModel;
+  meter: UsageMeter;
+  learner: LearnerInput;
+  reference?: string;
+  /** Fires when the learner stops the run. */
+  signal?: AbortSignal;
+};
 
 function withReference(ctx: Ctx) {
   const block = referenceBlock(ctx.reference);
@@ -130,6 +137,7 @@ export function understand(ctx: Ctx, guidance?: Guidance): Promise<Understanding
   return generateStructured({
     model: ctx.model,
     meter: ctx.meter,
+    signal: ctx.signal,
     name: "understanding",
     schema: understandingSchema,
     instructions: instr(ctx, UNDERSTAND_ROLE),
@@ -233,6 +241,7 @@ async function translate(ctx: Ctx, cases: PipelineCase[], feedback: string, guid
   return generateStructured({
     model: ctx.model,
     meter: ctx.meter,
+    signal: ctx.signal,
     name: "instrumented program",
     schema: translationSchema,
     instructions: instr(ctx, TRANSLATE_ROLE),
@@ -278,6 +287,7 @@ async function narrate(ctx: Ctx, u: Understanding, c: PipelineCase, codeLines: s
   const narration = await generateStructured({
     model: ctx.model,
     meter: ctx.meter,
+    signal: ctx.signal,
     name: "step narration",
     schema: narrationSchema,
     instructions: instr(ctx, NARRATE_ROLE),
@@ -428,6 +438,7 @@ async function traceBySimulation(
   return generateStructured({
     model: ctx.model,
     meter: ctx.meter,
+    signal: ctx.signal,
     name: "simulated trace",
     schema: simulationSchema,
     instructions: instr(ctx, SIMULATE_ROLE),
@@ -572,6 +583,7 @@ export async function diagnose(ctx: Ctx, u: Understanding, trace: TraceResult, s
   const d = await generateStructured({
     model: ctx.model,
     meter: ctx.meter,
+    signal: ctx.signal,
     name: "diagnosis",
     schema: diagnosisOutputSchema,
     instructions: instr(ctx, stricter ? `${DIAGNOSE_ROLE}\n\n${STRICTER_ADDENDUM}` : DIAGNOSE_ROLE),
@@ -596,6 +608,7 @@ export async function revealsSolution(ctx: Ctx, text: string): Promise<{ reveals
   const r = await generateStructured({
     model: ctx.model,
     meter: ctx.meter,
+    signal: ctx.signal,
     name: "solution check",
     schema: guardrailSchema,
     instructions: GUARDRAIL_ROLE,

@@ -27,13 +27,15 @@ import { userSearchKey } from "@/lib/tavily";
 import { ensureProblemSource } from "@/lib/problemSource";
 import { loadSpec, storeSpec } from "@/lib/specStorage";
 import { clearKeyRejected, markMainKeyRejected } from "@/lib/providerKeys";
+import { deleteSolutionCascade } from "@/lib/cascade";
 import { rateLimits } from "@/lib/rateLimit";
 import { Attempt } from "@/models/Attempt";
 import { Problem } from "@/models/Problem";
 import { Solution, type SolutionStatus } from "@/models/Solution";
 import { User } from "@/models/User";
 import { emit } from "./events";
-import { PipelineError, UsageMeter, generateStructured } from "./llm";
+import { endRun, startRun } from "./cancel";
+import { PipelineError, RunCancelledError, UsageMeter, generateStructured, throwIfCancelled } from "./llm";
 import type { SandboxResult } from "./sandbox";
 import {
   actualOutputOf,
@@ -59,6 +61,8 @@ type SolveCtx = {
   statement: string;
   source: string;
   reference: Reference | null;
+  /** Fires when the learner stops the run. */
+  signal?: AbortSignal;
 };
 
 /** One case's walkthrough. `passed` is set only for a case that ran: whether it returned the expected value. */
@@ -162,6 +166,7 @@ function solve(ctx: SolveCtx, pc: PlanContext, feedback = ""): Promise<SolutionP
   return generateStructured({
     model: ctx.model,
     meter: ctx.meter,
+    signal: ctx.signal,
     name: "solution",
     schema: solutionPlanSchema,
     instructions: instr(ctx, SOLVE_ROLE),
@@ -212,6 +217,7 @@ async function executeAll(ctx: SolveCtx, plan: SolutionPlan): Promise<Execution 
       t = await generateStructured({
         model: ctx.model,
         meter: ctx.meter,
+        signal: ctx.signal,
         name: "instrumented solution",
         schema: solutionTranslationSchema,
         instructions: instr(ctx, SOLUTION_TRANSLATE_ROLE),
@@ -266,6 +272,7 @@ async function narrate(ctx: SolveCtx, plan: SolutionPlan, c: PipelineCase, steps
   const narration = await generateStructured({
     model: ctx.model,
     meter: ctx.meter,
+    signal: ctx.signal,
     name: "step narration",
     schema: narrationSchema,
     instructions: instr(ctx, SOLUTION_NARRATE_ROLE),
@@ -297,6 +304,7 @@ function traceBySimulation(ctx: SolveCtx, plan: SolutionPlan, c: PipelineCase): 
   return generateStructured({
     model: ctx.model,
     meter: ctx.meter,
+    signal: ctx.signal,
     name: "simulated trace",
     schema: simulationSchema,
     instructions: instr(ctx, SOLUTION_SIMULATE_ROLE),
@@ -391,8 +399,11 @@ function toContent(plan: SolutionPlan, verified: boolean, reference: Reference |
 
 // Runner --------------------------------------------------------------------
 
-async function setStatus(solutionId: string, status: SolutionStatus) {
-  await Solution.updateOne({ _id: solutionId }, { $set: { status } });
+/** Also where a stop lands: the signal is checked, and a solution the cancel route already removed ends the run. */
+async function setStatus(solutionId: string, status: SolutionStatus, signal: AbortSignal) {
+  throwIfCancelled(signal);
+  const { matchedCount } = await Solution.updateOne({ _id: solutionId }, { $set: { status } });
+  if (!matchedCount) throw new RunCancelledError();
   emit(solutionId, { type: "status", status });
 }
 
@@ -406,6 +417,7 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
   const solution = await Solution.findById(solutionId);
   if (!solution) return;
   const meter = new UsageMeter();
+  const signal = startRun(solutionId);
 
   try {
     const [problem, user, attempt, existing] = await Promise.all([
@@ -433,6 +445,7 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
       statement: problem.statement,
       source,
       reference,
+      signal,
     };
     const pc: PlanContext = {
       attempt: attempt
@@ -450,10 +463,10 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
       request: { kind: solution.request?.kind ?? "initial", note: solution.request?.note ?? "" },
     };
 
-    await setStatus(solutionId, "solving");
+    await setStatus(solutionId, "solving", signal);
     let plan = await solve(ctx, pc);
 
-    await setStatus(solutionId, "tracing");
+    await setStatus(solutionId, "tracing", signal);
     let exec = await executeAll(ctx, plan);
     if (exec && !allMatched(exec)) {
       // Even a faithful program disagrees, so the code itself may be wrong: ask for a fix once and keep
@@ -470,7 +483,7 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
       }
     }
 
-    await setStatus(solutionId, "narrating");
+    await setStatus(solutionId, "narrating", signal);
     const cases = await traceCases(ctx, plan, exec);
     // A simulation has nothing to check against; only a run that disagreed counts as unverified.
     const verified = cases.every((c) => c.passed !== false);
@@ -481,6 +494,7 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
       console.error("[solution] assembled spec invalid:", formatSpecIssues(parsed.error, 5));
       throw new PipelineError("invalid_output", "The walkthrough came out malformed. Please try again.");
     }
+    throwIfCancelled(signal);
     const content = toContent(plan, verified, ctx.reference);
     const stored = await storeSpec(
       String(solution.userId),
@@ -498,6 +512,16 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
     await clearKeyRejected(user.ai?.keyId).catch(() => {});
     emit(solutionId, { type: "done" });
   } catch (err) {
+    // A failed run doesn't use up the learner's hourly allowance, so they can retry with another model.
+    await rateLimits.solutions().refund(String(solution.userId)).catch(() => {});
+    if (err instanceof RunCancelledError) {
+      // A stopped run leaves nothing behind: no failed version to retry, no version number taken.
+      await deleteSolutionCascade(String(solution.userId), solution).catch((e) => {
+        console.error(`[solution] couldn't discard stopped ${solutionId}:`, e instanceof Error ? e.message : e);
+      });
+      emit(solutionId, { type: "error", code: err.code, message: err.message });
+      return;
+    }
     const safe =
       err instanceof PipelineError || err instanceof ApiError
         ? { code: err.code, message: err.message }
@@ -507,11 +531,11 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
     }
     // Flag a refused key so Settings can point at it.
     if (safe.code === "invalid_key") await markMainKeyRejected(solution.userId).catch(() => {});
-    // A failed run doesn't use up the learner's hourly allowance, so they can retry with another model.
-    await rateLimits.solutions().refund(String(solution.userId)).catch(() => {});
     await Solution.updateOne({ _id: solutionId }, { $set: { status: "error", error: safe, tokenUsage: meter.snapshot() } }).catch(
       () => {},
     );
     emit(solutionId, { type: "error", ...safe });
+  } finally {
+    endRun(solutionId);
   }
 }

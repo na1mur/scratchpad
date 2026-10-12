@@ -28,6 +28,18 @@ export class PipelineError extends Error {
   }
 }
 
+/** The learner stopped the run. Its runner discards it instead of storing an error. */
+export class RunCancelledError extends PipelineError {
+  constructor() {
+    super("cancelled", "Stopped.");
+  }
+}
+
+/** Throws once the run's signal has fired; called between stages so a cancel lands before the next model call. */
+export function throwIfCancelled(signal: AbortSignal | undefined) {
+  if (signal?.aborted) throw new RunCancelledError();
+}
+
 const CALL_TIMEOUT_MS = 180_000;
 /** Plan: retry up to 2 times with the validation error appended. */
 const MAX_FIX_RETRIES = 2;
@@ -68,6 +80,8 @@ export async function generateStructured<S extends z.ZodType, R = z.infer<S>>(op
   timeoutMs?: number;
   /** Images sent alongside the prompt (vision calls). */
   images?: { data: Uint8Array; mediaType: string }[];
+  /** Aborts the call when the learner stops the run. */
+  signal?: AbortSignal;
 }): Promise<R> {
   let feedback = "";
   let maxOutputTokens = opts.maxOutputTokens;
@@ -75,6 +89,7 @@ export async function generateStructured<S extends z.ZodType, R = z.infer<S>>(op
     const prompt = feedback
       ? `${opts.prompt}\n\n<previous_attempt_problems>\nYour previous answer was rejected:\n${feedback}\nFix every problem listed and answer again in full.\n</previous_attempt_problems>`
       : opts.prompt;
+    throwIfCancelled(opts.signal);
     try {
       const input = opts.images?.length
         ? {
@@ -96,7 +111,9 @@ export async function generateStructured<S extends z.ZodType, R = z.infer<S>>(op
         output: Output.object({ schema: opts.schema, name: schemaName(opts.name) }),
         maxOutputTokens,
         maxRetries: 1,
-        abortSignal: AbortSignal.timeout(opts.timeoutMs ?? CALL_TIMEOUT_MS),
+        abortSignal: AbortSignal.any(
+          [AbortSignal.timeout(opts.timeoutMs ?? CALL_TIMEOUT_MS), opts.signal].filter((s) => s !== undefined),
+        ),
       });
       opts.meter.add(result.usage);
       const value = result.output as z.infer<S>;
@@ -105,6 +122,7 @@ export async function generateStructured<S extends z.ZodType, R = z.infer<S>>(op
       if (checked.ok) return checked.value;
       feedback = checked.issues;
     } catch (err) {
+      throwIfCancelled(opts.signal);
       if (NoObjectGeneratedError.isInstance(err)) {
         opts.meter.add(err.usage);
         const cause = err.cause instanceof Error ? err.cause.message : String(err.cause ?? "unparseable output");
