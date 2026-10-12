@@ -208,13 +208,13 @@ export type ProgramRun = { result: SandboxResult; steps: Step[] };
 /**
  * Runs one instrumented program on every case. `problem` describes what's wrong with the program
  * itself (it should be translated again); a case it couldn't trace on its own is a null run, for the
- * caller to simulate instead.
+ * caller to simulate instead. `results` holds every case's raw result, null runs included.
  */
 export async function runOnCases(
   t: { program: string; structures: Structure[]; loops: Loop[] },
   cases: PipelineCase[],
   lineCount: number,
-): Promise<{ runs: (ProgramRun | null)[]; problem: string | null }> {
+): Promise<{ runs: (ProgramRun | null)[]; results: SandboxResult[]; problem: string | null }> {
   const results = await Promise.all(cases.map((c) => runInSandbox(t.program, c.args)));
   const parsed = results.map((r) => eventsToSteps(r.events, t.structures, t.loops, lineCount));
 
@@ -236,6 +236,7 @@ export async function runOnCases(
 
   return {
     runs: results.map((result, i) => (parsed[i].steps.length ? { result, steps: parsed[i].steps } : null)),
+    results,
     problem: problem || null,
   };
 }
@@ -259,38 +260,75 @@ async function translate(ctx: Ctx, cases: PipelineCase[], feedback: string, guid
   });
 }
 
+type CompletedCode = { codeLines: string[]; addedLines: number[] };
+
+type Execution =
+  | { ok: true; t: Translation; runs: (ProgramRun | null)[]; results: SandboxResult[] }
+  /** `code` is the last translation's completed code, if any, which the simulations can share. */
+  | { ok: false; code: CompletedCode | null };
+
 /**
  * Translates to instrumented JS once and runs it in QuickJS on every case. A broken program gets one
- * retry with the error; returns null when execution isn't usable at all, so the caller falls back to
- * simulation. Cases the program couldn't trace come back as null runs.
+ * retry with the error. When execution isn't usable at all the caller falls back to simulation, and
+ * gets the completed code a broken program still came with. Cases the program couldn't trace come
+ * back as null runs.
  */
-async function executeAll(
-  ctx: Ctx,
-  cases: PipelineCase[],
-  guidance?: Guidance,
-): Promise<{ t: Translation; runs: (ProgramRun | null)[] } | null> {
+async function executeAll(ctx: Ctx, cases: PipelineCase[], guidance?: Guidance): Promise<Execution> {
   let feedback = "";
+  let code: CompletedCode | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     let t: Translation;
     try {
       t = await translate(ctx, cases, feedback, guidance);
     } catch (err) {
-      if (err instanceof PipelineError && err.code === "invalid_output") return null;
+      if (err instanceof PipelineError && err.code === "invalid_output") {
+        ctx.meter.note("no valid instrumented program from the model");
+        return { ok: false, code };
+      }
       throw err;
     }
+    code = { codeLines: t.codeLines, addedLines: t.addedLines };
     ctx.progress?.update((p) => {
       p.program = { lines: t.codeLines.length, added: t.addedLines.length };
       for (const c of p.cases ?? []) c.state = "running";
     });
-    const { runs, problem } = await runOnCases(t, cases, t.codeLines.length);
-    if (!problem) return { t, runs };
+    const { runs, results, problem } = await runOnCases(t, cases, t.codeLines.length);
+    if (!problem) return { ok: true, t, runs, results };
+    ctx.meter.note(`program ${attempt + 1} rejected: ${problem.replace(/\n/g, " | ")}`);
     feedback = problem;
     ctx.progress?.update((p) => {
       p.program = { lines: t.codeLines.length, added: t.addedLines.length, retrying: true };
       for (const c of p.cases ?? []) c.state = "pending";
     });
   }
-  return null;
+  return { ok: false, code };
+}
+
+/**
+ * A case whose run crashed or hung before its first trace() call. The other cases ran, so the program
+ * works and the failure is the learner's logic on this input: one step saying so beats simulating it.
+ */
+function crashTrace(c: PipelineCase, t: Translation, result: SandboxResult): CaseTrace | null {
+  if (result.outcome !== "runtime_error" && result.outcome !== "timeout") return null;
+  const { steps } = eventsToSteps([{}], t.structures, t.loops, t.codeLines.length);
+  const crashed = result.outcome === "runtime_error";
+  const step: Step = {
+    ...steps[0],
+    title: crashed ? "Crashes before the first step" : "Never gets past the start",
+    explanation: crashed
+      ? `On this input your code stops with an error before reaching its first step: ${result.errorMessage}.`
+      : "On this input your code never gets past its first lines; it most likely loops without making progress.",
+    isBugMoment: true,
+  };
+  return {
+    ...c,
+    mode: "execution",
+    structures: t.structures,
+    loops: t.loops,
+    steps: prefixStepIds(c.id, [step]),
+    actualOutput: actualOutputOf(result),
+    runNote: runNoteFor(result),
+  };
 }
 
 async function narrate(ctx: Ctx, u: Understanding, c: PipelineCase, codeLines: string[], steps: Step[], result: SandboxResult) {
@@ -489,9 +527,10 @@ export type TracedCases = { trace: TraceResult; narrated: Promise<TraceResult> }
 
 /**
  * Stage 2 for every case: one translation run on each case, narrated per case in parallel. A case
- * the program can't trace is simulated by hand instead, on the same completed code. Returns once
- * every case has its steps, while narration still runs: diagnosis only needs the raw trace, so it
- * runs alongside. Narration keeps every step id, so the diagnosis's bugStepIds stay valid.
+ * the program can't trace is simulated by hand instead, on the same completed code, unless its run
+ * crashed before the first step, which is shown as is. Returns once every case has its steps, while
+ * narration still runs: diagnosis only needs the raw trace, so it runs alongside. Narration keeps
+ * every step id, so the diagnosis's bugStepIds stay valid.
  */
 export async function traceCases(ctx: Ctx, u: Understanding, guidance?: Guidance): Promise<TracedCases> {
   const cases = casesOf(u);
@@ -506,27 +545,32 @@ export async function traceCases(ctx: Ctx, u: Understanding, guidance?: Guidance
   const exec = await executeAll(ctx, cases, guidance);
   const traces: (CaseTrace | null)[] = cases.map(() => null);
   const narrations: (Promise<CaseTrace> | null)[] = cases.map(() => null);
-  let shared: { codeLines: string[]; addedLines: number[] };
-  if (exec) {
+  let shared: CompletedCode;
+  if (exec.ok) {
     shared = { codeLines: exec.t.codeLines, addedLines: exec.t.addedLines };
   } else {
-    // With no translation at all, the first simulation completes the code the others then share.
     ctx.progress?.update((p) => {
       p.simulating = true;
       delete p.program;
       for (const c of p.cases ?? []) c.state = "pending";
     });
-    ctx.progress?.updateCase(cases[0].id, { state: "simulating" });
-    const sim = await traceBySimulation(ctx, cases[0], guidance);
-    shared = { codeLines: sim.codeLines, addedLines: sim.addedLines };
-    traces[0] = finished(sim.trace);
+    if (exec.code) {
+      // A program that didn't run still completed the code, so every case can be simulated at once.
+      shared = exec.code;
+    } else {
+      // With no translation at all, the first simulation completes the code the others then share.
+      ctx.progress?.updateCase(cases[0].id, { state: "simulating" });
+      const sim = await traceBySimulation(ctx, cases[0], guidance);
+      shared = { codeLines: sim.codeLines, addedLines: sim.addedLines };
+      traces[0] = finished(sim.trace);
+    }
   }
 
   await Promise.all(
     cases.map(async (c, i) => {
       if (traces[i]) return;
-      const run = exec?.runs[i];
-      if (exec && run) {
+      const run = exec.ok ? exec.runs[i] : null;
+      if (exec.ok && run) {
         const steps = prefixStepIds(c.id, collapseSteps(run.steps, exec.t.loops));
         const trace: CaseTrace = {
           ...c,
@@ -545,10 +589,20 @@ export async function traceCases(ctx: Ctx, u: Understanding, guidance?: Guidance
         // Awaited below, maybe after a simulation fails first; this keeps that from counting as unhandled.
         narration.catch(() => {});
         narrations[i] = narration;
-      } else {
-        ctx.progress?.updateCase(c.id, { state: "simulating" });
-        traces[i] = finished((await traceBySimulation(ctx, c, guidance, shared)).trace);
+        return;
       }
+      if (exec.ok) {
+        const result = exec.results[i];
+        const crashed = crashTrace(c, exec.t, result);
+        if (crashed) {
+          ctx.meter.note(`${c.id} ${result.outcome} before its first step: ${result.errorMessage}`);
+          traces[i] = finished(crashed);
+          return;
+        }
+        ctx.meter.note(`${c.id} made no trace() calls (${result.outcome}); simulated instead`);
+      }
+      ctx.progress?.updateCase(c.id, { state: "simulating" });
+      traces[i] = finished((await traceBySimulation(ctx, c, guidance, shared)).trace);
     }),
   );
 

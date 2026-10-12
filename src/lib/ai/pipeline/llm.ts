@@ -5,8 +5,27 @@ import { toFriendlyProviderError } from "@/lib/ai/errors";
 
 export type Usage = { inputTokens: number; outputTokens: number; totalTokens: number };
 
+/** One model call: `tries` counts the validation retries, `ok` is false when it threw. */
+export type CallStat = { name: string; ms: number; tries: number; ok: boolean };
+
+/**
+ * Where a run's time went: every model call, the stages (from `stage()` to the next one or `report()`),
+ * and notes on the paths it took (a rejected program, a case simulated instead of run).
+ */
+export type RunStats = {
+  totalMs: number;
+  stages: { name: string; ms: number }[];
+  calls: CallStat[];
+  notes: string[];
+};
+
 export class UsageMeter {
   private total: Usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  private started = Date.now();
+  private calls: CallStat[] = [];
+  private marks: { name: string; at: number }[] = [];
+  private notes: string[] = [];
+
   add(u: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined) {
     if (!u) return;
     this.total.inputTokens += u.inputTokens ?? 0;
@@ -16,6 +35,44 @@ export class UsageMeter {
   snapshot(): Usage {
     return { ...this.total };
   }
+
+  call(stat: CallStat) {
+    this.calls.push(stat);
+  }
+  stage(name: string) {
+    this.marks.push({ name, at: Date.now() });
+  }
+  note(text: string) {
+    this.notes.push(text.length > 500 ? `${text.slice(0, 497)}...` : text);
+  }
+
+  report(): RunStats {
+    const now = Date.now();
+    return {
+      totalMs: now - this.started,
+      stages: this.marks.map((m, i) => ({ name: m.name, ms: (this.marks[i + 1]?.at ?? now) - m.at })),
+      calls: [...this.calls],
+      notes: [...this.notes],
+    };
+  }
+}
+
+const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
+
+/** One log line for a finished or failed run. */
+export function formatRunStats(label: string, s: RunStats): string {
+  const stages = s.stages.map((x) => `${x.name} ${secs(x.ms)}`).join(", ");
+  const calls = s.calls
+    .map((c) => `${c.name} ${secs(c.ms)}${c.tries > 1 ? ` (${c.tries} tries)` : ""}${c.ok ? "" : " FAILED"}`)
+    .join(", ");
+  return [
+    `${label} in ${secs(s.totalMs)}`,
+    stages && `  stages: ${stages}`,
+    calls && `  calls: ${calls}`,
+    ...s.notes.map((n) => `  note: ${n}`),
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /** A pipeline failure with a message that is safe to show the learner. */
@@ -78,11 +135,7 @@ function isOutputLimitRejected(err: unknown) {
   return /max_(output_|completion_)?tokens/.test(body);
 }
 
-/**
- * Structured output with validation-driven retries. `check` adds rules the
- * schema can't express; its issues are fed back to the model verbatim.
- */
-export async function generateStructured<S extends z.ZodType, R = z.infer<S>>(opts: {
+type StructuredOpts<S extends z.ZodType, R> = {
   model: LanguageModel;
   instructions: string;
   prompt: string;
@@ -97,7 +150,30 @@ export async function generateStructured<S extends z.ZodType, R = z.infer<S>>(op
   images?: { data: Uint8Array; mediaType: string }[];
   /** Aborts the call when the learner stops the run. */
   signal?: AbortSignal;
-}): Promise<R> {
+};
+
+/**
+ * Structured output with validation-driven retries. `check` adds rules the
+ * schema can't express; its issues are fed back to the model verbatim.
+ * Every call is recorded on the meter, with its time and number of tries.
+ */
+export async function generateStructured<S extends z.ZodType, R = z.infer<S>>(opts: StructuredOpts<S, R>): Promise<R> {
+  const started = Date.now();
+  let tries = 0;
+  let ok = false;
+  try {
+    const value = await generateWithRetries(opts, () => tries++);
+    ok = true;
+    return value;
+  } finally {
+    opts.meter.call({ name: opts.name, ms: Date.now() - started, tries, ok });
+  }
+}
+
+async function generateWithRetries<S extends z.ZodType, R>(
+  opts: StructuredOpts<S, R>,
+  onTry: () => void,
+): Promise<R> {
   let feedback = "";
   let maxOutputTokens = opts.maxOutputTokens;
   for (let attempt = 0; attempt <= MAX_FIX_RETRIES; attempt++) {
@@ -105,6 +181,7 @@ export async function generateStructured<S extends z.ZodType, R = z.infer<S>>(op
       ? `${opts.prompt}\n\n<previous_attempt_problems>\nYour previous answer was rejected:\n${feedback}\nFix every problem listed and answer again in full.\n</previous_attempt_problems>`
       : opts.prompt;
     throwIfCancelled(opts.signal);
+    onTry();
     try {
       const input = opts.images?.length
         ? {

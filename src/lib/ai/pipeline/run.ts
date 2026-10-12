@@ -17,7 +17,7 @@ import { Problem } from "@/models/Problem";
 import { User } from "@/models/User";
 import { emit } from "./events";
 import { endRun, startRun } from "./cancel";
-import { PipelineError, RunCancelledError, UsageMeter, abortable, throwIfCancelled } from "./llm";
+import { PipelineError, RunCancelledError, UsageMeter, abortable, formatRunStats, throwIfCancelled } from "./llm";
 import { ProgressTracker } from "./progress";
 import {
   assemble,
@@ -90,6 +90,10 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
   if (!attempt) return;
   const meter = new UsageMeter();
   const signal = startRun(attemptId);
+  const stage = (status: AttemptStatus) => {
+    meter.stage(status);
+    return setStatus(attemptId, status, signal);
+  };
   // Only while it's still running, so a late snapshot can't land on a finished or removed attempt.
   const progress = new ProgressTracker(async (snapshot) => {
     await Attempt.updateOne({ _id: attemptId, status: { $nin: ["done", "error"] } }, { $set: { progress: snapshot } });
@@ -104,6 +108,7 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
     if (!problem || !user) throw new PipelineError("not_found", "This problem no longer exists.");
 
     const { model } = getModel(user, "reasoning");
+    meter.stage("source lookup");
     const [source, reference] = await abortable(
       Promise.all([
         ensureProblemSource(problem),
@@ -126,19 +131,22 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
       progress,
     };
 
-    await setStatus(attemptId, "understanding", signal);
+    await stage("understanding");
     const u = await understand(ctx);
     await Attempt.updateOne({ _id: attemptId }, { $set: { understanding: u } });
     progress.update((p) => void (p.approach = u.userApproachInOwnWords));
 
-    const { spec, mode } = await traceAndDiagnose(ctx, u, { onStage: (s) => setStatus(attemptId, s, signal) });
+    const { spec, mode } = await traceAndDiagnose(ctx, u, { onStage: stage });
 
     // Auto-tags only fill in for problems the learner left untagged.
     const autoTags = problem.tagsSource === "none" ? normalizeTags(u.suggestedTags) : [];
     throwIfCancelled(signal);
+    meter.stage("saving");
     const finalSpec: VizSpec = autoTags.length ? { ...spec, autoTags } : spec;
     const stored = await storeSpec(String(attempt.userId), String(attempt.problemId), attemptId, 1, finalSpec);
     await progress.flush();
+    const stats = meter.report();
+    console.info(formatRunStats(`[pipeline] attempt ${attemptId} done (${mode})`, stats));
 
     await Attempt.updateOne(
       { _id: attemptId },
@@ -149,6 +157,7 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
           ...stored,
           specVersions: [{ createdAt: new Date(), reason: "Initial run", ...stored }],
           tokenUsage: meter.snapshot(),
+          runStats: stats,
         },
         $unset: { progress: 1 },
       },
@@ -172,6 +181,7 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
     if (!(err instanceof PipelineError || err instanceof ApiError)) {
       console.error(`[pipeline] attempt ${attemptId} failed:`, err instanceof Error ? err.message : err);
     }
+    console.info(formatRunStats(`[pipeline] attempt ${attemptId} ended with ${safe.code}`, meter.report()));
     // Flag a refused key so Settings can point at it.
     if (safe.code === "invalid_key") await markMainKeyRejected(attempt.userId).catch(() => {});
     // A failed run doesn't use up the learner's hourly allowance, so they can retry with another model.

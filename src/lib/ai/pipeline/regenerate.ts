@@ -4,7 +4,7 @@ import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
 import { storeSpec } from "@/lib/specStorage";
 import { Attempt, type AttemptDoc } from "@/models/Attempt";
 import { Problem } from "@/models/Problem";
-import { UsageMeter } from "./llm";
+import { UsageMeter, formatRunStats } from "./llm";
 import { traceAndDiagnose } from "./run";
 import { hasTestCases, understand, type Ctx, type Guidance } from "./stages";
 
@@ -50,6 +50,7 @@ export async function regenerateSpec(opts: {
   const nextVersion = (attempt.specVersions?.length ?? 0) + 1;
   const stored = await storeSpec(String(attempt.userId), String(attempt.problemId), String(attempt._id), nextVersion, spec);
   const usage = meter.snapshot();
+  console.info(formatRunStats(`[pipeline] attempt ${attempt._id} regenerated as v${nextVersion}`, meter.report()));
 
   await Attempt.updateOne(
     { _id: attempt._id },

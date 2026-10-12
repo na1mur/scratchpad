@@ -37,7 +37,15 @@ import { User } from "@/models/User";
 import { emit } from "./events";
 import { endRun, startRun } from "./cancel";
 import { ProgressTracker } from "./progress";
-import { PipelineError, RunCancelledError, UsageMeter, abortable, generateStructured, throwIfCancelled } from "./llm";
+import {
+  PipelineError,
+  RunCancelledError,
+  UsageMeter,
+  abortable,
+  formatRunStats,
+  generateStructured,
+  throwIfCancelled,
+} from "./llm";
 import type { SandboxResult } from "./sandbox";
 import {
   actualOutputOf,
@@ -468,6 +476,10 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
   if (!solution) return;
   const meter = new UsageMeter();
   const signal = startRun(solutionId);
+  const stage = (status: SolutionStatus) => {
+    meter.stage(status);
+    return setStatus(solutionId, status, signal);
+  };
   // Only while it's still running, so a late snapshot can't land on a finished or removed solution.
   const progress = new ProgressTracker(async (snapshot) => {
     await Solution.updateOne({ _id: solutionId, status: { $nin: ["done", "error"] } }, { $set: { progress: snapshot } });
@@ -523,11 +535,11 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
       request: { kind: solution.request?.kind ?? "initial", note: solution.request?.note ?? "" },
     };
 
-    await setStatus(solutionId, "solving", signal);
+    await stage("solving");
     let plan = await solve(ctx, pc);
     showPlan(ctx, plan);
 
-    await setStatus(solutionId, "tracing", signal);
+    await stage("tracing");
     let exec = await executeAll(ctx, plan);
     if (exec && !allMatched(exec)) {
       // Even a faithful program disagrees, so the code itself may be wrong: ask for a fix once and keep
@@ -548,7 +560,7 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
       showPlan(ctx, plan);
     }
 
-    await setStatus(solutionId, "narrating", signal);
+    await stage("narrating");
     const cases = await traceCases(ctx, plan, exec);
     // A simulation has nothing to check against; only a run that disagreed counts as unverified.
     const verified = cases.every((c) => c.passed !== false);
@@ -570,11 +582,13 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
     );
 
     await progress.flush();
+    const stats = meter.report();
+    console.info(formatRunStats(`[solution] ${solutionId} done (${mode})`, stats));
 
     await Solution.updateOne(
       { _id: solutionId },
       {
-        $set: { status: "done", content, traceMode: mode, ...stored, tokenUsage: meter.snapshot() },
+        $set: { status: "done", content, traceMode: mode, ...stored, tokenUsage: meter.snapshot(), runStats: stats },
         $unset: { progress: 1 },
       },
     );
@@ -582,6 +596,8 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
     await clearKeyRejected(user.ai?.keyId).catch(() => {});
     emit(solutionId, { type: "done" });
   } catch (err) {
+    const stats = meter.report();
+    console.info(formatRunStats(`[solution] ${solutionId} ended with ${err instanceof PipelineError ? err.code : "error"}`, stats));
     // A failed run doesn't use up the learner's hourly allowance, so they can retry with another model.
     await rateLimits.solutions().refund(String(solution.userId)).catch(() => {});
     if (err instanceof RunCancelledError) {
@@ -604,7 +620,7 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
     await progress.flush();
     await Solution.updateOne(
       { _id: solutionId },
-      { $set: { status: "error", error: safe, tokenUsage: meter.snapshot() }, $unset: { progress: 1 } },
+      { $set: { status: "error", error: safe, tokenUsage: meter.snapshot(), runStats: stats }, $unset: { progress: 1 } },
     ).catch(() => {});
     emit(solutionId, { type: "error", ...safe });
   } finally {
