@@ -21,6 +21,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { sameAnswer, type HarnessView } from "@/lib/harness/types";
 import { languageLabel } from "@/lib/languages";
+import { providedCode } from "@/lib/runner/entry";
 import type { CaseResult, RunLanguage } from "@/lib/runner/protocol";
 import { runCode, type RunState } from "@/lib/runner/run";
 import { runCaseSpec } from "@/lib/runner/viz";
@@ -97,6 +98,7 @@ export function CodeRunner({
   const [stepIndex, setStepIndex] = useState(0);
   const stopRef = useRef<(() => void) | null>(null);
   const running = Boolean(run && run.phase !== "done");
+  const provided = providedCode(language, view);
 
   // Another attempt opened in the same dialog: start from its code.
   const [key, setKey] = useState(draftKey);
@@ -187,6 +189,27 @@ export function CodeRunner({
                 )}
               </div>
             </div>
+            <details className="group border-b bg-tile/60 px-3 py-1.5 text-xs">
+              <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+                <span className="shrink-0 text-muted-foreground">The tests call</span>
+                <code className="min-w-0 flex-1 truncate font-mono" title={provided.signature}>
+                  {provided.signature}
+                </code>
+                {provided.definitions && (
+                  <span className="shrink-0 text-muted-foreground underline-offset-2 group-open:hidden hover:underline">
+                    Provided code
+                  </span>
+                )}
+              </summary>
+              {provided.definitions && (
+                <>
+                  <p className="mt-2 text-muted-foreground">Already defined for you, as on LeetCode (no need to write them):</p>
+                  <pre className="mt-1 max-h-48 overflow-auto rounded border bg-background p-2 font-mono leading-relaxed">
+                    {provided.definitions}
+                  </pre>
+                </>
+              )}
+            </details>
             <div className="min-h-0 flex-1">
               {open && (
                 <CodeMirrorEditor value={code} onChange={edit} language={language} onRun={start} label={`${languageLabel(language)} code`} />
@@ -199,6 +222,7 @@ export function CodeRunner({
               {status}
               {stale && <span className="text-muted-foreground"> (you&apos;ve edited the code since)</span>}
             </p>
+            {run?.note && <p className="mt-1 text-xs text-muted-foreground">{run.note}.</p>}
             {run?.fatal && (
               <pre role="alert" className="mt-2 rounded-lg border border-viz-error/40 bg-viz-error/5 p-3 font-mono text-xs whitespace-pre-wrap text-viz-error">
                 {run.fatal}

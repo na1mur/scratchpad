@@ -1,6 +1,7 @@
 import { HARNESS_RUNTIME } from "@/lib/harness/runtime";
 import { instrumentJs, parseProgram } from "@/lib/trace/instrument";
 import { AUTO_TRACE_LIMIT, AUTO_TRACE_RUNTIME } from "@/lib/trace/runtime";
+import { jsDefinitions, resolveEntry, type Definition } from "./entry";
 import type { RunCall } from "./protocol";
 
 /** "Line 3: SyntaxError: Unexpected token" from acorn's or sucrase's "Unexpected token (3:4)". */
@@ -13,12 +14,16 @@ function syntaxText(err: unknown): string {
 /**
  * The learner's JS or TS as a script the worker can load: types stripped (sucrase keeps line numbers),
  * `export` dropped, and with `trace`, instrumented so every statement records a step on its own line.
+ * Also works out which of their functions the tests call (resolveEntry()).
  */
 export async function prepareJs(
   language: "javascript" | "typescript",
   code: string,
   trace: boolean,
-): Promise<{ program: string; loops: { id: string; line: number }[] } | { error: string }> {
+  call: RunCall,
+): Promise<
+  { program: string; loops: { id: string; line: number }[]; entry: Definition; note: string | null } | { error: string }
+> {
   let js = code.replace(/^(\s*)export\s+(default\s+)?/gm, "$1");
   if (language === "typescript") {
     const { transform } = await import("sucrase");
@@ -28,14 +33,17 @@ export async function prepareJs(
       return { error: syntaxText(err) };
     }
   }
+  let defs: Definition[];
   try {
-    parseProgram(js);
+    defs = jsDefinitions(parseProgram(js).ast);
   } catch (err) {
     return { error: syntaxText(err) };
   }
-  if (!trace) return { program: js, loops: [] };
+  const found = resolveEntry(defs, call.functionName, call.params.map((p) => p.name));
+  if ("error" in found) return found;
+  if (!trace) return { program: js, loops: [], ...found };
   const inst = instrumentJs(js, { lineFor: (line) => line - 1 });
-  return { program: inst.program, loops: inst.loops };
+  return { program: inst.program, loops: inst.loops, ...found };
 }
 
 /** The runtime the learner's code loads after: hidden ListNode/TreeNode and the step recorder. */
@@ -50,11 +58,13 @@ export function jsWorkerSource(o: {
   runtimeUrl: string;
   codeUrl: string;
   call: RunCall;
+  /** The learner's function the tests call (see resolveEntry()). */
+  entry: Definition;
   cases: Record<string, unknown>[];
   from: number;
   trace: boolean;
 }): string {
-  const name = o.call.functionName;
+  const name = o.entry.name;
   return `
 "use strict";
 var __out = [];
@@ -92,12 +102,7 @@ try {
 var __call = ${JSON.stringify(o.call)};
 var __cases = ${JSON.stringify(o.cases)};
 function __fn() {
-  if (typeof ${name} === "function") return ${name};
-  if (typeof Solution === "function") {
-    var s = new Solution();
-    if (typeof s.${name} === "function") return s.${name}.bind(s);
-  }
-  throw new Error("Define a function named ${name}");
+  ${o.entry.method ? `var s = new Solution(); return s.${name}.bind(s);` : `return ${name};`}
 }
 for (var __i = __loaded ? ${o.from} : __cases.length; __i < __cases.length; __i++) {
   postMessage({ type: "start", i: __i });

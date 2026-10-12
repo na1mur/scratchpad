@@ -34,6 +34,8 @@ export type CaseResult = {
   ms: number;
   /** Recorded steps, when the run was traced. */
   events?: AutoEvent[];
+  /** Python: the function that ran isn't named as in the signature ("Ran your foo as bar"). */
+  note?: string;
 };
 
 /** Worker → page. */

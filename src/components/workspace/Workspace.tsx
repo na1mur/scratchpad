@@ -514,7 +514,7 @@ export function Workspace({
             {problem.statement}
           </pre>
           <div className="mt-3">
-            <TestCases problemId={problem.id} initial={problem.harness} />
+            <TestCases problemId={problem.id} initial={problem.harness} language={problem.language} />
           </div>
         </CollapsibleContent>
       </Collapsible>

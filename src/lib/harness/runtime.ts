@@ -17,6 +17,16 @@ globalThis.TreeNode = function TreeNode(val, left, right) {
   this.left = left === undefined ? null : left;
   this.right = right === undefined ? null : right;
 };
+// Code written with node.value or node.data (other courses' names) reads and writes val.
+[globalThis.ListNode, globalThis.TreeNode].forEach(function (C) {
+  ["value", "data"].forEach(function (k) {
+    Object.defineProperty(C.prototype, k, {
+      get: function () { return this.val; },
+      set: function (v) { this.val = v; },
+      configurable: true,
+    });
+  });
+});
 var __H_LIMIT = 2000;
 // For programs that build their own input: toList([1, 2]) and toTree([1, null, 2]) as LeetCode would.
 globalThis.toList = function (a) { return __hToList(a || []); };

@@ -21,12 +21,17 @@ class ListNode:
     def __init__(self, val=0, next=None):
         self.val = val
         self.next = next
+    # node.value and node.data (other courses' names) read and write val.
+    value = property(lambda self: self.val, lambda self, v: setattr(self, "val", v))
+    data = value
 
 class TreeNode:
     def __init__(self, val=0, left=None, right=None):
         self.val = val
         self.left = left
         self.right = right
+    value = property(lambda self: self.val, lambda self, v: setattr(self, "val", v))
+    data = value
 `;
 
 /**
@@ -42,6 +47,8 @@ _FILE = "solution.py"
 _LIMIT = ${AUTO_TRACE_LIMIT}
 _ns = None
 _loops = []
+# The functions the learner defined: (name, number of parameters, is a Solution method).
+_defs = []
 
 def _val(n):
     for k in ("val", "value", "data"):
@@ -155,7 +162,7 @@ def _err_text(e):
 
 def _load(code):
     """Runs the learner's file in a fresh namespace; returns null, or the error as text."""
-    global _ns, _loops
+    global _ns, _loops, _defs
     _ns = {"__name__": "solution"}
     exec(_PRELUDE, _ns)
     try:
@@ -163,6 +170,14 @@ def _load(code):
     except SyntaxError as e:
         return "Line %s: SyntaxError: %s" % (e.lineno, e.msg)
     _loops = []
+    _defs = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            _defs.append((node.name, len(node.args.args), False))
+        elif isinstance(node, ast.ClassDef) and node.name == "Solution":
+            for m in node.body:
+                if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef)) and not m.name.startswith("_"):
+                    _defs.append((m.name, max(0, len(m.args.args) - 1), True))
     for node in ast.walk(tree):
         if isinstance(node, (ast.For, ast.While, ast.AsyncFor)) and node.body:
             end = max(getattr(b, "end_lineno", b.lineno) or b.lineno for b in node.body)
@@ -173,14 +188,25 @@ def _load(code):
         return _err_text(e)
     return None
 
-def _find(name):
-    fn = _ns.get(name)
-    if callable(fn) and not isinstance(fn, type):
-        return fn
-    sol = _ns.get("Solution")
-    if isinstance(sol, type) and hasattr(sol, name):
-        return getattr(sol(), name)
-    raise NameError("Define a function named " + name)
+def _norm(s):
+    return s.replace("_", "").lower()
+
+class _NoEntry(Exception):
+    pass
+
+def _find(name, params):
+    """The function to call and, when it isn't the one named in the signature, a note saying which ran.
+    Mirrors resolveEntry() in src/lib/runner/entry.ts."""
+    pick = [d for d in _defs if d[0] == name] or [d for d in _defs if _norm(d[0]) == _norm(name)]
+    if not pick:
+        same = [d for d in _defs if d[1] == len(params)]
+        pick = same if len(same) == 1 else (_defs if len(_defs) == 1 else [])
+    if not pick:
+        found = ", ".join(d[0] for d in _defs) or "none"
+        raise _NoEntry("Couldn't tell which function to run. Name it %s(%s) (functions found: %s)" % (name, ", ".join(params), found))
+    fname, _, method = sorted(pick, key=lambda d: d[2])[0]
+    fn = getattr(_ns["Solution"](), fname) if method else _ns[fname]
+    return fn, (None if fname == name else "Ran your %s as %s" % (fname, name))
 
 class _TraceLimit(Exception):
     pass
@@ -326,7 +352,7 @@ def _run_case(call_json, case_json, trace):
     raw = json.loads(case_json)
     events = [] if trace else None
     try:
-        fn = _find(call["functionName"])
+        fn, note = _find(call["functionName"], [p["name"] for p in call["params"]])
         args = [_hin(p["type"], raw.get(p["name"])) for p in call["params"]]
         if trace:
             sys.settrace(_tracer(events))
@@ -338,6 +364,10 @@ def _run_case(call_json, case_json, trace):
         v = args[oi] if oi is not None else r
         t = call["params"][oi]["type"] if oi is not None else call["returnType"]
         res = {"status": "ok", "actualJson": json.dumps(_hout(t, v), separators=(",", ":"))}
+        if note:
+            res["note"] = note
+    except _NoEntry as e:
+        res = {"status": "error", "error": str(e)}
     except _TraceLimit:
         res = {"status": "trace_limit", "error": "Stopped after %d steps: the run is too long to show step by step" % _LIMIT}
     except RecursionError as e:

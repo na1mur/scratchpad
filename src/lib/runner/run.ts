@@ -19,6 +19,8 @@ export type RunState = {
   fatal?: string;
   /** Python's loops, found while loading (JS gets them from the instrumenter). */
   loops: { id: string; line: number }[];
+  /** Set when the function that ran isn't named as in the signature ("Ran your foo as bar"). */
+  note?: string;
 };
 
 export function runCall(view: ReadyView): RunCall {
@@ -116,6 +118,7 @@ export function runCode(opts: {
           arm(caseTimeout, hung(m.i));
         } else if (m.type === "case") {
           state.results[m.i] = m.result;
+          if (m.result.note) state.note = m.result.note;
           state.current = null;
           publish();
           if (timer) clearTimeout(timer);
@@ -138,12 +141,13 @@ export function runCode(opts: {
     });
 
   const runJs = async () => {
-    const prepared = await prepareJs(opts.language as "javascript" | "typescript", opts.code, opts.trace);
+    const prepared = await prepareJs(opts.language as "javascript" | "typescript", opts.code, opts.trace, call);
     if ("error" in prepared) {
       state.fatal = prepared.error;
       return;
     }
     state.loops = prepared.loops;
+    if (prepared.note) state.note = prepared.note;
     const blob = (text: string) => {
       const url = URL.createObjectURL(new Blob([text], { type: "text/javascript" }));
       urls.push(url);
@@ -153,7 +157,7 @@ export function runCode(opts: {
     const codeUrl = blob(prepared.program);
     let from: number | null = 0;
     while (from !== null && !stopped) {
-      const driver = blob(jsWorkerSource({ runtimeUrl, codeUrl, call, cases, from, trace: opts.trace }));
+      const driver = blob(jsWorkerSource({ runtimeUrl, codeUrl, call, entry: prepared.entry, cases, from, trace: opts.trace }));
       const worker = new Worker(driver);
       active = worker;
       from = await segment(worker, from, () => {});
