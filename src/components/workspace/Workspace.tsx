@@ -455,13 +455,9 @@ export function Workspace({
     ready: mode === "view" && viewing?.status === "done" && Boolean(viewing.vizSpec) && !running && !loadingAttempt,
   });
 
-  // Edit & Run starts from the analysed attempt's completed code, or else the draft in the form.
+  // Edit & Run needs a language the browser can run and the problem's test cases.
   const harness = problem.harness;
   const runnable = isRunLanguage(problem.language) && harness.status === "ready" ? { language: problem.language, view: harness } : null;
-  const runnerSource =
-    mode === "view" && viewing?.vizSpec
-      ? { key: `${viewing.id}-${viewing.specVersion}`, code: viewing.vizSpec.codeLines.join("\n") }
-      : { key: `new-${problem.id}`, code: draftCode };
 
   const left = (
     <div className="flex flex-col gap-4 p-4">
@@ -546,17 +542,6 @@ export function Workspace({
             <CopyPlusIcon /> New attempt
           </Button>
         )}
-        {runnable && (
-          <Button
-            variant="soft"
-            onClick={() => setRunnerOpen(true)}
-            disabled={loadingAttempt}
-            title="Run code on the test cases in your browser"
-            data-tour="edit-run"
-          >
-            <CodeIcon /> Edit &amp; run
-          </Button>
-        )}
         {mode === "view" && viewing?.status === "done" && (
           <ShareButton
             key={`share-${viewing.id}`}
@@ -588,17 +573,6 @@ export function Workspace({
             {ranOnIsCurrent && " (your current model)"}
           </span>
         </p>
-      )}
-
-      {runnable && (
-        <CodeRunner
-          open={runnerOpen}
-          onOpenChange={setRunnerOpen}
-          draftKey={runnerSource.key}
-          initialCode={runnerSource.code}
-          language={runnable.language}
-          view={runnable.view}
-        />
       )}
 
       <Dialog open={confirmingNew} onOpenChange={setConfirmingNew}>
@@ -870,11 +844,35 @@ export function Workspace({
           )}
         </div>
         <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
-          <TabsList data-tour="tabs">
-            <TabsTrigger value="viz">Visualization</TabsTrigger>
-            <TabsTrigger value="diagnosis">Diagnosis</TabsTrigger>
-            <TabsTrigger value="hints">Hints</TabsTrigger>
-          </TabsList>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <TabsList data-tour="tabs">
+              <TabsTrigger value="viz">Visualization</TabsTrigger>
+              <TabsTrigger value="diagnosis">Diagnosis</TabsTrigger>
+              <TabsTrigger value="hints">Hints</TabsTrigger>
+            </TabsList>
+            {runnable && (
+              <Button
+                variant="soft"
+                size="sm"
+                onClick={() => setRunnerOpen(true)}
+                title="Edit the code shown below (with the lines added to complete it) and run it on the test cases, in your browser"
+                data-tour="edit-run"
+              >
+                <CodeIcon /> Edit &amp; run
+              </Button>
+            )}
+          </div>
+          {runnable && (
+            // Starts from the code the visualization shows: the completed code, added lines included.
+            <CodeRunner
+              open={runnerOpen}
+              onOpenChange={setRunnerOpen}
+              draftKey={`${viewing.id}-${viewing.specVersion}`}
+              initialCode={spec.codeLines.join("\n")}
+              language={runnable.language}
+              view={runnable.view}
+            />
+          )}
           <TabsContent value="viz" className="flex flex-col gap-3 pt-3">
             <div data-tour="cases">
               <CaseBar spec={spec} caseIndex={shownCase} onCaseChange={(ci) => showStep(ci, 0)} gives="Your code gives" />
