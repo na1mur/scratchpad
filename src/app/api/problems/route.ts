@@ -2,6 +2,7 @@ import { NextResponse, after, type NextRequest } from "next/server";
 import { handle, parseJson, parseWith, requireUser } from "@/lib/api";
 import { getModel } from "@/lib/ai/providers";
 import { generateProblemMeta } from "@/lib/ai/pipeline/title";
+import { ensureProblemHarness } from "@/lib/harness/build";
 import { refreshProblemSource } from "@/lib/problemSource";
 import { createProblem, distinctTags, listProblems, serializeProblem } from "@/lib/problems";
 import { createProblemSchema, listProblemsQuerySchema } from "@/lib/schemas/problems";
@@ -34,8 +35,12 @@ export function POST(req: NextRequest) {
       tagsSource: input.tags.length ? "user" : tags.length ? "auto" : "none",
       language: user.preferredLanguage ?? "pseudocode",
     });
-    // Fetched after responding; the pipelines fetch it themselves if a run starts before this finishes.
-    if (problem.sourceUrl) after(() => refreshProblemSource(problem._id, problem.sourceUrl!));
+    // Fetched after responding; the pipelines fetch it themselves if a run starts before this finishes. The
+    // harness reads the page text, so it comes second; runs use the old path until it's ready.
+    after(async () => {
+      if (problem.sourceUrl) await refreshProblemSource(problem._id, problem.sourceUrl);
+      await ensureProblemHarness(problem._id);
+    });
     return NextResponse.json({ problem: serializeProblem(problem.toObject()) }, { status: 201 });
   });
 }

@@ -8,6 +8,7 @@ import {
   SIMULATE_ROLE,
   STRICTER_ADDENDUM,
   TRANSLATE_ROLE,
+  UNDERSTAND_FIXED_ROLE,
   UNDERSTAND_ROLE,
 } from "@/lib/ai/prompts/pipeline";
 import {
@@ -16,6 +17,7 @@ import {
   narrationSchema,
   simulationSchema,
   translationSchema,
+  understandingCoreSchema,
   understandingSchema,
   type DiagnosisOutput,
   type Simulation,
@@ -24,7 +26,7 @@ import {
   type WireState,
 } from "@/lib/ai/schemas/pipeline";
 import {
-  MAX_CASES,
+  MAX_CASES_HARD,
   MIN_CASES,
   formatSpecIssues,
   structureStateSchema,
@@ -36,6 +38,7 @@ import {
   type TestCase,
   type VizSpec,
 } from "@/lib/ai/schemas/vizSpec";
+import { describeArgs, parseType, sameAnswer, type ReadyHarness, type ValueType } from "@/lib/harness/types";
 import { PipelineError, generateStructured, type UsageMeter } from "./llm";
 import type { ProgressTracker } from "./progress";
 import { runInSandbox, type SandboxResult } from "./sandbox";
@@ -57,6 +60,8 @@ export type Ctx = {
   signal?: AbortSignal;
   /** Partial output shown while the run works; absent for runs nobody watches (regenerations). */
   progress?: ProgressTracker;
+  /** The problem's harness, when it's ready: the run uses its fixed cases and checks answers in code. */
+  harness?: ReadyHarness;
 };
 
 function withReference(ctx: Ctx) {
@@ -79,6 +84,8 @@ export type CaseTrace = PipelineCase & {
   actualOutput: string;
   /** How the run ended, for the diagnosis ("never terminated", "crashed"). */
   runNote: string | null;
+  /** Whether the run's answer matched the expected one, checked in code; absent when that can't be told. */
+  passed?: boolean;
 };
 
 export type TraceResult = {
@@ -115,7 +122,7 @@ function parseArgs(json: string): Record<string, unknown> | null {
 }
 
 export function casesOf(u: Understanding): PipelineCase[] {
-  return u.testCases.slice(0, MAX_CASES).map((c, i) => ({
+  return u.testCases.slice(0, MAX_CASES_HARD).map((c, i) => ({
     id: `c${i + 1}`,
     label: c.label.trim() || `Case ${i + 1}`,
     description: c.description,
@@ -136,7 +143,42 @@ export function checkTestCases(cases: { argumentsJson: string }[]): string[] {
   return issues;
 }
 
-export function understand(ctx: Ctx, guidance?: Guidance): Promise<Understanding> {
+/** The problem's fixed test cases, as the pipeline carries them. */
+export function casesFromHarness(h: ReadyHarness): PipelineCase[] {
+  return h.cases.slice(0, MAX_CASES_HARD).map((c, i) => ({
+    id: `c${i + 1}`,
+    label: c.label,
+    description: describeArgs(h.params, c.argsJson),
+    args: parseArgs(c.argsJson) ?? {},
+    expected: c.expectedJson,
+  }));
+}
+
+/**
+ * Stage 1. With `fixed` cases (the problem's harness), the model only reads the approach; the cases are
+ * stored on the understanding as if it had picked them, so regenerations reuse them.
+ */
+export async function understand(ctx: Ctx, guidance?: Guidance, fixed?: PipelineCase[]): Promise<Understanding> {
+  if (fixed) {
+    const core = await generateStructured({
+      model: ctx.model,
+      meter: ctx.meter,
+      signal: ctx.signal,
+      name: "understanding",
+      schema: understandingCoreSchema,
+      instructions: instr(ctx, UNDERSTAND_FIXED_ROLE),
+      prompt: `${learnerContext(ctx.learner)}${withReference(ctx)}\n\n${casesBlock(fixed)}`,
+    });
+    return {
+      ...core,
+      testCases: fixed.map((c) => ({
+        label: c.label,
+        description: c.description,
+        argumentsJson: JSON.stringify(c.args),
+        expectedOutput: c.expected,
+      })),
+    };
+  }
   return generateStructured({
     model: ctx.model,
     meter: ctx.meter,
@@ -214,8 +256,9 @@ export async function runOnCases(
   t: { program: string; structures: Structure[]; loops: Loop[] },
   cases: PipelineCase[],
   lineCount: number,
+  returnType?: ValueType,
 ): Promise<{ runs: (ProgramRun | null)[]; results: SandboxResult[]; problem: string | null }> {
-  const results = await Promise.all(cases.map((c) => runInSandbox(t.program, c.args)));
+  const results = await Promise.all(cases.map((c) => runInSandbox(t.program, c.args, returnType)));
   const parsed = results.map((r) => eventsToSteps(r.events, t.structures, t.loops, lineCount));
 
   const invalid = results.find((r) => r.outcome === "invalid_program");
@@ -292,7 +335,7 @@ async function executeAll(ctx: Ctx, cases: PipelineCase[], guidance?: Guidance):
       p.program = { lines: t.codeLines.length, added: t.addedLines.length };
       for (const c of p.cases ?? []) c.state = "running";
     });
-    const { runs, results, problem } = await runOnCases(t, cases, t.codeLines.length);
+    const { runs, results, problem } = await runOnCases(t, cases, t.codeLines.length, answerType(ctx));
     if (!problem) return { ok: true, t, runs, results };
     ctx.meter.note(`program ${attempt + 1} rejected: ${problem.replace(/\n/g, " | ")}`);
     feedback = problem;
@@ -302,6 +345,28 @@ async function executeAll(ctx: Ctx, cases: PipelineCase[], guidance?: Guidance):
     });
   }
   return { ok: false, code };
+}
+
+/**
+ * The type of what run(input) returns, when the harness says and the answer is a return value (not an
+ * argument changed in place, which run() doesn't hand back).
+ */
+function answerType(ctx: Ctx): ValueType | undefined {
+  const h = ctx.harness;
+  return h && !h.outputParam ? (parseType(h.returnType) ?? undefined) : undefined;
+}
+
+/** Whether a run answered the case, checked against the harness's expected answer; undefined when that can't be told. */
+function checkAnswer(ctx: Ctx, c: PipelineCase, result: SandboxResult): boolean | undefined {
+  const h = ctx.harness;
+  if (!h || !answerType(ctx)) return undefined;
+  if (result.outcome !== "ok") return false;
+  if (result.returnJson === null) return undefined;
+  try {
+    return sameAnswer(h.compare, JSON.parse(result.returnJson), JSON.parse(c.expected)) ?? undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -329,6 +394,11 @@ function crashTrace(c: PipelineCase, t: Translation, result: SandboxResult): Cas
     actualOutput: actualOutputOf(result),
     runNote: runNoteFor(result),
   };
+}
+
+/** Bounds a case's actual output for prompts and the spec; a whole return value can be long. */
+function shownOutput(result: SandboxResult): string {
+  return result.outcome === "ok" && result.returnJson && result.returnJson.length <= 400 ? result.returnJson : actualOutputOf(result);
 }
 
 async function narrate(ctx: Ctx, u: Understanding, c: PipelineCase, codeLines: string[], steps: Step[], result: SandboxResult) {
@@ -532,10 +602,14 @@ export type TracedCases = { trace: TraceResult; narrated: Promise<TraceResult> }
  * narration still runs: diagnosis only needs the raw trace, so it runs alongside. Narration keeps
  * every step id, so the diagnosis's bugStepIds stay valid.
  */
-export async function traceCases(ctx: Ctx, u: Understanding, guidance?: Guidance): Promise<TracedCases> {
-  const cases = casesOf(u);
+export async function traceCases(
+  ctx: Ctx,
+  cases: PipelineCase[],
+  understanding: Understanding | Promise<Understanding>,
+  guidance?: Guidance,
+): Promise<TracedCases> {
   const finished = (t: CaseTrace) => {
-    ctx.progress?.updateCase(t.id, { state: "done", actual: t.actualOutput, steps: t.steps.length });
+    ctx.progress?.updateCase(t.id, { state: "done", actual: t.actualOutput, steps: t.steps.length, passed: t.passed });
     return t;
   };
   ctx.progress?.update((p) => {
@@ -578,14 +652,16 @@ export async function traceCases(ctx: Ctx, u: Understanding, guidance?: Guidance
           structures: exec.t.structures,
           loops: exec.t.loops,
           steps,
-          actualOutput: actualOutputOf(run.result),
+          actualOutput: shownOutput(run.result),
           runNote: runNoteFor(run.result),
+          passed: checkAnswer(ctx, c, run.result),
         };
         ctx.progress?.updateCase(c.id, { state: "explaining", actual: trace.actualOutput, steps: steps.length });
         traces[i] = trace;
-        const narration = narrate(ctx, u, c, shared.codeLines, steps, run.result).then((narrated) =>
-          finished({ ...trace, steps: narrated }),
-        );
+        // Narration needs the suspected issue, which may still be on its way when tracing started early.
+        const narration = Promise.resolve(understanding)
+          .then((u) => narrate(ctx, u, c, shared.codeLines, steps, run.result))
+          .then((narrated) => finished({ ...trace, steps: narrated }));
         // Awaited below, maybe after a simulation fails first; this keeps that from counting as unhandled.
         narration.catch(() => {});
         narrations[i] = narration;
@@ -596,7 +672,7 @@ export async function traceCases(ctx: Ctx, u: Understanding, guidance?: Guidance
         const crashed = crashTrace(c, exec.t, result);
         if (crashed) {
           ctx.meter.note(`${c.id} ${result.outcome} before its first step: ${result.errorMessage}`);
-          traces[i] = finished(crashed);
+          traces[i] = finished({ ...crashed, passed: checkAnswer(ctx, c, result) });
           return;
         }
         ctx.meter.note(`${c.id} made no trace() calls (${result.outcome}); simulated instead`);
@@ -673,7 +749,11 @@ export async function diagnose(ctx: Ctx, u: Understanding, trace: TraceResult, s
   const caseIds = new Set(trace.cases.map((c) => c.id));
   // Keep the whole prompt about the size a single trace used to be.
   const perCase = Math.max(6_000, Math.floor(30_000 / trace.cases.length));
-  const results = trace.cases.map((c) => `${c.id}: actual output: ${c.actualOutput}${c.runNote ? `\n${c.runNote}` : ""}`).join("\n");
+  const checked = (c: CaseTrace) =>
+    c.passed === undefined ? "" : c.passed ? " (checked in code: matches the expected answer)" : " (checked in code: does NOT match the expected answer)";
+  const results = trace.cases
+    .map((c) => `${c.id}: actual output: ${c.actualOutput}${checked(c)}${c.runNote ? `\n${c.runNote}` : ""}`)
+    .join("\n");
   const traces = trace.cases
     .map((c) => `<trace case="${c.id}">\n${describeSteps(c.steps, trace.codeLines, perCase)}\n</trace>`)
     .join("\n\n");
@@ -697,7 +777,11 @@ export async function diagnose(ctx: Ctx, u: Understanding, trace: TraceResult, s
       return { ok: true, value: d };
     },
   });
-  return { ...d, failingCaseIds: d.failingCaseIds.filter((id) => caseIds.has(id)) };
+  // Where the answer was checked in code, that settles whether the case fails.
+  const known = new Map(trace.cases.filter((c) => c.passed !== undefined).map((c) => [c.id, c.passed]));
+  const failing = new Set(d.failingCaseIds.filter((id) => caseIds.has(id) && !known.has(id)));
+  for (const [id, passed] of known) if (!passed) failing.add(id);
+  return { ...d, failingCaseIds: trace.cases.map((c) => c.id).filter((id) => failing.has(id)) };
 }
 
 /**

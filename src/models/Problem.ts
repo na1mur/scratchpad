@@ -33,6 +33,9 @@ const problemSchema = new Schema(
       ],
       default: [],
     },
+    // How solutions to it are called and checked: signature, fixed test cases, expected answers (Harness in
+    // src/lib/harness/types.ts, built by src/lib/harness/build.ts). Cleared when the statement or link changes.
+    harness: { type: Schema.Types.Mixed, required: false },
     tags: { type: [{ type: String, enum: TAGS }], default: [] },
     tagsSource: { type: String, enum: ["user", "auto", "none"], default: "none", required: true },
     // Snapshot of the user's preferred language when the problem was created.

@@ -1,6 +1,8 @@
 import "server-only";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
+import { HARNESS_RUNTIME } from "@/lib/harness/runtime";
+import type { ValueType } from "@/lib/harness/types";
 
 export const TRACE_EVENT_LIMIT = 500;
 const TIME_LIMIT_MS = 2_000;
@@ -26,7 +28,10 @@ export type SandboxOutcome =
 export type SandboxResult = {
   outcome: SandboxOutcome;
   events: RawTraceEvent[];
+  /** Short display form of what it returned. */
   returnValue: string | null;
+  /** The whole return value as JSON, in the harness's form (lists and trees as arrays); null if it didn't return. */
+  returnJson: string | null;
   errorMessage: string | null;
 };
 
@@ -192,12 +197,12 @@ function errorText(err) {
   const setup = vm.evalCode(workerData.prelude, "prelude.js");
   if (setup.error) throw new Error("prelude failed: " + errorText(vm.dump(setup.error)));
 
-  const defined = vm.evalCode(workerData.program + "\n;typeof run === 'function'", "program.js");
+  const defined = vm.evalCode(workerData.program + "\n;" + workerData.entryCheck, "program.js");
   if (defined.error) {
-    return done({ outcome: "invalid_program", events: [], returnValue: null, errorMessage: errorText(vm.dump(defined.error)) });
+    return done({ outcome: "invalid_program", events: [], returnValue: null, returnJson: null, errorMessage: errorText(vm.dump(defined.error)) });
   }
   if (!vm.dump(defined.value)) {
-    return done({ outcome: "invalid_program", events: [], returnValue: null, errorMessage: "run(input) is not defined" });
+    return done({ outcome: "invalid_program", events: [], returnValue: null, returnJson: null, errorMessage: workerData.entryName + " is not defined" });
   }
 
   runtime.setInterruptHandler(shouldInterruptAfterDeadline(Date.now() + workerData.timeLimit));
@@ -210,49 +215,50 @@ function errorText(err) {
       outcome: timedOut ? "timeout" : "runtime_error",
       events: read("__events", []),
       returnValue: null,
+      returnJson: null,
       errorMessage: timedOut ? "Stopped after " + workerData.timeLimit / 1000 + "s without finishing" : text,
     });
   }
   const out = JSON.parse(String(vm.dump(ran.value)));
   const events = read("__events", []);
-  if (out.ok) return done({ outcome: "ok", events, returnValue: out.value, errorMessage: null });
+  if (out.ok) return done({ outcome: "ok", events, returnValue: out.value, returnJson: out.json, errorMessage: null });
   if (out.error === "__TRACE_LIMIT__") {
-    return done({ outcome: "trace_limit", events, returnValue: null, errorMessage: "Still running after " + workerData.traceLimit + " traced steps" });
+    return done({ outcome: "trace_limit", events, returnValue: null, returnJson: null, errorMessage: "Still running after " + workerData.traceLimit + " traced steps" });
   }
-  return done({ outcome: "runtime_error", events, returnValue: null, errorMessage: out.error });
-})().catch((err) => parentPort.postMessage({ outcome: "runtime_error", events: [], returnValue: null, errorMessage: errorText(err) }));
+  return done({ outcome: "runtime_error", events, returnValue: null, returnJson: null, errorMessage: out.error });
+})().catch((err) => parentPort.postMessage({ outcome: "runtime_error", events: [], returnValue: null, returnJson: null, errorMessage: errorText(err) }));
 `;
 
 /** Wall-clock backstop in case the worker wedges outside QuickJS's own checks. */
 const HARD_TIMEOUT_MS = TIME_LIMIT_MS + 8_000;
 
+const failed = (outcome: SandboxOutcome, errorMessage: string): SandboxResult => ({
+  outcome,
+  events: [],
+  returnValue: null,
+  returnJson: null,
+  errorMessage,
+});
+
 /**
  * Executes LLM-generated code in QuickJS with memory, time and trace-event
  * limits, inside a disposable worker thread. No network, filesystem or host
  * functions are reachable from the program. This is the only place
- * generated code ever runs.
+ * generated code ever runs. `wrapped` calls into the program and evaluates
+ * to the JSON of {ok, value, json, error}; `entry.check` is an expression
+ * that's true once the program has defined what `wrapped` calls.
  */
-export function runInSandbox(program: string, input: unknown): Promise<SandboxResult> {
-  const wrapped = `
-    var __out = { ok: true, value: null, error: null };
-    try {
-      var __v = run(JSON.parse(${JSON.stringify(JSON.stringify(input ?? {}))}));
-      __out.value = __v === undefined ? "undefined" : __short(__v);
-    } catch (e) {
-      __out.ok = false;
-      __out.error = String((e && e.message) || e);
-    }
-    JSON.stringify(__out);
-  `;
-
+function execute(program: string, wrapped: string, entry: { check: string; name: string }): Promise<SandboxResult> {
   return new Promise((resolve) => {
     const worker = new Worker(WORKER_SOURCE, {
       eval: true,
       workerData: {
         resolveFrom: path.join(process.cwd(), "package.json"),
-        prelude: PRELUDE,
+        prelude: PRELUDE + HARNESS_RUNTIME,
         program,
         wrapped,
+        entryCheck: entry.check,
+        entryName: entry.name,
         timeLimit: TIME_LIMIT_MS,
         traceLimit: TRACE_EVENT_LIMIT,
         memoryLimit: MEMORY_LIMIT_BYTES,
@@ -270,22 +276,83 @@ export function runInSandbox(program: string, input: unknown): Promise<SandboxRe
       void worker.terminate();
       resolve(result);
     };
-    const timer = setTimeout(
-      () => finish({ outcome: "timeout", events: [], returnValue: null, errorMessage: "Stopped: the program never finished" }),
-      HARD_TIMEOUT_MS,
-    );
+    const timer = setTimeout(() => finish(failed("timeout", "Stopped: the program never finished")), HARD_TIMEOUT_MS);
     worker.on("message", (result: SandboxResult) => finish(result));
     const crashed = () =>
-      finish({
-        outcome: "runtime_error",
-        events: [],
-        returnValue: null,
-        errorMessage: "The program crashed the interpreter, most likely through unbounded recursion",
-      });
+      finish(failed("runtime_error", "The program crashed the interpreter, most likely through unbounded recursion"));
     worker.on("error", (e) => {
       console.error("[sandbox] worker crashed:", e.message);
       crashed();
     });
     worker.on("exit", crashed);
+  });
+}
+
+/** Longest whole return value kept; past it the answer is surely wrong anyway. */
+const RETURN_JSON_LIMIT = 50_000;
+
+/** Fills __out from a call's result `__v`; with a type, also its whole value as harness JSON. */
+function captureReturn(returnType: ValueType | undefined): string {
+  const json = returnType
+    ? `__out.json = JSON.stringify(__hOut(${JSON.stringify(returnType)}, __v));
+      if (__out.json && __out.json.length > ${RETURN_JSON_LIMIT}) __out.json = null;`
+    : "";
+  return `__out.value = __v === undefined ? "undefined" : __short(__v);
+      ${json}`;
+}
+
+function wrap(call: string): string {
+  return `
+    var __out = { ok: true, value: null, json: null, error: null };
+    try {
+      ${call}
+    } catch (e) {
+      __out.ok = false;
+      __out.error = String((e && e.message) || e);
+    }
+    JSON.stringify(__out);
+  `;
+}
+
+const literal = (value: unknown) => `JSON.parse(${JSON.stringify(JSON.stringify(value ?? {}))})`;
+
+/**
+ * Runs an instrumented program's run(input). With `returnType` (from the problem's harness), the result
+ * also carries the whole return value as harness JSON, so it can be compared with the expected answer.
+ */
+export function runInSandbox(program: string, input: unknown, returnType?: ValueType): Promise<SandboxResult> {
+  const wrapped = wrap(`var __v = run(${literal(input)});
+      ${captureReturn(returnType)}`);
+  return execute(program, wrapped, { check: "typeof run === 'function'", name: "run(input)" });
+}
+
+/** How to call a solution: a ReadyHarness with its types parsed. */
+export type FunctionCall = {
+  functionName: string;
+  params: { name: string; type: ValueType }[];
+  returnType: ValueType;
+  /** Index of the parameter that holds the answer of a void function. */
+  outputIndex?: number;
+};
+
+/**
+ * Calls a plain solution function (no trace() calls needed) on one case's arguments, built into
+ * ListNodes and TreeNodes as the types say, and returns the answer as harness JSON in `returnJson`.
+ * Finds `functionName` at the top level or as a method of a LeetCode-style `Solution` class.
+ */
+export function runFunction(program: string, call: FunctionCall, args: Record<string, unknown>): Promise<SandboxResult> {
+  const name = call.functionName;
+  if (!/^[A-Za-z_$][\w$]*$/.test(name)) return Promise.resolve(failed("invalid_program", `bad function name ${name}`));
+  const output = call.outputIndex;
+  const wrapped = wrap(`var __fn = typeof ${name} === "function" ? ${name} : null;
+      if (!__fn) { var __s = new Solution(); __fn = __s.${name}.bind(__s); }
+      var __raw = ${literal(args)};
+      var __args = ${JSON.stringify(call.params)}.map(function (p) { return __hIn(p.type, __raw[p.name]); });
+      var __r = __fn.apply(null, __args);
+      var __v = ${output !== undefined ? `__args[${output}]` : "__r"};
+      ${captureReturn(output !== undefined ? call.params[output].type : call.returnType)}`);
+  return execute(program, wrapped, {
+    check: `typeof ${name} === "function" || (typeof Solution === "function" && typeof Solution.prototype.${name} === "function")`,
+    name,
   });
 }

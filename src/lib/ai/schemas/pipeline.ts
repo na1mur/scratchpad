@@ -32,6 +32,8 @@ export const understandingSchema = z.object({
   suggestedTags: z.array(z.enum(TAGS)).max(4),
 });
 export type Understanding = z.infer<typeof understandingSchema>;
+/** Understanding for a problem with fixed test cases: the cases come from its harness, not the model. */
+export const understandingCoreSchema = understandingSchema.omit({ testCases: true });
 export type UnderstoodCase = Understanding["testCases"][number];
 
 export const structureDeclSchema = z.object({

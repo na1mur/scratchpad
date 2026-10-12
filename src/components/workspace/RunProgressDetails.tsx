@@ -45,6 +45,11 @@ function CaseRow({ c }: { c: ProgressCase }) {
           <p className="mt-0.5 truncate font-mono" title={`returned ${c.actual} · expected ${c.expected}`}>
             <span className="text-muted-foreground">returned</span> {c.actual}{" "}
             <span className="text-muted-foreground">· expected</span> {c.expected}
+            {c.passed !== undefined && (
+              <span className={c.passed ? "text-viz-success" : "text-viz-error"}>
+                {c.passed ? " · matches" : " · doesn't match"}
+              </span>
+            )}
           </p>
         )}
       </div>

@@ -63,6 +63,7 @@ import { caseView, stepRefs } from "@/lib/ai/schemas/vizSpec";
 import type { AttemptDetail, AttemptSummary } from "@/lib/attempts";
 import { ApiClientError, api, apiRaw, toApiError } from "@/lib/fetcher";
 import type { ProblemDetail } from "@/lib/problems";
+import { TestCases } from "./TestCases";
 import { PROVIDER_LABELS, type ProviderId } from "@/lib/providers";
 import { createAttemptSchema, type CreateAttemptInput } from "@/lib/schemas/attempts";
 import { MAX_TEXT } from "@/lib/schemas/problems";
@@ -500,6 +501,9 @@ export function Workspace({
           <pre className="mt-3 max-h-64 overflow-auto rounded-lg border bg-tile p-3 font-sans text-sm whitespace-pre-wrap">
             {problem.statement}
           </pre>
+          <div className="mt-3">
+            <TestCases problemId={problem.id} initial={problem.harness} />
+          </div>
         </CollapsibleContent>
       </Collapsible>
 

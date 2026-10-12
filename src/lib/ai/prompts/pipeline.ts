@@ -14,6 +14,13 @@ export const UNDERSTAND_ROLE = `Your job right now: understand what the learner 
   - expectedOutput: the CORRECT answer for that input, not what their code returns.
 - suggestedTags: up to 4 from this list only: ${TAGS.join(", ")}.`;
 
+/** UNDERSTAND_ROLE for a problem whose test cases are fixed (its harness is ready). */
+export const UNDERSTAND_FIXED_ROLE = `Your job right now: understand what the learner is trying to do, before their code is run.
+- Restate the problem briefly and describe their approach back to them in their own terms, even if it's wrong.
+- List the properties their approach silently relies on.
+- The test cases are fixed and listed in <test_cases>, with their correct answers; their code will run on every one. Use them to judge where the reasoning may break.
+- suggestedTags: up to 4 from this list only: ${TAGS.join(", ")}.`;
+
 /** How an instrumented program reports steps. Shared by the attempt and solution translators. */
 export const TRACE_API = `Inside run(), call trace({...}) at each meaningful moment: after initialization, at each comparison or decision, after each mutation, and at each return:
 trace({

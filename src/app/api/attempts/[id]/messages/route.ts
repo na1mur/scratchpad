@@ -186,6 +186,7 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/attempts/[id]/mes
                         statement: problem.statement,
                         source: problem.sourceText ?? "",
                         reference: storedReference(problem, problem.language)?.text,
+                        harness: problem.harness,
                         guidance: { reason, newTestInput },
                         focusDescription: focusSteps.length
                           ? `the steps titled: ${focusSteps.map((s) => `"${s.title}"`).join(", ")}`
