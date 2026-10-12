@@ -45,11 +45,18 @@ export const structureDeclSchema = z.object({
 export const translationSchema = z.object({
   codeLines: z
     .array(z.string())
-    .describe("The learner's pseudo-code completed into a runnable whole, one statement per line, keeping their logic and bugs."),
+    .describe("The learner's code completed into a runnable whole, one statement per line, keeping their logic and bugs."),
   addedLines: z.array(z.number().int()).describe("0-based indexes of codeLines added to complete their code."),
-  structures: z.array(structureDeclSchema).min(1).max(6),
-  loops: z.array(z.object({ id: z.string(), label: z.string(), line: z.number().int() })),
-  program: z.string().describe("JavaScript source defining function run(input). No imports, no async."),
+  program: z
+    .string()
+    .describe("Plain JavaScript mirroring codeLines, each statement marked //@n with its codeLines index, plus function run(input)."),
+  structures: z
+    .array(z.object({ variable: z.string(), label: z.string(), kind: z.enum(STRUCTURE_KINDS) }))
+    .max(6)
+    .describe("Program variables worth showing as data structures."),
+  pointers: z
+    .array(z.object({ variable: z.string(), structure: z.string() }))
+    .describe("Index or node variables that point into one of the structures."),
 });
 export type Translation = z.infer<typeof translationSchema>;
 

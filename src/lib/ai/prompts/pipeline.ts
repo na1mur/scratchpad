@@ -57,29 +57,23 @@ function run(input) {
   }
 }`;
 
-export const TRANSLATE_ROLE = `Your job right now: translate the learner's pseudo-code into an instrumented JavaScript program that behaves EXACTLY like their logic, including every bug, off-by-one, wrong comparison or missing case. Never fix anything. Where the pseudo-code is ambiguous, choose the reading closest to what they literally wrote.
+export const TRANSLATE_ROLE = `Your job right now: complete the learner's code and translate it into plain JavaScript that behaves EXACTLY like their logic, including every bug, off-by-one, wrong comparison or missing case. Never fix anything. Where the pseudo-code is ambiguous, choose the reading closest to what they literally wrote.
 
-Complete the code before you trace it. Pseudo-code is often a fragment: no function header, no return, a variable used before it's set. Work out what the learner is trying to achieve from their code and idea, then add only what's needed to make it a whole, runnable program:
-- a function header whose parameters are the argument names in the test input, and a return of whatever their code and idea say holds the answer;
+Complete the code before you translate it. Pseudo-code is often a fragment: no function header, no return, a variable used before it's set. Work out what the learner is trying to achieve from their code and idea, then add only what's needed to make it a whole, runnable program:
+- a function header whose parameters are the argument names in the test input (named as in <signature> when it's given), and a return of whatever their code and idea say holds the answer;
 - any setup they clearly assumed but didn't write (e.g. a variable they read before assigning).
 Never change their approach: don't add, remove or reorder their statements, and don't add guards, edge-case checks, conditions or updates that change what their lines do. Their bugs must survive. Write added lines in the same style as theirs, and list their 0-based indexes in addedLines (empty if nothing was added).
+When they write Python, JavaScript or TypeScript, the completed code must be valid code in that language that runs as is (the function plus any helper it calls), so they can edit and run it themselves. In any other language, keep their style.
 
 The same program is run on every one of the <test_cases>, so it must work from whatever input it's given, not just the first case. Never special-case an input.
 
 Return:
-- codeLines: their completed pseudo-code, one statement per line, with nesting shown by indentation. Keep their names and wording.
+- codeLines: their completed code, one statement per line, with nesting shown by indentation. Keep their names and wording.
 - addedLines: 0-based indexes of the lines in codeLines that you added to complete it.
-- structures: the data worth showing (at most 6), each {id, label, kind}. kind is one of array, string, hashmap, set, stack, queue, linkedList, tree, graph, matrix, variables. Always include {id: "vars", label: "Variables", kind: "variables"} for scalar variables.
-- loops: every loop in codeLines as {id, label (e.g. "while left < right"), line (0-based index into codeLines)}.
-- program: plain JavaScript (ES2020; no imports, async, timers or I/O) that defines function run(input). input is the parsed arguments object. Return what their code returns.
-
-${TRACE_API}
-
-Rules:
-${TRACE_RULES}
-- Highlight with tone "error" only where values are clearly wrong; you don't decide bugs here.
-
-${TRACE_EXAMPLE}`;
+- program: plain JavaScript (ES2020; no imports, async, timers or I/O) that mirrors codeLines statement by statement, with the same function and variable names, plus a function run(input) that takes the parsed arguments object, builds linked lists and trees with toList(array) and toTree(levelOrderArray) (LeetCode-style ListNode and TreeNode objects with val, next, left and right; the ListNode and TreeNode classes exist too), calls their function and returns what it returns. Keep their language's semantics (Python's // is Math.floor(a / b), a negative index counts from the end, range(a, b) stops before b, a dict is a Map or an object).
+  End the first line of every statement that implements a line of codeLines with the marker comment //@n, where n is that line's 0-based index in codeLines, e.g. \`let left = 0; //@3\` or \`while (left < right) { //@4\`. Only statements of their logic get markers; run() and input conversions get none. Don't record steps yourself: the program is traced automatically at every marked statement.
+- structures: the data worth showing (at most 6), each {variable, label, kind}: the program variable that holds it (e.g. "nums", "seen", "head") and its kind: array, string, hashmap, set, stack, queue, linkedList, tree, graph or matrix. Scalar variables are shown automatically; don't list them.
+- pointers: variables that point into a structure, each {variable, structure}: an integer index into an array or string (left and right into nums) or a node variable into a list or tree (slow and fast into head).`;
 
 export const NARRATE_ROLE = `Your job right now: narrate an execution trace of the learner's code for them.
 For every step id you're given, write:

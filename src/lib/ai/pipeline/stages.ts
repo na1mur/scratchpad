@@ -41,6 +41,8 @@ import {
 import { describeArgs, parseType, sameAnswer, type ReadyHarness, type ValueType } from "@/lib/harness/types";
 import { PipelineError, generateStructured, type UsageMeter } from "./llm";
 import type { ProgressTracker } from "./progress";
+import { instrumentJs, markerLines, parseProgram } from "@/lib/trace/instrument";
+import { autoSteps, isAutoEvent, type ShowDecl } from "@/lib/trace/steps";
 import { runInSandbox, type SandboxResult } from "./sandbox";
 import { collapseSteps, describeSteps, eventsToSteps } from "./steps";
 
@@ -284,64 +286,143 @@ export async function runOnCases(
   };
 }
 
-async function translate(ctx: Ctx, cases: PipelineCase[], feedback: string, guidance?: Guidance): Promise<Translation> {
+/** The model's plain-JS translation, instrumented in code and ready to run. */
+type Program = {
+  codeLines: string[];
+  addedLines: number[];
+  program: string;
+  decl: ShowDecl;
+  loops: Loop[];
+};
+
+/** Checks a translation and instruments it; issues go back to the model. */
+function prepareProgram(t: Translation): { program?: Program; issues: string[] } {
+  const issues: string[] = [];
+  if (!t.codeLines.length) issues.push("- codeLines is empty");
+  const outsideAdded = t.addedLines.filter((i) => i < 0 || i >= t.codeLines.length);
+  if (outsideAdded.length) issues.push(`- addedLines ${outsideAdded.join(", ")} are outside codeLines`);
+  let markers: Map<number, number>;
+  try {
+    markers = markerLines(parseProgram(t.program).comments);
+  } catch (err) {
+    return { issues: [...issues, `- program isn't valid JavaScript: ${err instanceof Error ? err.message : String(err)}`] };
+  }
+  if (!markers.size) issues.push("- no statement in program carries a //@n marker; mark every statement of their logic");
+  const outside = [...markers.values()].filter((n) => n >= t.codeLines.length);
+  if (outside.length) issues.push(`- markers //@${outside.join(", //@")} point outside codeLines`);
+  if (issues.length) return { issues };
+
+  const inst = instrumentJs(t.program, { lineFor: (l) => markers.get(l) ?? null, hiddenFunctions: ["run"] });
+  return {
+    issues,
+    program: {
+      codeLines: t.codeLines,
+      addedLines: t.addedLines,
+      program: inst.program,
+      decl: {
+        structures: t.structures.map((s) => ({ id: s.variable, label: s.label, kind: s.kind })),
+        pointers: t.pointers.map((p) => ({ variable: p.variable, structureId: p.structure })),
+      },
+      loops: inst.loops.map((l) => ({ ...l, label: (t.codeLines[l.line] ?? "").trim().slice(0, 40) || l.id })),
+    },
+  };
+}
+
+async function translate(ctx: Ctx, cases: PipelineCase[], feedback: string, guidance?: Guidance): Promise<Program> {
   return generateStructured({
     model: ctx.model,
     meter: ctx.meter,
     signal: ctx.signal,
-    name: "instrumented program",
+    name: "program",
     schema: translationSchema,
     instructions: instr(ctx, TRANSLATE_ROLE),
-    prompt: `${learnerContext(ctx.learner)}\n\n${casesBlock(cases)}${guidanceBlock(guidance)}${
+    prompt: `${learnerContext(ctx.learner)}${signatureBlock(ctx)}\n\n${casesBlock(cases)}${guidanceBlock(guidance)}${
       feedback ? `\n\n<previous_program_failed>\n${feedback}\n</previous_program_failed>` : ""
     }`,
     maxOutputTokens: 12_000,
     check: (t) => {
-      const issues = checkDeclarations(t);
-      return issues.length ? { ok: false, issues: issues.join("\n") } : { ok: true, value: t };
+      const { program, issues } = prepareProgram(t);
+      return program ? { ok: true, value: program } : { ok: false, issues: issues.join("\n") };
     },
   });
+}
+
+/** The function the learner's completed code should define, when the problem's harness knows it. */
+function signatureBlock(ctx: Ctx): string {
+  const h = ctx.harness;
+  if (!h) return "";
+  const params = h.params.map((p) => `${p.name}: ${p.type}`).join(", ");
+  return `\n\n<signature>\n${h.functionName}(${params}) -> ${h.returnType}${
+    h.outputParam ? ` (changes ${h.outputParam} in place)` : ""
+  }\n</signature>`;
+}
+
+/** One case's run: its own structures (whatever its variables held) and steps. */
+type AutoRun = { result: SandboxResult; structures: Structure[]; steps: Step[] };
+
+/**
+ * Runs the instrumented program on every case. `problem` says what's wrong with the program itself (it
+ * should be translated again); a case that recorded no steps is a null run.
+ */
+async function runProgram(
+  p: Program,
+  cases: PipelineCase[],
+  returnType?: ValueType,
+): Promise<{ runs: (AutoRun | null)[]; results: SandboxResult[]; problem: string | null }> {
+  const results = await Promise.all(cases.map((c) => runInSandbox(p.program, c.args, returnType)));
+  const runs = results.map((result): AutoRun | null => {
+    const events = result.events.filter(isAutoEvent);
+    if (!events.length) return null;
+    return { result, ...autoSteps(events, p.decl, p.loops, p.codeLines.length) };
+  });
+  const invalid = results.find((r) => r.outcome === "invalid_program");
+  const problem = invalid
+    ? `The program didn't load: ${invalid.errorMessage}`
+    : runs.every((r) => !r)
+      ? `No marked statement ran on any case${results[0].outcome === "runtime_error" ? ` (it crashed: ${results[0].errorMessage})` : ""}.`
+      : null;
+  return { runs, results, problem };
 }
 
 type CompletedCode = { codeLines: string[]; addedLines: number[] };
 
 type Execution =
-  | { ok: true; t: Translation; runs: (ProgramRun | null)[]; results: SandboxResult[] }
+  | { ok: true; p: Program; runs: (AutoRun | null)[]; results: SandboxResult[] }
   /** `code` is the last translation's completed code, if any, which the simulations can share. */
   | { ok: false; code: CompletedCode | null };
 
 /**
- * Translates to instrumented JS once and runs it in QuickJS on every case. A broken program gets one
- * retry with the error. When execution isn't usable at all the caller falls back to simulation, and
- * gets the completed code a broken program still came with. Cases the program couldn't trace come
- * back as null runs.
+ * Translates to plain JS, instruments it in code and runs it in QuickJS on every case. A program that
+ * doesn't load or never reaches a marked statement gets one retry with the error. When execution isn't
+ * usable at all the caller falls back to simulation, with the completed code a broken program still
+ * came with. Cases that recorded no steps come back as null runs.
  */
 async function executeAll(ctx: Ctx, cases: PipelineCase[], guidance?: Guidance): Promise<Execution> {
   let feedback = "";
   let code: CompletedCode | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
-    let t: Translation;
+    let p: Program;
     try {
-      t = await translate(ctx, cases, feedback, guidance);
+      p = await translate(ctx, cases, feedback, guidance);
     } catch (err) {
       if (err instanceof PipelineError && err.code === "invalid_output") {
-        ctx.meter.note("no valid instrumented program from the model");
+        ctx.meter.note("no valid program from the model");
         return { ok: false, code };
       }
       throw err;
     }
-    code = { codeLines: t.codeLines, addedLines: t.addedLines };
-    ctx.progress?.update((p) => {
-      p.program = { lines: t.codeLines.length, added: t.addedLines.length };
-      for (const c of p.cases ?? []) c.state = "running";
+    code = { codeLines: p.codeLines, addedLines: p.addedLines };
+    ctx.progress?.update((pr) => {
+      pr.program = { lines: p.codeLines.length, added: p.addedLines.length };
+      for (const c of pr.cases ?? []) c.state = "running";
     });
-    const { runs, results, problem } = await runOnCases(t, cases, t.codeLines.length, answerType(ctx));
-    if (!problem) return { ok: true, t, runs, results };
-    ctx.meter.note(`program ${attempt + 1} rejected: ${problem.replace(/\n/g, " | ")}`);
+    const { runs, results, problem } = await runProgram(p, cases, answerType(ctx));
+    if (!problem) return { ok: true, p, runs, results };
+    ctx.meter.note(`program ${attempt + 1} rejected: ${problem}`);
     feedback = problem;
-    ctx.progress?.update((p) => {
-      p.program = { lines: t.codeLines.length, added: t.addedLines.length, retrying: true };
-      for (const c of p.cases ?? []) c.state = "pending";
+    ctx.progress?.update((pr) => {
+      pr.program = { lines: p.codeLines.length, added: p.addedLines.length, retrying: true };
+      for (const c of pr.cases ?? []) c.state = "pending";
     });
   }
   return { ok: false, code };
@@ -370,26 +451,28 @@ function checkAnswer(ctx: Ctx, c: PipelineCase, result: SandboxResult): boolean 
 }
 
 /**
- * A case whose run crashed or hung before its first trace() call. The other cases ran, so the program
- * works and the failure is the learner's logic on this input: one step saying so beats simulating it.
+ * A case whose run crashed or hung before reaching a marked statement. The other cases ran, so the
+ * program works and the failure is the learner's logic on this input: one step saying so beats
+ * simulating it.
  */
-function crashTrace(c: PipelineCase, t: Translation, result: SandboxResult): CaseTrace | null {
+function crashTrace(c: PipelineCase, result: SandboxResult): CaseTrace | null {
   if (result.outcome !== "runtime_error" && result.outcome !== "timeout") return null;
-  const { steps } = eventsToSteps([{}], t.structures, t.loops, t.codeLines.length);
   const crashed = result.outcome === "runtime_error";
   const step: Step = {
-    ...steps[0],
+    id: "s1",
+    line: null,
     title: crashed ? "Crashes before the first step" : "Never gets past the start",
     explanation: crashed
       ? `On this input your code stops with an error before reaching its first step: ${result.errorMessage}.`
       : "On this input your code never gets past its first lines; it most likely loops without making progress.",
+    states: { vars: { kind: "variables", vars: {} } },
     isBugMoment: true,
   };
   return {
     ...c,
     mode: "execution",
-    structures: t.structures,
-    loops: t.loops,
+    structures: [{ id: "vars", label: "Variables", kind: "variables" }],
+    loops: [],
     steps: prefixStepIds(c.id, [step]),
     actualOutput: actualOutputOf(result),
     runNote: runNoteFor(result),
@@ -621,7 +704,7 @@ export async function traceCases(
   const narrations: (Promise<CaseTrace> | null)[] = cases.map(() => null);
   let shared: CompletedCode;
   if (exec.ok) {
-    shared = { codeLines: exec.t.codeLines, addedLines: exec.t.addedLines };
+    shared = { codeLines: exec.p.codeLines, addedLines: exec.p.addedLines };
   } else {
     ctx.progress?.update((p) => {
       p.simulating = true;
@@ -645,12 +728,12 @@ export async function traceCases(
       if (traces[i]) return;
       const run = exec.ok ? exec.runs[i] : null;
       if (exec.ok && run) {
-        const steps = prefixStepIds(c.id, collapseSteps(run.steps, exec.t.loops));
+        const steps = prefixStepIds(c.id, collapseSteps(run.steps, exec.p.loops));
         const trace: CaseTrace = {
           ...c,
           mode: "execution",
-          structures: exec.t.structures,
-          loops: exec.t.loops,
+          structures: run.structures,
+          loops: exec.p.loops,
           steps,
           actualOutput: shownOutput(run.result),
           runNote: runNoteFor(run.result),
@@ -669,13 +752,13 @@ export async function traceCases(
       }
       if (exec.ok) {
         const result = exec.results[i];
-        const crashed = crashTrace(c, exec.t, result);
+        const crashed = crashTrace(c, result);
         if (crashed) {
           ctx.meter.note(`${c.id} ${result.outcome} before its first step: ${result.errorMessage}`);
           traces[i] = finished({ ...crashed, passed: checkAnswer(ctx, c, result) });
           return;
         }
-        ctx.meter.note(`${c.id} made no trace() calls (${result.outcome}); simulated instead`);
+        ctx.meter.note(`${c.id} reached no marked statement (${result.outcome}); simulated instead`);
       }
       ctx.progress?.updateCase(c.id, { state: "simulating" });
       traces[i] = finished((await traceBySimulation(ctx, c, guidance, shared)).trace);

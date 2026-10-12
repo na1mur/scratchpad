@@ -18,6 +18,9 @@ globalThis.TreeNode = function TreeNode(val, left, right) {
   this.right = right === undefined ? null : right;
 };
 var __H_LIMIT = 2000;
+// For programs that build their own input: toList([1, 2]) and toTree([1, null, 2]) as LeetCode would.
+globalThis.toList = function (a) { return __hToList(a || []); };
+globalThis.toTree = function (a) { return __hToTree(a || []); };
 function __hToList(a) {
   var head = null;
   for (var i = a.length - 1; i >= 0; i--) head = new ListNode(a[i], head);

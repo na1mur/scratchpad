@@ -2,6 +2,7 @@ import "server-only";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { HARNESS_RUNTIME } from "@/lib/harness/runtime";
+import { AUTO_TRACE_RUNTIME } from "@/lib/trace/runtime";
 import type { ValueType } from "@/lib/harness/types";
 
 export const TRACE_EVENT_LIMIT = 500;
@@ -254,7 +255,7 @@ function execute(program: string, wrapped: string, entry: { check: string; name:
       eval: true,
       workerData: {
         resolveFrom: path.join(process.cwd(), "package.json"),
-        prelude: PRELUDE + HARNESS_RUNTIME,
+        prelude: PRELUDE + HARNESS_RUNTIME + AUTO_TRACE_RUNTIME,
         program,
         wrapped,
         entryCheck: entry.check,
