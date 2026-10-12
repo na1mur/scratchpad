@@ -7,6 +7,9 @@ import { getOwnedProblem, serializeProblem } from "@/lib/problems";
 import { updateProblemSchema } from "@/lib/schemas/problems";
 import { Problem } from "@/models/Problem";
 
+// Building the problem's harness (src/lib/harness/build.ts) runs in after() and takes a model call or two.
+export const maxDuration = 300;
+
 export function GET(req: NextRequest, ctx: RouteContext<"/api/problems/[id]">) {
   return handle(req, async () => {
     const session = await requireUser({ onboarded: true });

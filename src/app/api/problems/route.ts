@@ -8,6 +8,9 @@ import { createProblem, distinctTags, listProblems, serializeProblem } from "@/l
 import { createProblemSchema, listProblemsQuerySchema } from "@/lib/schemas/problems";
 import { loadUser } from "@/lib/users";
 
+// Building the problem's harness (src/lib/harness/build.ts) runs in after() and takes a model call or two.
+export const maxDuration = 300;
+
 export function GET(req: NextRequest) {
   return handle(req, async () => {
     const session = await requireUser({ onboarded: true });

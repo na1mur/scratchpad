@@ -13,6 +13,9 @@ import { getPageUser } from "@/lib/users";
 import { Attempt } from "@/models/Attempt";
 import { Solution } from "@/models/Solution";
 
+// A problem without a harness gets one built in after() while the learner reads (src/lib/harness/build.ts).
+export const maxDuration = 300;
+
 async function loadProblem(slug: string) {
   const session = await requirePageSession();
   try {
