@@ -169,20 +169,35 @@ export function describeArgs(params: HarnessParam[], argsJson: string): string {
   }
 }
 
-/** What the workspace shows of a ready harness: never the reference solution. */
-export type PublicTestCase = { label: string; input: string; expected: string };
+/** What the workspace shows of a ready harness: never the reference solution. `argsJson` is for running them. */
+export type PublicTestCase = { label: string; input: string; expected: string; argsJson: string };
 
 export function publicCases(h: ReadyHarness): PublicTestCase[] {
-  return h.cases.map((c) => ({ label: c.label, input: describeArgs(h.params, c.argsJson), expected: c.expectedJson }));
+  return h.cases.map((c) => ({
+    label: c.label,
+    input: describeArgs(h.params, c.argsJson),
+    expected: c.expectedJson,
+    argsJson: c.argsJson,
+  }));
 }
 
 /** The harness as the learner's pages see it. */
 export type HarnessView =
-  | { status: "ready"; cases: PublicTestCase[]; compare: CompareMode }
+  | ({ status: "ready"; cases: PublicTestCase[] } & Pick<ReadyHarness, "compare" | "functionName" | "params" | "returnType" | "outputParam">)
   | { status: "building" | "unsupported" | "failed" | "none" };
 
 export function harnessView(h: unknown): HarnessView {
-  if (isReady(h)) return { status: "ready", cases: publicCases(h), compare: h.compare };
+  if (isReady(h)) {
+    return {
+      status: "ready",
+      cases: publicCases(h),
+      compare: h.compare,
+      functionName: h.functionName,
+      params: h.params,
+      returnType: h.returnType,
+      ...(h.outputParam && { outputParam: h.outputParam }),
+    };
+  }
   const status = (h as Harness | null | undefined)?.status;
   return { status: status === "building" || status === "unsupported" || status === "failed" ? status : "none" };
 }

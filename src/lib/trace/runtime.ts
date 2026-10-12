@@ -100,4 +100,6 @@ function __enter(name, args) {
   if (__aCalls.length > 2000) throw new RangeError("Maximum call stack size exceeded");
 }
 function __exit() { __aCalls.pop(); }
+/** Between cases run in one worker: a fresh trace, iteration counts and call stack. */
+function __resetTrace() { __events.length = 0; __aIters = {}; __aCalls = []; }
 `;

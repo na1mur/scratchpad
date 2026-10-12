@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import {
   ChevronDownIcon,
+  CodeIcon,
   CopyPlusIcon,
   CpuIcon,
   EraserIcon,
@@ -63,7 +64,9 @@ import { caseView, stepRefs } from "@/lib/ai/schemas/vizSpec";
 import type { AttemptDetail, AttemptSummary } from "@/lib/attempts";
 import { ApiClientError, api, apiRaw, toApiError } from "@/lib/fetcher";
 import type { ProblemDetail } from "@/lib/problems";
+import { CodeRunner } from "./CodeRunner";
 import { TestCases } from "./TestCases";
+import { isRunLanguage } from "@/lib/runner/protocol";
 import { PROVIDER_LABELS, type ProviderId } from "@/lib/providers";
 import { createAttemptSchema, type CreateAttemptInput } from "@/lib/schemas/attempts";
 import { MAX_TEXT } from "@/lib/schemas/problems";
@@ -159,6 +162,7 @@ export function Workspace({
   const [mode, setMode] = useState<"new" | "view">(initialAttempt ? "view" : "new");
   const [loadingAttempt, setLoadingAttempt] = useState(false);
   const [confirmingNew, setConfirmingNew] = useState(false);
+  const [runnerOpen, setRunnerOpen] = useState(false);
   const [running, setRunning] = useState<Running | null>(
     initialAttempt && IN_PROGRESS.has(initialAttempt.status)
       ? { attemptId: initialAttempt.id, status: initialAttempt.status, progress: initialAttempt.progress }
@@ -451,6 +455,14 @@ export function Workspace({
     ready: mode === "view" && viewing?.status === "done" && Boolean(viewing.vizSpec) && !running && !loadingAttempt,
   });
 
+  // Edit & Run starts from the analysed attempt's completed code, or else the draft in the form.
+  const harness = problem.harness;
+  const runnable = isRunLanguage(problem.language) && harness.status === "ready" ? { language: problem.language, view: harness } : null;
+  const runnerSource =
+    mode === "view" && viewing?.vizSpec
+      ? { key: `${viewing.id}-${viewing.specVersion}`, code: viewing.vizSpec.codeLines.join("\n") }
+      : { key: `new-${problem.id}`, code: draftCode };
+
   const left = (
     <div className="flex flex-col gap-4 p-4">
       <Collapsible defaultOpen={!initialAttempt}>
@@ -534,6 +546,17 @@ export function Workspace({
             <CopyPlusIcon /> New attempt
           </Button>
         )}
+        {runnable && (
+          <Button
+            variant="soft"
+            onClick={() => setRunnerOpen(true)}
+            disabled={loadingAttempt}
+            title="Run code on the test cases in your browser"
+            data-tour="edit-run"
+          >
+            <CodeIcon /> Edit &amp; run
+          </Button>
+        )}
         {mode === "view" && viewing?.status === "done" && (
           <ShareButton
             key={`share-${viewing.id}`}
@@ -565,6 +588,17 @@ export function Workspace({
             {ranOnIsCurrent && " (your current model)"}
           </span>
         </p>
+      )}
+
+      {runnable && (
+        <CodeRunner
+          open={runnerOpen}
+          onOpenChange={setRunnerOpen}
+          draftKey={runnerSource.key}
+          initialCode={runnerSource.code}
+          language={runnable.language}
+          view={runnable.view}
+        />
       )}
 
       <Dialog open={confirmingNew} onOpenChange={setConfirmingNew}>
