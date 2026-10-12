@@ -1,6 +1,6 @@
 import "server-only";
 import type { Types } from "mongoose";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 import { ApiError } from "@/lib/api";
 import { requirePageSession, type Session } from "@/lib/auth/session";
@@ -8,7 +8,7 @@ import { decrypt } from "@/lib/crypto";
 import { connectDB } from "@/lib/db";
 import { getSavedKey } from "@/lib/providerKeys";
 import type { KeyProviderId } from "@/lib/providers";
-import { User, type UserDoc } from "@/models/User";
+import { User, isAdmin, type UserDoc } from "@/models/User";
 
 export async function loadUser(session: Session): Promise<UserDoc> {
   await connectDB();
@@ -62,3 +62,10 @@ export const getPageUser = cache(async (): Promise<UserDoc> => {
   if (!user) redirect("/api/auth/logout");
   return user;
 });
+
+/** For the admin pages: the signed-in admin, or a 404 for anyone else. */
+export async function getAdminPageUser(): Promise<UserDoc> {
+  const user = await getPageUser();
+  if (!isAdmin(user)) notFound();
+  return user;
+}

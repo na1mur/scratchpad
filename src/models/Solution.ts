@@ -47,6 +47,8 @@ const solutionSchema = new Schema(
 );
 
 solutionSchema.index({ problemId: 1, version: 1 }, { unique: true });
+// The admin dashboard counts solutions per user.
+solutionSchema.index({ userId: 1 });
 
 export type SolutionDoc = InferSchemaType<typeof solutionSchema> & { _id: mongoose.Types.ObjectId };
 

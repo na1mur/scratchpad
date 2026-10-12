@@ -6,6 +6,10 @@ import { encryptedFieldSchema } from "@/models/encryptedField";
 export const ONBOARDING_STEPS = ["language", "provider", "done"] as const;
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 
+/** What an account may do. Admins reach the admin dashboard; everyone else is a plain user. */
+export const ROLES = ["user", "admin"] as const;
+export type Role = (typeof ROLES)[number];
+
 /** Where the follow-up chat sits: under the run, or in a drawer from the right. */
 export const CHAT_LAYOUTS = ["inline", "drawer"] as const;
 export type ChatLayout = (typeof CHAT_LAYOUTS)[number];
@@ -71,6 +75,10 @@ const userSchema = new Schema(
     avatarKey: { type: String, required: false },
     preferredLanguage: { type: String, enum: LANGUAGES.map((l) => l.id), required: false },
     onboardingStep: { type: String, enum: ONBOARDING_STEPS, default: "language", required: true },
+    // Absent means "user", so accounts from before roles existed need no migration. The first admin is set
+    // by hand in the database; after that admins promote others from /admin. Not in the JWT: it's read from
+    // the database on every admin request, so a demotion takes effect at once.
+    role: { type: String, enum: ROLES, required: false },
     ai: { type: aiSchema, required: false },
     search: { type: searchSchema, required: false },
     // UI choices that follow the user across problems. Absent fields mean the default.
@@ -81,6 +89,8 @@ const userSchema = new Schema(
   },
   { timestamps: true },
 );
+
+export const isAdmin = (user: Pick<UserDoc, "role">) => user.role === "admin";
 
 /** Only an explicit `false` blocks login; see `emailVerified` above. */
 export const isUnverified = (user: Pick<UserDoc, "emailVerified">) => user.emailVerified === false;

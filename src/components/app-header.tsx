@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CircleUserRoundIcon, LogOutIcon, SettingsIcon } from "lucide-react";
+import { CircleUserRoundIcon, LogOutIcon, SettingsIcon, ShieldCheckIcon } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,7 +21,17 @@ import { UserAvatar } from "@/components/user-avatar";
 
 const NAV = [{ href: "/problems", label: "Problems" }];
 
-export function AppHeader({ email, name, avatarUrl }: { email: string; name: string | null; avatarUrl: string | null }) {
+export function AppHeader({
+  email,
+  name,
+  avatarUrl,
+  isAdmin,
+}: {
+  email: string;
+  name: string | null;
+  avatarUrl: string | null;
+  isAdmin: boolean;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const { logout, pending } = useLogout();
@@ -67,6 +77,11 @@ export function AppHeader({ email, name, avatarUrl }: { email: string; name: str
               <DropdownMenuItem onClick={() => router.push("/settings")}>
                 <SettingsIcon /> Settings
               </DropdownMenuItem>
+              {isAdmin && (
+                <DropdownMenuItem onClick={() => router.push("/admin")}>
+                  <ShieldCheckIcon /> Admin dashboard
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem disabled={pending} onClick={logout}>
                 <LogOutIcon /> {pending ? "Logging out…" : "Log out"}
               </DropdownMenuItem>

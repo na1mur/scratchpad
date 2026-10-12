@@ -3,6 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { env } from "@/lib/env";
 import { getSession, type Session } from "@/lib/auth/session";
+import { connectDB } from "@/lib/db";
+import { User, isAdmin } from "@/models/User";
 
 export type ApiErrorBody = {
   error: { code: string; message: string; fields?: Record<string, string[]> };
@@ -53,6 +55,19 @@ export async function requireUser(opts: { onboarded?: boolean } = {}): Promise<S
   if (opts.onboarded && session.onboardingStep !== "done") {
     throw new ApiError(403, "onboarding_incomplete", "Finish onboarding first.");
   }
+  return session;
+}
+
+/**
+ * An admin's session. The role isn't in the token, so this reads it from the database: a demoted admin
+ * loses access on their next request, not when the token expires. Answers 404 to everyone else, so the
+ * admin routes don't announce themselves.
+ */
+export async function requireAdmin(): Promise<Session> {
+  const session = await requireUser({ onboarded: true });
+  await connectDB();
+  const user = await User.findById(session.userId, { role: 1 }).lean();
+  if (!user || !isAdmin(user)) throw new ApiError(404, "not_found", "Not found.");
   return session;
 }
 

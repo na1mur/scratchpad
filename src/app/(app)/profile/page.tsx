@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { ShieldCheckIcon } from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
 import { AvatarUploader } from "@/components/profile/avatar-uploader";
 import { ProfileForm } from "@/components/profile/profile-form";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { resolveAvatarUrl } from "@/lib/avatar";
 import { r2Enabled } from "@/lib/env";
 import { getPageUser } from "@/lib/users";
+import { isAdmin } from "@/models/User";
 
 export const metadata: Metadata = { title: "Profile" };
 
@@ -53,7 +57,12 @@ export default async function ProfilePage() {
             <dt className="text-muted-foreground">Member since</dt>
             <dd>{memberSince}</dd>
           </dl>
-          <div>
+          <div className="flex flex-wrap gap-2">
+            {isAdmin(user) && (
+              <Link href="/admin" className={buttonVariants({ variant: "outline" })}>
+                <ShieldCheckIcon /> Admin dashboard
+              </Link>
+            )}
             <LogoutButton withLabel />
           </div>
         </CardContent>
