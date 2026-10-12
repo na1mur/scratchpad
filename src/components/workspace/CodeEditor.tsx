@@ -12,7 +12,7 @@ const CHROME = 16 + 2 + 14;
 
 /**
  * Textarea with a line-number gutter that scrolls in sync. Tab inserts spaces, Enter keeps the
- * current line's indentation (one level deeper after a colon), and Ctrl+Backspace on a line of only indentation clears it.
+ * current line's indentation (one level deeper after a colon), Backspace inside leading indentation removes a whole level, and Ctrl+Backspace on a line of only indentation clears it.
  * It grows with its content between `minLines` and `maxLines`, then scrolls.
  */
 export function CodeEditor({
@@ -73,6 +73,11 @@ export function CodeEditor({
       // On a line that's only indentation so far, drop all of it at once.
       e.preventDefault();
       replaceRange(el, lineStart, start, "");
+    } else if (e.key === "Backspace" && !e.ctrlKey && !e.metaKey && !e.altKey && start === end && /^ +$/.test(beforeCursor)) {
+      // Inside leading indentation one Backspace removes a whole level (back to the previous tab stop).
+      e.preventDefault();
+      const drop = beforeCursor.length % INDENT.length || INDENT.length;
+      replaceRange(el, start - drop, start, "");
     }
   }
 
