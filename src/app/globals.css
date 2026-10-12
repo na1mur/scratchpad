@@ -224,6 +224,20 @@
   margin-inline: -0.12em;
 }
 
+/* Chat "typing" dots: each dot rises and brightens in turn (stagger with animation-delay). */
+@keyframes typing-dot {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
 /* A pen stroke drawing itself; give the path pathLength="1". */
 @keyframes pen-draw {
   from {

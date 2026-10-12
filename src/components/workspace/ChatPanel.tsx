@@ -226,7 +226,7 @@ export function ChatPanel({
             {pending.text ? (
               <ChatMarkdown>{pending.text}</ChatMarkdown>
             ) : (
-              !pending.regenerating && <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+              !pending.regenerating && <TypingDots />
             )}
           </Bubble>
         )}
@@ -338,10 +338,25 @@ function Bubble({ role, children }: { role: "user" | "assistant"; children: Reac
     <div
       className={cn(
         "max-w-[85%] min-w-0 rounded-lg px-3 py-2 text-sm",
-        role === "user" ? "self-end bg-primary text-primary-foreground" : "self-start border bg-sheet",
+        role === "user" ? "self-end border bg-tile" : "self-start border bg-sheet",
       )}
     >
       {children}
     </div>
+  );
+}
+
+function TypingDots() {
+  return (
+    <span role="status" aria-label="Writing an answer" className="flex h-5 items-center gap-1">
+      {[0, 150, 300].map((delay) => (
+        <span
+          key={delay}
+          aria-hidden
+          className="size-1.5 rounded-full bg-muted-foreground animate-[typing-dot_1.2s_ease-in-out_infinite] motion-reduce:animate-pulse"
+          style={{ animationDelay: `${delay}ms` }}
+        />
+      ))}
+    </span>
   );
 }
