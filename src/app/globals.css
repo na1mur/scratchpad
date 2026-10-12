@@ -337,3 +337,39 @@
 .driver-popover.scratchpad-tour .driver-popover-arrow-side-bottom {
   border-bottom-color: var(--popover);
 }
+
+/* Edit & Run editor (CodeMirrorEditor): syntax colours for both themes. */
+.cm-tok-keyword {
+  color: oklch(0.5 0.2 300);
+}
+.cm-tok-string {
+  color: oklch(0.5 0.13 150);
+}
+.cm-tok-literal {
+  color: oklch(0.55 0.15 50);
+}
+.cm-tok-comment {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.cm-tok-function {
+  color: oklch(0.5 0.15 250);
+}
+.cm-tok-type {
+  color: oklch(0.52 0.12 200);
+}
+.dark .cm-tok-keyword {
+  color: oklch(0.78 0.13 300);
+}
+.dark .cm-tok-string {
+  color: oklch(0.8 0.12 150);
+}
+.dark .cm-tok-literal {
+  color: oklch(0.8 0.12 60);
+}
+.dark .cm-tok-function {
+  color: oklch(0.8 0.1 250);
+}
+.dark .cm-tok-type {
+  color: oklch(0.8 0.09 200);
+}

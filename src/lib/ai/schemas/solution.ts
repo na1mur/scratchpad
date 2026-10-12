@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { structureDeclSchema } from "./pipeline";
+import { STRUCTURE_KINDS } from "./vizSpec";
 
 /**
  * Solutions: what the learner sees next to the visualization (shared by
@@ -95,11 +95,20 @@ export const solutionPlanSchema = z.object({
     .min(1),
 });
 export type SolutionPlan = z.infer<typeof solutionPlanSchema>;
+/** The plan for a problem with fixed test cases: they come from its harness, not the model. */
+export const solutionPlanCoreSchema = solutionPlanSchema.omit({ testCases: true });
 export type SolutionCase = SolutionPlan["testCases"][number];
 
 export const solutionTranslationSchema = z.object({
-  structures: z.array(structureDeclSchema).min(1).max(6),
-  loops: z.array(z.object({ id: z.string(), label: z.string(), line: z.number().int() })),
-  program: z.string().describe("JavaScript source defining function run(input). No imports, no async."),
+  program: z
+    .string()
+    .describe("Plain JavaScript mirroring the solution, each statement marked //@n with its line index, plus function run(input)."),
+  structures: z
+    .array(z.object({ variable: z.string(), label: z.string(), kind: z.enum(STRUCTURE_KINDS) }))
+    .max(6)
+    .describe("Program variables worth showing as data structures."),
+  pointers: z
+    .array(z.object({ variable: z.string(), structure: z.string() }))
+    .describe("Index or node variables that point into one of the structures."),
 });
 export type SolutionTranslation = z.infer<typeof solutionTranslationSchema>;

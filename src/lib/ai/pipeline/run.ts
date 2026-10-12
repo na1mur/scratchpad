@@ -11,16 +11,19 @@ import { storeSpec } from "@/lib/specStorage";
 import { ensureProblemReference } from "@/lib/problemReference";
 import { userSearchKey } from "@/lib/tavily";
 import { ensureProblemSource } from "@/lib/problemSource";
+import { isReady } from "@/lib/harness/types";
 import { normalizeTags } from "@/lib/tags";
 import { Attempt, type AttemptStatus } from "@/models/Attempt";
 import { Problem } from "@/models/Problem";
 import { User } from "@/models/User";
 import { emit } from "./events";
 import { endRun, startRun } from "./cancel";
-import { PipelineError, RunCancelledError, UsageMeter, abortable, throwIfCancelled } from "./llm";
+import { PipelineError, RunCancelledError, UsageMeter, abortable, formatRunStats, throwIfCancelled } from "./llm";
 import { ProgressTracker } from "./progress";
 import {
   assemble,
+  casesFromHarness,
+  casesOf,
   diagnose,
   diagnosisText,
   revealsSolution,
@@ -29,6 +32,7 @@ import {
   type Ctx,
   type Guidance,
   type TraceResult,
+  type TracedCases,
 } from "./stages";
 
 /** Also where a stop lands: the signal is checked, and an attempt the cancel route already removed ends the run. */
@@ -57,15 +61,20 @@ async function diagnoseChecked(ctx: Ctx, u: Understanding, trace: TraceResult): 
 
 /**
  * Stages 2–3 plus the guardrail. Shared by first runs and regenerations. The diagnosis works from the
- * raw traces while their steps are still being narrated.
+ * raw traces while their steps are still being narrated. `traced` is tracing that already started
+ * (alongside stage 1, when the cases were known up front).
  */
 export async function traceAndDiagnose(
   ctx: Ctx,
   u: Understanding,
-  opts: { onStage?: (s: "tracing" | "diagnosing") => Promise<void>; guidance?: Guidance } = {},
+  opts: {
+    onStage?: (s: "tracing" | "diagnosing") => Promise<void>;
+    guidance?: Guidance;
+    traced?: Promise<TracedCases>;
+  } = {},
 ): Promise<{ spec: VizSpec; mode: "execution" | "simulation" }> {
   await opts.onStage?.("tracing");
-  const { trace: raw, narrated } = await traceCases(ctx, u, opts.guidance);
+  const { trace: raw, narrated } = await (opts.traced ?? traceCases(ctx, casesOf(u), u, opts.guidance));
 
   await opts.onStage?.("diagnosing");
   const [d, trace] = await Promise.all([diagnoseChecked(ctx, u, raw), narrated]);
@@ -89,7 +98,13 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
   const attempt = await Attempt.findById(attemptId);
   if (!attempt) return;
   const meter = new UsageMeter();
-  const signal = startRun(attemptId);
+  // Also fired when the run fails, so work started alongside the failing stage stops spending tokens.
+  const failed = new AbortController();
+  const signal = AbortSignal.any([startRun(attemptId), failed.signal]);
+  const stage = (status: AttemptStatus) => {
+    meter.stage(status);
+    return setStatus(attemptId, status, signal);
+  };
   // Only while it's still running, so a late snapshot can't land on a finished or removed attempt.
   const progress = new ProgressTracker(async (snapshot) => {
     await Attempt.updateOne({ _id: attemptId, status: { $nin: ["done", "error"] } }, { $set: { progress: snapshot } });
@@ -104,6 +119,7 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
     if (!problem || !user) throw new PipelineError("not_found", "This problem no longer exists.");
 
     const { model } = getModel(user, "reasoning");
+    meter.stage("source lookup");
     const [source, reference] = await abortable(
       Promise.all([
         ensureProblemSource(problem),
@@ -124,21 +140,31 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
       reference: reference?.text,
       signal,
       progress,
+      ...(isReady(problem.harness) && { harness: problem.harness }),
     };
 
-    await setStatus(attemptId, "understanding", signal);
-    const u = await understand(ctx);
+    await stage("understanding");
+    // With the problem's fixed cases, the code can be translated and run while stage 1 reads the approach.
+    const fixed = ctx.harness ? casesFromHarness(ctx.harness) : undefined;
+    const understood = understand(ctx, undefined, fixed);
+    const traced = fixed ? traceCases(ctx, fixed, understood) : undefined;
+    traced?.catch(() => {});
+    if (fixed) meter.note(`fixed cases from the problem's harness (${fixed.length}); tracing alongside understanding`);
+    const u = await understood;
     await Attempt.updateOne({ _id: attemptId }, { $set: { understanding: u } });
     progress.update((p) => void (p.approach = u.userApproachInOwnWords));
 
-    const { spec, mode } = await traceAndDiagnose(ctx, u, { onStage: (s) => setStatus(attemptId, s, signal) });
+    const { spec, mode } = await traceAndDiagnose(ctx, u, { onStage: stage, traced });
 
     // Auto-tags only fill in for problems the learner left untagged.
     const autoTags = problem.tagsSource === "none" ? normalizeTags(u.suggestedTags) : [];
     throwIfCancelled(signal);
+    meter.stage("saving");
     const finalSpec: VizSpec = autoTags.length ? { ...spec, autoTags } : spec;
     const stored = await storeSpec(String(attempt.userId), String(attempt.problemId), attemptId, 1, finalSpec);
     await progress.flush();
+    const stats = meter.report();
+    console.info(formatRunStats(`[pipeline] attempt ${attemptId} done (${mode})`, stats));
 
     await Attempt.updateOne(
       { _id: attemptId },
@@ -149,6 +175,7 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
           ...stored,
           specVersions: [{ createdAt: new Date(), reason: "Initial run", ...stored }],
           tokenUsage: meter.snapshot(),
+          runStats: stats,
         },
         $unset: { progress: 1 },
       },
@@ -165,6 +192,7 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
     emit(attemptId, { type: "status", status: "done" });
     emit(attemptId, { type: "done", attemptId });
   } catch (err) {
+    failed.abort();
     const safe =
       err instanceof PipelineError || err instanceof ApiError
         ? { code: err.code, message: err.message }
@@ -172,6 +200,7 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
     if (!(err instanceof PipelineError || err instanceof ApiError)) {
       console.error(`[pipeline] attempt ${attemptId} failed:`, err instanceof Error ? err.message : err);
     }
+    console.info(formatRunStats(`[pipeline] attempt ${attemptId} ended with ${safe.code}`, meter.report()));
     // Flag a refused key so Settings can point at it.
     if (safe.code === "invalid_key") await markMainKeyRejected(attempt.userId).catch(() => {});
     // A failed run doesn't use up the learner's hourly allowance, so they can retry with another model.

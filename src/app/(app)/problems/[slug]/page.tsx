@@ -1,15 +1,20 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 import { Workspace } from "@/components/workspace/Workspace";
 import { ApiError } from "@/lib/api";
 import { getOwnedAttempt, serializeAttempt, serializeAttemptSummary } from "@/lib/attempts";
 import { requirePageSession } from "@/lib/auth/session";
+import { ensureProblemHarness, needsHarness } from "@/lib/harness/build";
 import { getOwnedProblemBySlug, serializeProblem } from "@/lib/problems";
 import { r2Enabled } from "@/lib/r2";
 import { toursSeenBy } from "@/lib/tours";
 import { getPageUser } from "@/lib/users";
 import { Attempt } from "@/models/Attempt";
 import { Solution } from "@/models/Solution";
+
+// A problem without a harness gets one built in after() while the learner reads (src/lib/harness/build.ts).
+export const maxDuration = 300;
 
 async function loadProblem(slug: string) {
   const session = await requirePageSession();
@@ -28,6 +33,8 @@ export async function generateMetadata({ params }: PageProps<"/problems/[slug]">
 
 export default async function WorkspacePage({ params }: PageProps<"/problems/[slug]">) {
   const problem = await loadProblem((await params).slug);
+  // Problems from before harnesses (or whose build failed a while ago) get one while the learner reads.
+  if (needsHarness(problem.harness)) after(() => ensureProblemHarness(problem._id));
   const user = await getPageUser();
   const userId = String(user._id);
   const attempts = await Attempt.find({ problemId: problem._id, userId })

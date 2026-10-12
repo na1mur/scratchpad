@@ -1,10 +1,14 @@
 import { NextResponse, after, type NextRequest } from "next/server";
 import { handle, parseJson, requireUser } from "@/lib/api";
 import { deleteProblemCascade } from "@/lib/cascade";
+import { ensureProblemHarness } from "@/lib/harness/build";
 import { refreshProblemSource } from "@/lib/problemSource";
 import { getOwnedProblem, serializeProblem } from "@/lib/problems";
 import { updateProblemSchema } from "@/lib/schemas/problems";
 import { Problem } from "@/models/Problem";
+
+// Building the problem's harness (src/lib/harness/build.ts) runs in after() and takes a model call or two.
+export const maxDuration = 300;
 
 export function GET(req: NextRequest, ctx: RouteContext<"/api/problems/[id]">) {
   return handle(req, async () => {
@@ -28,22 +32,31 @@ export function PATCH(req: NextRequest, ctx: RouteContext<"/api/problems/[id]">)
       set.tags = input.tags;
       set.tagsSource = input.tags.length ? "user" : "none";
     }
-    const update: Record<string, Record<string, unknown>> = { $set: set };
+    const update: Record<string, Record<string, unknown>> = { $set: set, $unset: {} };
     const urlChanged = input.sourceUrl !== undefined && input.sourceUrl !== (existing.sourceUrl ?? "");
+    const statementChanged = input.statement !== undefined && input.statement !== existing.statement;
     if (urlChanged) {
       // The old page's text no longer applies; a new link is fetched after responding.
-      update.$unset = { sourceText: "", sourceFetchedAt: "" };
+      Object.assign(update.$unset, { sourceText: "", sourceFetchedAt: "" });
       if (input.sourceUrl) set.sourceUrl = input.sourceUrl;
       else update.$unset.sourceUrl = "";
     }
     // Reference solutions are looked up by link and title, so either change means looking again on the next run.
     if (urlChanged || (input.title !== undefined && input.title !== existing.title)) set.references = [];
+    // The test cases and signature come from the statement and the linked page: build them again.
+    if (urlChanged || statementChanged) update.$unset.harness = "";
+    if (!Object.keys(update.$unset).length) delete update.$unset;
     const updated = await Problem.findOneAndUpdate(
       { _id: existing._id, userId: session.userId },
       update,
       { returnDocument: "after" },
     ).lean();
-    if (urlChanged && input.sourceUrl) after(() => refreshProblemSource(existing._id, input.sourceUrl!));
+    if (urlChanged || statementChanged) {
+      after(async () => {
+        if (urlChanged && input.sourceUrl) await refreshProblemSource(existing._id, input.sourceUrl);
+        await ensureProblemHarness(existing._id);
+      });
+    }
     return NextResponse.json({ problem: serializeProblem(updated!) });
   });
 }

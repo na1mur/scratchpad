@@ -242,7 +242,7 @@ async function fromSearch(
 
 // Entry points ---------------------------------------------------------------
 
-function leetCodeSlug(sourceUrl: string | null | undefined): string | null {
+export function leetCodeSlug(sourceUrl: string | null | undefined): string | null {
   if (!sourceUrl) return null;
   try {
     const url = new URL(sourceUrl);

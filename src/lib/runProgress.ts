@@ -11,6 +11,8 @@ export type ProgressCase = {
   /** `running`: in the sandbox; `explaining`: ran, being narrated; `simulating`: traced by the model by hand. */
   state: "pending" | "running" | "explaining" | "simulating" | "done";
   actual?: string;
+  /** Whether `actual` matches `expected`, checked in code (only for problems with fixed test cases). */
+  passed?: boolean;
   steps?: number;
 };
 

@@ -1,12 +1,13 @@
 import "server-only";
 import type { LanguageModel } from "ai";
 import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
+import { isReady } from "@/lib/harness/types";
 import { storeSpec } from "@/lib/specStorage";
 import { Attempt, type AttemptDoc } from "@/models/Attempt";
 import { Problem } from "@/models/Problem";
-import { UsageMeter } from "./llm";
+import { UsageMeter, formatRunStats } from "./llm";
 import { traceAndDiagnose } from "./run";
-import { hasTestCases, understand, type Ctx, type Guidance } from "./stages";
+import { casesFromHarness, hasTestCases, traceCases, understand, type Ctx, type Guidance } from "./stages";
 
 /**
  * Re-runs stages 2–3 for an existing attempt with guidance from a follow-up
@@ -20,6 +21,8 @@ export async function regenerateSpec(opts: {
   statement: string;
   source?: string;
   reference?: string;
+  /** The problem's harness; when it's ready (and no new input was asked for), the run uses its fixed cases. */
+  harness?: unknown;
   guidance: Guidance;
   focusDescription?: string;
 }): Promise<{ specVersion: number; spec: VizSpec; usage: ReturnType<UsageMeter["snapshot"]> }> {
@@ -46,10 +49,15 @@ export async function regenerateSpec(opts: {
   const prior = attempt.understanding;
   const u = hasTestCases(prior) && !guidance.newTestInput ? prior : await understand(ctx, fullGuidance);
 
-  const { spec } = await traceAndDiagnose(ctx, u, { guidance: fullGuidance });
+  // A new input means cases of the model's choosing; otherwise the fixed ones, checked in code.
+  const harness = isReady(opts.harness) && !guidance.newTestInput ? opts.harness : undefined;
+  if (harness) ctx.harness = harness;
+  const traced = harness ? traceCases(ctx, casesFromHarness(harness), u, fullGuidance) : undefined;
+  const { spec } = await traceAndDiagnose(ctx, u, { guidance: fullGuidance, traced });
   const nextVersion = (attempt.specVersions?.length ?? 0) + 1;
   const stored = await storeSpec(String(attempt.userId), String(attempt.problemId), String(attempt._id), nextVersion, spec);
   const usage = meter.snapshot();
+  console.info(formatRunStats(`[pipeline] attempt ${attempt._id} regenerated as v${nextVersion}`, meter.report()));
 
   await Attempt.updateOne(
     { _id: attempt._id },

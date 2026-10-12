@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import {
   ChevronDownIcon,
+  CodeIcon,
   CopyPlusIcon,
   CpuIcon,
   EraserIcon,
@@ -63,6 +64,9 @@ import { caseView, stepRefs } from "@/lib/ai/schemas/vizSpec";
 import type { AttemptDetail, AttemptSummary } from "@/lib/attempts";
 import { ApiClientError, api, apiRaw, toApiError } from "@/lib/fetcher";
 import type { ProblemDetail } from "@/lib/problems";
+import { CodeRunner } from "./CodeRunner";
+import { TestCases } from "./TestCases";
+import { isRunLanguage } from "@/lib/runner/protocol";
 import { PROVIDER_LABELS, type ProviderId } from "@/lib/providers";
 import { createAttemptSchema, type CreateAttemptInput } from "@/lib/schemas/attempts";
 import { MAX_TEXT } from "@/lib/schemas/problems";
@@ -158,6 +162,7 @@ export function Workspace({
   const [mode, setMode] = useState<"new" | "view">(initialAttempt ? "view" : "new");
   const [loadingAttempt, setLoadingAttempt] = useState(false);
   const [confirmingNew, setConfirmingNew] = useState(false);
+  const [runnerOpen, setRunnerOpen] = useState(false);
   const [running, setRunning] = useState<Running | null>(
     initialAttempt && IN_PROGRESS.has(initialAttempt.status)
       ? { attemptId: initialAttempt.id, status: initialAttempt.status, progress: initialAttempt.progress }
@@ -450,6 +455,10 @@ export function Workspace({
     ready: mode === "view" && viewing?.status === "done" && Boolean(viewing.vizSpec) && !running && !loadingAttempt,
   });
 
+  // Edit & Run needs a language the browser can run and the problem's test cases.
+  const harness = problem.harness;
+  const runnable = isRunLanguage(problem.language) && harness.status === "ready" ? { language: problem.language, view: harness } : null;
+
   const left = (
     <div className="flex flex-col gap-4 p-4">
       <Collapsible defaultOpen={!initialAttempt}>
@@ -500,6 +509,9 @@ export function Workspace({
           <pre className="mt-3 max-h-64 overflow-auto rounded-lg border bg-tile p-3 font-sans text-sm whitespace-pre-wrap">
             {problem.statement}
           </pre>
+          <div className="mt-3">
+            <TestCases problemId={problem.id} initial={problem.harness} language={problem.language} />
+          </div>
         </CollapsibleContent>
       </Collapsible>
 
@@ -832,11 +844,35 @@ export function Workspace({
           )}
         </div>
         <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
-          <TabsList data-tour="tabs">
-            <TabsTrigger value="viz">Visualization</TabsTrigger>
-            <TabsTrigger value="diagnosis">Diagnosis</TabsTrigger>
-            <TabsTrigger value="hints">Hints</TabsTrigger>
-          </TabsList>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <TabsList data-tour="tabs">
+              <TabsTrigger value="viz">Visualization</TabsTrigger>
+              <TabsTrigger value="diagnosis">Diagnosis</TabsTrigger>
+              <TabsTrigger value="hints">Hints</TabsTrigger>
+            </TabsList>
+            {runnable && (
+              <Button
+                variant="soft"
+                size="sm"
+                onClick={() => setRunnerOpen(true)}
+                title="Edit the code shown below (with the lines added to complete it) and run it on the test cases, in your browser"
+                data-tour="edit-run"
+              >
+                <CodeIcon /> Edit &amp; run
+              </Button>
+            )}
+          </div>
+          {runnable && (
+            // Starts from the code the visualization shows: the completed code, added lines included.
+            <CodeRunner
+              open={runnerOpen}
+              onOpenChange={setRunnerOpen}
+              draftKey={`${viewing.id}-${viewing.specVersion}`}
+              initialCode={spec.codeLines.join("\n")}
+              language={runnable.language}
+              view={runnable.view}
+            />
+          )}
           <TabsContent value="viz" className="flex flex-col gap-3 pt-3">
             <div data-tour="cases">
               <CaseBar spec={spec} caseIndex={shownCase} onCaseChange={(ci) => showStep(ci, 0)} gives="Your code gives" />

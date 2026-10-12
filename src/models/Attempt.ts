@@ -60,6 +60,8 @@ const attemptSchema = new Schema(
       outputTokens: { type: Number, default: 0 },
       totalTokens: { type: Number, default: 0 },
     },
+    // Where the first run's time went (RunStats in src/lib/ai/pipeline/llm.ts), for tuning the pipeline.
+    runStats: { type: Schema.Types.Mixed, required: false },
     error: {
       code: { type: String, required: false },
       message: { type: String, required: false },

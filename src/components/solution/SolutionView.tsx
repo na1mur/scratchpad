@@ -3,7 +3,7 @@
 import { useEffect, useEffectEvent, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeftIcon, ChevronDownIcon, CopyPlusIcon, LightbulbIcon, RotateCcwIcon, SquareIcon, Trash2Icon, TriangleAlertIcon } from "lucide-react";
+import { ArrowLeftIcon, ChevronDownIcon, CodeIcon, CopyPlusIcon, LightbulbIcon, RotateCcwIcon, SquareIcon, Trash2Icon, TriangleAlertIcon } from "lucide-react";
 import { LoadingButton } from "@/components/loading-button";
 import { ShareButton } from "@/components/share/share-button";
 import { SourceLink } from "@/components/problems/source-link";
@@ -22,6 +22,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChangeModelLink } from "@/components/workspace/ChangeModelLink";
+import { CodeRunner } from "@/components/workspace/CodeRunner";
 import { ChatDock, chatOnSide, splitSizes, useChatDock } from "@/components/workspace/ChatDock";
 import { ProgressStepper } from "@/components/workspace/ProgressStepper";
 import { solutionProgressDetails } from "@/components/workspace/RunProgressDetails";
@@ -34,6 +35,7 @@ import { stepAt, stepRefs } from "@/lib/ai/schemas/vizSpec";
 import { ApiClientError, api, apiRaw, toApiError } from "@/lib/fetcher";
 import type { ProblemDetail } from "@/lib/problems";
 import type { SolutionDetail, SolutionSummary } from "@/lib/solutions";
+import { isRunLanguage } from "@/lib/runner/protocol";
 import { problemPath } from "@/lib/slug";
 import { playCompletionSound } from "@/lib/sounds";
 import type { TourId } from "@/lib/tours";
@@ -87,6 +89,7 @@ export function SolutionView({
   const [tab, setTab] = useState("walkthrough");
   const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
   const [newOpen, setNewOpen] = useState(false);
+  const [runnerOpen, setRunnerOpen] = useState(false);
   const [prefill, setPrefill] = useState<SolutionRequest | null>(null);
   const [deleting, setDeleting] = useState<"confirm" | "busy" | null>(null);
   const [starting, setStarting] = useState(false);
@@ -300,6 +303,13 @@ export function SolutionView({
   const content = viewing?.status === "done" ? viewing.content : null;
   const currentLine = (spec && stepAt(spec, caseIndex, playerIndex)?.line) ?? null;
   const viewingSummary = viewing ? (solutions.find((s) => s.id === viewing.id) ?? null) : null;
+  // Edit & run the solution itself, e.g. to try another way of solving it: a language the browser can run,
+  // and the problem's test cases.
+  const harness = problem.harness;
+  const runnable =
+    content && viewing && isRunLanguage(viewing.language) && harness.status === "ready"
+      ? { language: viewing.language, view: harness }
+      : null;
 
   useTour("solution", { seen: toursSeen, ready: Boolean(spec && content) && !loading });
 
@@ -401,6 +411,28 @@ export function SolutionView({
             requestNote: viewing.requestNote,
             basedOnAttemptVersion: viewing.basedOnAttemptVersion,
           }}
+          codeActions={
+            runnable && (
+              <Button
+                variant="soft"
+                size="sm"
+                onClick={() => setRunnerOpen(true)}
+                title="Edit this solution (or write your own) and run it on the test cases, in your browser"
+              >
+                <CodeIcon /> Edit &amp; run
+              </Button>
+            )
+          }
+        />
+      )}
+      {runnable && content && viewing && (
+        <CodeRunner
+          open={runnerOpen}
+          onOpenChange={setRunnerOpen}
+          draftKey={`solution-${viewing.id}`}
+          initialCode={content.codeLines.join("\n")}
+          language={runnable.language}
+          view={runnable.view}
         />
       )}
     </div>

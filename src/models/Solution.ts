@@ -38,6 +38,8 @@ const solutionSchema = new Schema(
       outputTokens: { type: Number, default: 0 },
       totalTokens: { type: Number, default: 0 },
     },
+    // Where the run's time went (RunStats in src/lib/ai/pipeline/llm.ts), for tuning the pipeline.
+    runStats: { type: Schema.Types.Mixed, required: false },
     // A RunProgress snapshot while the run is in progress (src/lib/runProgress.ts); removed when it settles.
     progress: { type: Schema.Types.Mixed, required: false },
     error: {

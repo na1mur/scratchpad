@@ -14,65 +14,30 @@ export const UNDERSTAND_ROLE = `Your job right now: understand what the learner 
   - expectedOutput: the CORRECT answer for that input, not what their code returns.
 - suggestedTags: up to 4 from this list only: ${TAGS.join(", ")}.`;
 
-/** How an instrumented program reports steps. Shared by the attempt and solution translators. */
-export const TRACE_API = `Inside run(), call trace({...}) at each meaningful moment: after initialization, at each comparison or decision, after each mutation, and at each return:
-trace({
-  line: 0-based index into codeLines of the statement just executed,
-  loop: { id: "<loop id>", index: <0-based iteration> },   // only inside a loop; use the innermost loop
-  event: "init" | "compare" | "swap" | "insert" | "remove" | "push" | "pop" | "visit" | "recurse" | "return" | "update" | "output",
-  states: { <structureId>: S.<helper>(value), ... },    // structures you omit keep their previous snapshot
-  pointers: [{ structureId, name, index }],             // array/string index; nodeId(node) for tree or list nodes; node id for graphs; "r,c" for matrix cells
-  highlights: [{ structureId, targets: [...], tone: "active" | "compare" | "success" | "error" | "visited" }]
-})
+/** UNDERSTAND_ROLE for a problem whose test cases are fixed (its harness is ready). */
+export const UNDERSTAND_FIXED_ROLE = `Your job right now: understand what the learner is trying to do, before their code is run.
+- Restate the problem briefly and describe their approach back to them in their own terms, even if it's wrong.
+- List the properties their approach silently relies on.
+- The test cases are fixed and listed in <test_cases>, with their correct answers; their code will run on every one. Use them to judge where the reasoning may break.
+- suggestedTags: up to 4 from this list only: ${TAGS.join(", ")}.`;
 
-Snapshot helpers already exist in scope and copy their argument:
-S.array(arr), S.string(str), S.hashmap(mapOrPlainObject), S.set(setOrArray), S.stack(arrBottomFirst), S.queue(arrFrontFirst),
-S.linkedList(headNode, { value: "val", next: "next" }), S.tree(rootNode, { value: "val", left: "left", right: "right" }) or S.tree(root, { value: "val", children: "children" }),
-S.graph(adjacency, directed) where adjacency is { node: [neighbor or [neighbor, weight], ...] } or a Map, S.matrix(rows), S.vars({ name: value, ... }).
-nodeId(nodeObject) gives the id a tree/list node has in snapshots.`;
+export const TRANSLATE_ROLE = `Your job right now: complete the learner's code and translate it into plain JavaScript that behaves EXACTLY like their logic, including every bug, off-by-one, wrong comparison or missing case. Never fix anything. Where the pseudo-code is ambiguous, choose the reading closest to what they literally wrote.
 
-export const TRACE_RULES = `- Aim for 15–60 trace() calls on the given input. Trace every loop iteration at least once. Never exceed 400.
-- Build trees, lists and graphs from the arguments inside run().
-- For recursion, keep an array of call labels like "dfs(3)", push/pop it around calls, and snapshot it with S.stack(...) under a structure of kind "stack" (e.g. id "calls").`;
-
-export const TRACE_EXAMPLE = `Example:
-function run(input) {
-  var nums = input.nums, left = 0, right = nums.length - 1;
-  trace({ line: 0, event: "init", states: { nums: S.array(nums), vars: S.vars({ left: left, right: right }) },
-          pointers: [{ structureId: "nums", name: "left", index: left }, { structureId: "nums", name: "right", index: right }] });
-  var it = 0;
-  while (left < right) {
-    var sum = nums[left] + nums[right];
-    trace({ line: 2, loop: { id: "while", index: it }, event: "compare", states: { vars: S.vars({ left: left, right: right, sum: sum }) },
-            highlights: [{ structureId: "nums", targets: [left, right], tone: "compare" }] });
-    // ...
-    it++;
-  }
-}`;
-
-export const TRANSLATE_ROLE = `Your job right now: translate the learner's pseudo-code into an instrumented JavaScript program that behaves EXACTLY like their logic, including every bug, off-by-one, wrong comparison or missing case. Never fix anything. Where the pseudo-code is ambiguous, choose the reading closest to what they literally wrote.
-
-Complete the code before you trace it. Pseudo-code is often a fragment: no function header, no return, a variable used before it's set. Work out what the learner is trying to achieve from their code and idea, then add only what's needed to make it a whole, runnable program:
-- a function header whose parameters are the argument names in the test input, and a return of whatever their code and idea say holds the answer;
+Complete the code before you translate it. Pseudo-code is often a fragment: no function header, no return, a variable used before it's set. Work out what the learner is trying to achieve from their code and idea, then add only what's needed to make it a whole, runnable program:
+- a function header whose parameters are the argument names in the test input (named as in <signature> when it's given), and a return of whatever their code and idea say holds the answer;
 - any setup they clearly assumed but didn't write (e.g. a variable they read before assigning).
 Never change their approach: don't add, remove or reorder their statements, and don't add guards, edge-case checks, conditions or updates that change what their lines do. Their bugs must survive. Write added lines in the same style as theirs, and list their 0-based indexes in addedLines (empty if nothing was added).
+When they write Python, JavaScript or TypeScript, the completed code must be valid code in that language that runs as is (the function plus any helper it calls), so they can edit and run it themselves. In any other language, keep their style.
 
 The same program is run on every one of the <test_cases>, so it must work from whatever input it's given, not just the first case. Never special-case an input.
 
 Return:
-- codeLines: their completed pseudo-code, one statement per line, with nesting shown by indentation. Keep their names and wording.
+- codeLines: their completed code, one statement per line, with nesting shown by indentation. Keep their names and wording.
 - addedLines: 0-based indexes of the lines in codeLines that you added to complete it.
-- structures: the data worth showing (at most 6), each {id, label, kind}. kind is one of array, string, hashmap, set, stack, queue, linkedList, tree, graph, matrix, variables. Always include {id: "vars", label: "Variables", kind: "variables"} for scalar variables.
-- loops: every loop in codeLines as {id, label (e.g. "while left < right"), line (0-based index into codeLines)}.
-- program: plain JavaScript (ES2020; no imports, async, timers or I/O) that defines function run(input). input is the parsed arguments object. Return what their code returns.
-
-${TRACE_API}
-
-Rules:
-${TRACE_RULES}
-- Highlight with tone "error" only where values are clearly wrong; you don't decide bugs here.
-
-${TRACE_EXAMPLE}`;
+- program: plain JavaScript (ES2020; no imports, async, timers or I/O) that mirrors codeLines statement by statement, with the same function and variable names, plus a function run(input) that takes the parsed arguments object, builds linked lists and trees with toList(array) (toList(array, pos) for a list whose tail links back to index pos) and toTree(levelOrderArray) (LeetCode-style ListNode and TreeNode objects with val, next, left and right; the ListNode and TreeNode classes exist too), calls their function and returns what it returns. Keep their language's semantics (Python's // is Math.floor(a / b), a negative index counts from the end, range(a, b) stops before b, a dict is a Map or an object).
+  End the first line of every statement that implements a line of codeLines with the marker comment //@n, where n is that line's 0-based index in codeLines, e.g. \`let left = 0; //@3\` or \`while (left < right) { //@4\`. Only statements of their logic get markers; run() and input conversions get none. Don't record steps yourself: the program is traced automatically at every marked statement.
+- structures: the data worth showing (at most 6), each {variable, label, kind}: the program variable that holds it (e.g. "nums", "seen", "head") and its kind: array, string, hashmap, set, stack, queue, linkedList, tree, graph or matrix. Scalar variables are shown automatically; don't list them.
+- pointers: variables that point into a structure, each {variable, structure}: an integer index into an array or string (left and right into nums) or a node variable into a list or tree (slow and fast into head).`;
 
 export const NARRATE_ROLE = `Your job right now: narrate an execution trace of the learner's code for them.
 For every step id you're given, write:

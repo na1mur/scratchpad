@@ -3,6 +3,7 @@ import { Types, type QueryFilter } from "mongoose";
 import { ApiError } from "@/lib/api";
 import { connectDB } from "@/lib/db";
 import { PAGE_SIZE, type ListProblemsQuery } from "@/lib/schemas/problems";
+import { harnessView } from "@/lib/harness/types";
 import { problemSlugBase } from "@/lib/slug";
 import { TAGS, type Tag } from "@/lib/tags";
 import { Problem, type ProblemDoc } from "@/models/Problem";
@@ -28,6 +29,8 @@ export function serializeProblem(p: ProblemDoc) {
     statement: p.statement,
     sourceUrl: p.sourceUrl ?? null,
     language: p.language,
+    // The fixed test cases (never the reference solution behind them).
+    harness: harnessView(p.harness),
     latestAttemptId: p.latestAttemptId ? String(p.latestAttemptId) : null,
     createdAt: p.createdAt.toISOString(),
   };
