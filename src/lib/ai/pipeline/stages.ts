@@ -37,6 +37,7 @@ import {
   type VizSpec,
 } from "@/lib/ai/schemas/vizSpec";
 import { PipelineError, generateStructured, type UsageMeter } from "./llm";
+import type { ProgressTracker } from "./progress";
 import { runInSandbox, type SandboxResult } from "./sandbox";
 import { collapseSteps, describeSteps, eventsToSteps } from "./steps";
 
@@ -54,6 +55,8 @@ export type Ctx = {
   reference?: string;
   /** Fires when the learner stops the run. */
   signal?: AbortSignal;
+  /** Partial output shown while the run works; absent for runs nobody watches (regenerations). */
+  progress?: ProgressTracker;
 };
 
 function withReference(ctx: Ctx) {
@@ -275,9 +278,17 @@ async function executeAll(
       if (err instanceof PipelineError && err.code === "invalid_output") return null;
       throw err;
     }
+    ctx.progress?.update((p) => {
+      p.program = { lines: t.codeLines.length, added: t.addedLines.length };
+      for (const c of p.cases ?? []) c.state = "running";
+    });
     const { runs, problem } = await runOnCases(t, cases, t.codeLines.length);
     if (!problem) return { t, runs };
     feedback = problem;
+    ctx.progress?.update((p) => {
+      p.program = { lines: t.codeLines.length, added: t.addedLines.length, retrying: true };
+      for (const c of p.cases ?? []) c.state = "pending";
+    });
   }
   return null;
 }
@@ -479,6 +490,14 @@ async function traceBySimulation(
  */
 export async function traceCases(ctx: Ctx, u: Understanding, guidance?: Guidance): Promise<TraceResult> {
   const cases = casesOf(u);
+  const finished = (t: CaseTrace) => {
+    ctx.progress?.updateCase(t.id, { state: "done", actual: t.actualOutput, steps: t.steps.length });
+    return t;
+  };
+  ctx.progress?.update((p) => {
+    p.cases = cases.map((c) => ({ id: c.id, label: c.label, description: c.description, expected: c.expected, state: "pending" }));
+  });
+
   const exec = await executeAll(ctx, cases, guidance);
   const traces: (CaseTrace | null)[] = cases.map(() => null);
   let shared: { codeLines: string[]; addedLines: number[] };
@@ -486,9 +505,15 @@ export async function traceCases(ctx: Ctx, u: Understanding, guidance?: Guidance
     shared = { codeLines: exec.t.codeLines, addedLines: exec.t.addedLines };
   } else {
     // With no translation at all, the first simulation completes the code the others then share.
+    ctx.progress?.update((p) => {
+      p.simulating = true;
+      delete p.program;
+      for (const c of p.cases ?? []) c.state = "pending";
+    });
+    ctx.progress?.updateCase(cases[0].id, { state: "simulating" });
     const sim = await traceBySimulation(ctx, cases[0], guidance);
     shared = { codeLines: sim.codeLines, addedLines: sim.addedLines };
-    traces[0] = sim.trace;
+    traces[0] = finished(sim.trace);
   }
 
   await Promise.all(
@@ -497,17 +522,20 @@ export async function traceCases(ctx: Ctx, u: Understanding, guidance?: Guidance
       const run = exec?.runs[i];
       if (exec && run) {
         const steps = prefixStepIds(c.id, collapseSteps(run.steps, exec.t.loops));
-        traces[i] = {
+        const actualOutput = actualOutputOf(run.result);
+        ctx.progress?.updateCase(c.id, { state: "explaining", actual: actualOutput, steps: steps.length });
+        traces[i] = finished({
           ...c,
           mode: "execution",
           structures: exec.t.structures,
           loops: exec.t.loops,
           steps: await narrate(ctx, u, c, shared.codeLines, steps, run.result),
-          actualOutput: actualOutputOf(run.result),
+          actualOutput,
           runNote: runNoteFor(run.result),
-        };
+        });
       } else {
-        traces[i] = (await traceBySimulation(ctx, c, guidance, shared)).trace;
+        ctx.progress?.updateCase(c.id, { state: "simulating" });
+        traces[i] = finished((await traceBySimulation(ctx, c, guidance, shared)).trace);
       }
     }),
   );

@@ -54,6 +54,7 @@ import { CodeEditor } from "@/components/workspace/CodeEditor";
 import { useNotebookUpload, type UploadedImage } from "@/components/workspace/NotebookUpload";
 import { ProblemActions } from "@/components/workspace/ProblemActions";
 import { ProgressStepper } from "@/components/workspace/ProgressStepper";
+import { attemptProgressDetails } from "@/components/workspace/RunProgressDetails";
 import { UsageBadge } from "@/components/workspace/UsageBadge";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { caseView, stepRefs } from "@/lib/ai/schemas/vizSpec";
@@ -65,14 +66,18 @@ import { createAttemptSchema, type CreateAttemptInput } from "@/lib/schemas/atte
 import { MAX_TEXT } from "@/lib/schemas/problems";
 import { readSSE } from "@/lib/sse";
 import { VERDICT_LABELS } from "@/lib/verdicts";
+import type { RunProgress } from "@/lib/runProgress";
 import type { AttemptStatus } from "@/models/Attempt";
 import type { ChatLayout } from "@/models/User";
 
 type StreamEvent =
   | { type: "attempt"; attemptId: string; version: number }
   | { type: "status"; status: AttemptStatus }
+  | { type: "progress"; progress: RunProgress }
   | { type: "done"; attemptId: string }
   | { type: "error"; code: string; message: string; discarded?: boolean };
+
+type Running = { attemptId: string | null; status: AttemptStatus; progress?: RunProgress | null };
 
 const IN_PROGRESS = new Set<AttemptStatus>(["queued", "extracting", "understanding", "tracing", "diagnosing"]);
 
@@ -146,9 +151,9 @@ export function Workspace({
   const [mode, setMode] = useState<"new" | "view">(initialAttempt ? "view" : "new");
   const [loadingAttempt, setLoadingAttempt] = useState(false);
   const [confirmingNew, setConfirmingNew] = useState(false);
-  const [running, setRunning] = useState<{ attemptId: string | null; status: AttemptStatus } | null>(
+  const [running, setRunning] = useState<Running | null>(
     initialAttempt && IN_PROGRESS.has(initialAttempt.status)
-      ? { attemptId: initialAttempt.id, status: initialAttempt.status }
+      ? { attemptId: initialAttempt.id, status: initialAttempt.status, progress: initialAttempt.progress }
       : null,
   );
   const [streaming, setStreaming] = useState(false);
@@ -218,7 +223,7 @@ export function Workspace({
         const { attempt } = await api<{ attempt: AttemptDetail }>(`/api/attempts/${attemptId}`);
         if (token !== pollToken.current) return;
         if (IN_PROGRESS.has(attempt.status)) {
-          setRunning({ attemptId, status: attempt.status });
+          setRunning({ attemptId, status: attempt.status, progress: attempt.progress });
           return;
         }
         clearInterval(timer);
@@ -283,7 +288,9 @@ export function Workspace({
             ...list,
           ]);
         } else if (e.type === "status" && attemptId) {
-          setRunning({ attemptId, status: e.status });
+          setRunning((r) => r && { ...r, status: e.status });
+        } else if (e.type === "progress" && attemptId) {
+          setRunning((r) => r && { ...r, progress: e.progress });
         } else if (e.type === "done") {
           finished = true;
           setRunning(null);
@@ -313,7 +320,10 @@ export function Workspace({
     } finally {
       setStreaming(false);
       // Stream dropped mid-run: the polling effect takes over.
-      if (!finished && attemptId) setRunning({ attemptId, status: "tracing" });
+      if (!finished && attemptId) {
+        const id = attemptId;
+        setRunning((r) => ({ attemptId: id, status: "tracing", progress: r?.progress }));
+      }
     }
   }
 
@@ -665,12 +675,12 @@ export function Workspace({
   let right: React.ReactNode;
   if (running) {
     right = (
-      <div className="mx-auto flex w-full max-w-md flex-col gap-6 p-8" role="status" aria-live="polite">
+      <div className="mx-auto flex w-full max-w-lg flex-col gap-6 p-8" role="status" aria-live="polite">
         <div>
           <h2 className="font-medium">Working on it</h2>
           <p className="text-sm text-muted-foreground">This usually takes under a minute. Keep this tab open until it finishes.</p>
         </div>
-        <ProgressStepper status={running.status} />
+        <ProgressStepper status={running.status} details={attemptProgressDetails(running.progress)} />
         <LoadingButton
           variant="outline"
           className="self-start"

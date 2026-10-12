@@ -18,6 +18,7 @@ import { User } from "@/models/User";
 import { emit } from "./events";
 import { endRun, startRun } from "./cancel";
 import { PipelineError, RunCancelledError, UsageMeter, throwIfCancelled } from "./llm";
+import { ProgressTracker } from "./progress";
 import {
   assemble,
   diagnose,
@@ -48,13 +49,16 @@ export async function traceAndDiagnose(
 
   await opts.onStage?.("diagnosing");
   let d = await diagnose(ctx, u, trace);
+  ctx.progress?.update((p) => void (p.check = "checking"));
   const check = await revealsSolution(ctx, diagnosisText(d));
   if (check.reveals) {
+    ctx.progress?.update((p) => void (p.check = "rewording"));
     d = await diagnose(ctx, u, trace, true);
     // Still leaking after one stricter retry: drop the hints and the new angle rather than ship them.
     const recheck = await revealsSolution(ctx, diagnosisText(d));
     if (recheck.reveals) d = { ...d, thinkingHints: [], shiftInThinking: "" };
   }
+  ctx.progress?.update((p) => void (p.check = "done"));
 
   const spec = assemble(trace, d, u);
   const parsed = vizSpecSchema.safeParse(spec);
@@ -76,6 +80,11 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
   if (!attempt) return;
   const meter = new UsageMeter();
   const signal = startRun(attemptId);
+  // Only while it's still running, so a late snapshot can't land on a finished or removed attempt.
+  const progress = new ProgressTracker(async (snapshot) => {
+    await Attempt.updateOne({ _id: attemptId, status: { $nin: ["done", "error"] } }, { $set: { progress: snapshot } });
+    emit(attemptId, { type: "progress", progress: snapshot });
+  });
 
   try {
     const [problem, user] = await Promise.all([
@@ -101,11 +110,13 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
       },
       reference: reference?.text,
       signal,
+      progress,
     };
 
     await setStatus(attemptId, "understanding", signal);
     const u = await understand(ctx);
     await Attempt.updateOne({ _id: attemptId }, { $set: { understanding: u } });
+    progress.update((p) => void (p.approach = u.userApproachInOwnWords));
 
     const { spec, mode } = await traceAndDiagnose(ctx, u, { onStage: (s) => setStatus(attemptId, s, signal) });
 
@@ -114,6 +125,7 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
     throwIfCancelled(signal);
     const finalSpec: VizSpec = autoTags.length ? { ...spec, autoTags } : spec;
     const stored = await storeSpec(String(attempt.userId), String(attempt.problemId), attemptId, 1, finalSpec);
+    await progress.flush();
 
     await Attempt.updateOne(
       { _id: attemptId },
@@ -125,6 +137,7 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
           specVersions: [{ createdAt: new Date(), reason: "Initial run", ...stored }],
           tokenUsage: meter.snapshot(),
         },
+        $unset: { progress: 1 },
       },
     );
     await Problem.updateOne(
@@ -161,7 +174,7 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
     if (!discarded) {
       await Attempt.updateOne(
         { _id: attemptId },
-        { $set: { status: "error", error: safe, tokenUsage: meter.snapshot() } },
+        { $set: { status: "error", error: safe, tokenUsage: meter.snapshot() }, $unset: { progress: 1 } },
       ).catch(() => {});
       emit(attemptId, { type: "status", status: "error" });
     }

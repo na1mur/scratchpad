@@ -7,7 +7,7 @@ import type { AttemptStatus } from "@/models/Attempt";
 type Stage = { status: string; label: string; detail: string };
 
 const STAGES: Stage[] = [
-  { status: "understanding", label: "Understanding your approach", detail: "Reading your pseudo-code and picking a test input" },
+  { status: "understanding", label: "Understanding your approach", detail: "Reading your pseudo-code and picking test cases" },
   { status: "tracing", label: "Running it step by step", detail: "Executing your logic in a sandbox and recording each step" },
   { status: "diagnosing", label: "Finding where it breaks", detail: "Comparing what happens with what should happen" },
 ];
@@ -19,11 +19,14 @@ export function ProgressStepper({
   status,
   stages = STAGES,
   order = ORDER,
+  details,
 }: {
   status: string;
   stages?: Stage[];
   /** Every status in run order, including ones before the first stage and "done". */
   order?: readonly string[];
+  /** What a stage has produced so far, keyed by its status, shown under its description. */
+  details?: Partial<Record<string, React.ReactNode>>;
 }) {
   const at = order.indexOf(status);
   const firstIdx = order.indexOf(stages[0].status);
@@ -54,7 +57,7 @@ export function ProgressStepper({
               </span>
               {!isLast && <span className={cn("my-1 w-px flex-1", state === "done" ? "bg-viz-success/60" : "bg-border")} />}
             </div>
-            <div className={cn("pb-5", isLast && "pb-0")}>
+            <div className={cn("min-w-0 flex-1 pb-5", isLast && "pb-0")}>
               <p className={cn("text-sm font-medium", state === "pending" && "text-muted-foreground")}>
                 {stage.label}
                 <span className="sr-only">
@@ -62,6 +65,12 @@ export function ProgressStepper({
                 </span>
               </p>
               <p className="text-xs text-muted-foreground">{stage.detail}</p>
+              {/* The step headings already announce progress; every partial result would be too chatty. */}
+              {state !== "pending" && details?.[stage.status] && (
+                <div aria-live="off" className="mt-2">
+                  {details[stage.status]}
+                </div>
+              )}
             </div>
           </li>
         );

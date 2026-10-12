@@ -1,10 +1,12 @@
 import "server-only";
 import { EventEmitter } from "node:events";
+import type { RunProgress } from "@/lib/runProgress";
 import type { AttemptStatus } from "@/models/Attempt";
 import type { SolutionStatus } from "@/models/Solution";
 
 export type PipelineEvent =
   | { type: "status"; status: AttemptStatus; detail?: string }
+  | { type: "progress"; progress: RunProgress }
   | { type: "done"; attemptId: string }
   // `discarded`: the failed run was removed instead of being kept as an attempt.
   | { type: "error"; code: string; message: string; discarded?: boolean };

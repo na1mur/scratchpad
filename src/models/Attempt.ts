@@ -45,6 +45,8 @@ const attemptSchema = new Schema(
     images: { type: [imageSchema], default: [] },
     status: { type: String, enum: ATTEMPT_STATUSES, default: "queued", required: true },
     understanding: { type: Schema.Types.Mixed, required: false },
+    // A RunProgress snapshot while the run is in progress (src/lib/runProgress.ts); removed when it's done.
+    progress: { type: Schema.Types.Mixed, required: false },
     vizSpec: { type: Schema.Types.Mixed, required: false },
     specR2Key: { type: String, required: false },
     specVersions: { type: [specVersionSchema], default: [] },

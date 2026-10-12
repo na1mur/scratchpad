@@ -4,6 +4,7 @@ import { ApiError } from "@/lib/api";
 import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
 import { connectDB } from "@/lib/db";
 import { r2Enabled, viewUrl } from "@/lib/r2";
+import type { RunProgress } from "@/lib/runProgress";
 import { loadSpec } from "@/lib/specStorage";
 import type { Verdict } from "@/lib/verdicts";
 import { Attempt, type AttemptDoc, type AttemptStatus } from "@/models/Attempt";
@@ -72,6 +73,8 @@ export async function serializeAttempt(a: AttemptDoc, specVersion?: number) {
     tokenUsage: a.tokenUsage
       ? { inputTokens: a.tokenUsage.inputTokens, outputTokens: a.tokenUsage.outputTokens, totalTokens: a.tokenUsage.totalTokens }
       : null,
+    // What the run has produced so far, while it's in progress (see src/lib/runProgress.ts).
+    progress: IN_PROGRESS.has(a.status) ? ((a.progress as RunProgress | undefined) ?? null) : null,
     error: a.status === "error" && a.error?.message ? { code: a.error.code ?? "error", message: a.error.message } : null,
     // The public link's token while it's shared (see src/lib/shares.ts).
     shareToken: (await Share.findOne({ kind: "attempt", targetId: a._id }).select({ token: 1 }).lean())?.token ?? null,
