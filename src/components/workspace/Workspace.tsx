@@ -49,7 +49,7 @@ import { ShareButton } from "@/components/share/share-button";
 import { FixAttemptButton } from "@/components/solution/FixAttemptButton";
 import { SolutionButton } from "@/components/solution/SolutionButton";
 import { ChangeModelLink } from "@/components/workspace/ChangeModelLink";
-import { ChatDock, useChatDock } from "@/components/workspace/ChatDock";
+import { ChatDock, chatOnSide, splitSizes, useChatDock } from "@/components/workspace/ChatDock";
 import { DeleteAttemptButton } from "@/components/workspace/DeleteAttemptButton";
 import { CodeEditor } from "@/components/workspace/CodeEditor";
 import { useNotebookUpload, type UploadedImage } from "@/components/workspace/NotebookUpload";
@@ -721,6 +721,9 @@ export function Workspace({
   );
 
   let right: React.ReactNode;
+  // A finished run's chat: under the run, or in a third column on the right.
+  let chat: React.ReactNode = null;
+  const sideChat = chatOnSide(chatDock, isDesktop);
   if (running) {
     right = (
       <div className="mx-auto flex w-full max-w-lg flex-col gap-6 p-8" role="status" aria-live="polite">
@@ -774,6 +777,21 @@ export function Workspace({
       setPlayerIndex(si);
       setTab("viz");
     };
+    chat = (
+      <ChatDock
+        key={viewing.id}
+        dock={chatDock}
+        side={sideChat}
+        endpoint={`/api/attempts/${viewing.id}/messages`}
+        specVersion={viewing.specVersion}
+        caseId={spec.cases[shownCase].id}
+        stepRefs={stepRefs(spec)}
+        selectedStepIds={selectedSteps}
+        onToggleStep={toggleStep}
+        onClearSelection={() => setSelectedSteps([])}
+        onSpecVersion={(v) => void loadAttempt(viewing.id, v)}
+      />
+    );
     right = (
       <div className="flex flex-col gap-3 p-4">
         <div className="flex flex-wrap items-center gap-2" data-tour="verdict">
@@ -843,18 +861,7 @@ export function Workspace({
             <HintsPanel key={`${viewing.id}-${viewing.specVersion}`} spec={spec} onJumpToStep={showStep} />
           </TabsContent>
         </Tabs>
-        <ChatDock
-          key={viewing.id}
-          dock={chatDock}
-          endpoint={`/api/attempts/${viewing.id}/messages`}
-          specVersion={viewing.specVersion}
-          caseId={spec.cases[shownCase].id}
-          stepRefs={stepRefs(spec)}
-          selectedStepIds={selectedSteps}
-          onToggleStep={toggleStep}
-          onClearSelection={() => setSelectedSteps([])}
-          onSpecVersion={(v) => void loadAttempt(viewing.id, v)}
-        />
+        {!sideChat && chat}
       </div>
     );
   } else if (failure) {
@@ -905,17 +912,27 @@ export function Workspace({
     );
   }
 
+  const sizes = splitSizes(sideChat && chat !== null);
+
   return (
     // Inline style, because the library's own inline `height: 100%` would beat a height class. The extra 1px is
     // the header's bottom border.
     <ResizablePanelGroup orientation="horizontal" style={{ height: "calc(100dvh - 3.5rem - 1px)" }}>
-      <ResizablePanel defaultSize="38%" minSize="25%" className="overflow-y-auto bg-paper">
+      <ResizablePanel id="left" defaultSize={sizes.left} minSize="25%" className="overflow-y-auto bg-paper">
         {left}
       </ResizablePanel>
       <ResizableHandle withHandle />
-      <ResizablePanel defaultSize="62%" minSize="35%" className="overflow-y-auto bg-paper">
+      <ResizablePanel id="right" defaultSize={sizes.right} minSize="35%" className="overflow-y-auto bg-paper">
         {right}
       </ResizablePanel>
+      {sideChat && chat !== null && (
+        <>
+          <ResizableHandle withHandle />
+          <ResizablePanel id="chat" defaultSize={sizes.chat} minSize="18%" className="bg-tile">
+            {chat}
+          </ResizablePanel>
+        </>
+      )}
     </ResizablePanelGroup>
   );
 }

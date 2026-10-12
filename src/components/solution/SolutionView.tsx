@@ -22,7 +22,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChangeModelLink } from "@/components/workspace/ChangeModelLink";
-import { ChatDock, useChatDock } from "@/components/workspace/ChatDock";
+import { ChatDock, chatOnSide, splitSizes, useChatDock } from "@/components/workspace/ChatDock";
 import { ProgressStepper } from "@/components/workspace/ProgressStepper";
 import { solutionProgressDetails } from "@/components/workspace/RunProgressDetails";
 import { UsageBadge } from "@/components/workspace/UsageBadge";
@@ -407,6 +407,9 @@ export function SolutionView({
   );
 
   let right: React.ReactNode;
+  // A finished solution's chat: under the walkthrough, or in a third column on the right.
+  let chat: React.ReactNode = null;
+  const sideChat = chatOnSide(chatDock, isDesktop);
   if (loading) {
     right = (
       <div className="flex flex-col gap-3 p-4">
@@ -481,6 +484,30 @@ export function SolutionView({
       </div>
     );
   } else {
+    chat = (
+      <ChatDock
+        key={viewing.id}
+        dock={chatDock}
+        side={sideChat}
+        endpoint={`/api/solutions/${viewing.id}/messages`}
+        title="Ask about this solution"
+        example={<>e.g. &ldquo;Why does this loop start at 1?&rdquo; or &ldquo;Can it be done in O(1) space?&rdquo;</>}
+        caseId={spec.cases[Math.min(caseIndex, spec.cases.length - 1)].id}
+        stepRefs={stepRefs(spec)}
+        selectedStepIds={selectedSteps}
+        onToggleStep={toggleStep}
+        onClearSelection={() => setSelectedSteps([])}
+        onProposal={
+          canGenerate
+            ? (p) => {
+                if (buildsOnAttempt(p.kind)) return;
+                setPrefill({ kind: p.kind, note: p.note });
+                setNewOpen(true);
+              }
+            : undefined
+        }
+      />
+    );
     right = (
       <div className="flex flex-col gap-3 p-4">
         <SolutionWalkthrough
@@ -498,27 +525,7 @@ export function SolutionView({
           onToggleStep={toggleStep}
           badge={<UsageBadge attempt={viewing} executionLabel="Traced by running the solution in a sandbox" />}
         />
-        <ChatDock
-          key={viewing.id}
-          dock={chatDock}
-          endpoint={`/api/solutions/${viewing.id}/messages`}
-          title="Ask about this solution"
-          example={<>e.g. &ldquo;Why does this loop start at 1?&rdquo; or &ldquo;Can it be done in O(1) space?&rdquo;</>}
-          caseId={spec.cases[Math.min(caseIndex, spec.cases.length - 1)].id}
-          stepRefs={stepRefs(spec)}
-          selectedStepIds={selectedSteps}
-          onToggleStep={toggleStep}
-          onClearSelection={() => setSelectedSteps([])}
-          onProposal={
-            canGenerate
-              ? (p) => {
-                  if (buildsOnAttempt(p.kind)) return;
-                  setPrefill({ kind: p.kind, note: p.note });
-                  setNewOpen(true);
-                }
-              : undefined
-          }
-        />
+        {!sideChat && chat}
       </div>
     );
   }
@@ -562,17 +569,27 @@ export function SolutionView({
     );
   }
 
+  const sizes = splitSizes(sideChat && chat !== null);
+
   return (
     <>
       {/* Same sizing as the workspace: the header is 3.5rem plus a 1px border. */}
       <ResizablePanelGroup orientation="horizontal" style={{ height: "calc(100dvh - 3.5rem - 1px)" }}>
-        <ResizablePanel defaultSize="38%" minSize="25%" className="overflow-y-auto bg-paper">
+        <ResizablePanel id="left" defaultSize={sizes.left} minSize="25%" className="overflow-y-auto bg-paper">
           {left}
         </ResizablePanel>
         <ResizableHandle withHandle />
-        <ResizablePanel defaultSize="62%" minSize="35%" className="overflow-y-auto bg-paper">
+        <ResizablePanel id="right" defaultSize={sizes.right} minSize="35%" className="overflow-y-auto bg-paper">
           {right}
         </ResizablePanel>
+        {sideChat && chat !== null && (
+          <>
+            <ResizableHandle withHandle />
+            <ResizablePanel id="chat" defaultSize={sizes.chat} minSize="18%" className="bg-tile">
+              {chat}
+            </ResizablePanel>
+          </>
+        )}
       </ResizablePanelGroup>
       {dialogs}
     </>

@@ -11,7 +11,7 @@ export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 export const ROLES = ["user", "admin"] as const;
 export type Role = (typeof ROLES)[number];
 
-/** Where the follow-up chat sits: under the run, or in a drawer from the right. */
+/** Where the follow-up chat sits: under the run, or in a column on the right ("drawer" is the stored name). */
 export const CHAT_LAYOUTS = ["inline", "drawer"] as const;
 export type ChatLayout = (typeof CHAT_LAYOUTS)[number];
 

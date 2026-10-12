@@ -59,7 +59,6 @@ export function ChatPanel({
   onProposal,
   layout = "inline",
   onLayoutChange,
-  onClose,
 }: {
   endpoint: string;
   title?: string;
@@ -77,8 +76,6 @@ export function ChatPanel({
   onProposal?: (proposal: Proposal) => void;
   layout?: ChatLayout;
   onLayoutChange?: (layout: ChatLayout) => void;
-  /** Drawer only: hides it. */
-  onClose?: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -106,7 +103,8 @@ export function ChatPanel({
   }, [messages?.length, pending?.text]);
 
   const stepLabel = (id: string) => stepRefs.get(id)?.label;
-  const drawer = layout === "drawer";
+  /** In its own column on the right (stored as "drawer", from when it was one). */
+  const side = layout === "drawer";
 
   /** Clears the conversation on the server; the next question starts without any earlier context. */
   async function startOver() {
@@ -160,18 +158,18 @@ export function ChatPanel({
 
   return (
     <section
-      className={cn("flex flex-col gap-3 bg-tile p-3", drawer ? "h-full min-h-0" : "rounded-lg border")}
+      className={cn("flex flex-col gap-3 bg-tile p-3", side ? "h-full min-h-0" : "rounded-lg border")}
       aria-label={title}
     >
       <header className="flex items-center gap-2">
         <MessageCircleQuestionIcon className="size-4 shrink-0 text-muted-foreground" />
         <h3 className="min-w-0 truncate text-sm font-medium">{title}</h3>
-        {!drawer && (
+        {!side && (
           <span className="ml-auto hidden text-xs text-muted-foreground xl:inline">
             Shift-click timeline steps to ask about them
           </span>
         )}
-        <div className={cn("flex shrink-0 items-center", drawer ? "ml-auto" : "ml-auto xl:ml-0")}>
+        <div className={cn("flex shrink-0 items-center", side ? "ml-auto" : "ml-auto xl:ml-0")}>
           <IconButton
             label="New conversation"
             disabled={Boolean(pending) || !messages?.length}
@@ -181,23 +179,18 @@ export function ChatPanel({
           </IconButton>
           {onLayoutChange && (
             <IconButton
-              label={drawer ? "Show under the run" : "Move to a side drawer"}
+              label={side ? "Show under the run" : "Move to the right side"}
               disabled={Boolean(pending)}
-              onClick={() => onLayoutChange(drawer ? "inline" : "drawer")}
+              onClick={() => onLayoutChange(side ? "inline" : "drawer")}
             >
-              {drawer ? <PanelBottomIcon /> : <PanelRightIcon />}
-            </IconButton>
-          )}
-          {drawer && onClose && (
-            <IconButton label="Hide chat" onClick={onClose}>
-              <XIcon />
+              {side ? <PanelBottomIcon /> : <PanelRightIcon />}
             </IconButton>
           )}
         </div>
       </header>
-      {drawer && <p className="-mt-2 text-xs text-muted-foreground">Shift-click timeline steps to ask about them.</p>}
+      {side && <p className="-mt-2 text-xs text-muted-foreground">Shift-click timeline steps to ask about them.</p>}
 
-      <div className={cn("flex flex-col gap-3 overflow-y-auto", drawer ? "min-h-0 flex-1" : "max-h-96")}>
+      <div className={cn("flex flex-col gap-3 overflow-y-auto", side ? "min-h-0 flex-1" : "max-h-96")}>
         {messages === null ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : messages.length === 0 && !pending ? (
