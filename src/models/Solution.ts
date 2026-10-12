@@ -38,6 +38,8 @@ const solutionSchema = new Schema(
       outputTokens: { type: Number, default: 0 },
       totalTokens: { type: Number, default: 0 },
     },
+    // A RunProgress snapshot while the run is in progress (src/lib/runProgress.ts); removed when it settles.
+    progress: { type: Schema.Types.Mixed, required: false },
     error: {
       code: { type: String, required: false },
       message: { type: String, required: false },

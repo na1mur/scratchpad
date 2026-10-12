@@ -14,6 +14,7 @@ export type PipelineEvent =
 /** A solution run's progress, streamed by GET /api/solutions/[id]/events. */
 export type SolutionEvent =
   | { type: "status"; status: SolutionStatus }
+  | { type: "progress"; progress: RunProgress }
   | { type: "done" }
   | { type: "error"; code: string; message: string };
 

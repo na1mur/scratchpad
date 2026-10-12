@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ChangeModelLink } from "@/components/workspace/ChangeModelLink";
 import { ChatDock, useChatDock } from "@/components/workspace/ChatDock";
 import { ProgressStepper } from "@/components/workspace/ProgressStepper";
+import { solutionProgressDetails } from "@/components/workspace/RunProgressDetails";
 import { UsageBadge } from "@/components/workspace/UsageBadge";
 import { useTour } from "@/components/tour/use-tour";
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -147,7 +148,7 @@ export function SolutionView({
       const { solution } = await api<{ solution: SolutionDetail }>(`/api/solutions/${pendingId}`, { signal: abort.signal });
       if (abort.signal.aborted) return true;
       if (IN_PROGRESS.has(solution.status)) {
-        setStatus(solution.status);
+        setViewing((v) => (v?.id === pendingId ? { ...v, status: solution.status, progress: solution.progress } : v));
         return false;
       }
       setViewing((v) => (v?.id === solution.id ? solution : v));
@@ -167,6 +168,7 @@ export function SolutionView({
         if (!res.ok) throw await toApiError(res);
         for await (const e of readSSE<SolutionEvent>(res)) {
           if (e.type === "status") setStatus(e.status);
+          else if (e.type === "progress") setViewing((v) => (v?.id === pendingId ? { ...v, progress: e.progress } : v));
           else if (e.type === "error" && e.code === "cancelled") {
             onStopped(pendingId);
             return;
@@ -423,7 +425,12 @@ export function SolutionView({
             This usually takes a minute or two. You can leave this page; it&apos;ll be here when you come back.
           </p>
         </div>
-        <ProgressStepper status={viewing.status} stages={STAGES} order={ORDER} />
+        <ProgressStepper
+          status={viewing.status}
+          stages={STAGES}
+          order={ORDER}
+          details={solutionProgressDetails(viewing.progress)}
+        />
         <LoadingButton
           variant="destructive"
           className="self-start"

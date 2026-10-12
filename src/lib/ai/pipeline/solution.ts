@@ -36,6 +36,7 @@ import { Solution, type SolutionStatus } from "@/models/Solution";
 import { User } from "@/models/User";
 import { emit } from "./events";
 import { endRun, startRun } from "./cancel";
+import { ProgressTracker } from "./progress";
 import { PipelineError, RunCancelledError, UsageMeter, generateStructured, throwIfCancelled } from "./llm";
 import type { SandboxResult } from "./sandbox";
 import {
@@ -64,6 +65,7 @@ type SolveCtx = {
   reference: Reference | null;
   /** Fires when the learner stops the run. */
   signal?: AbortSignal;
+  progress: ProgressTracker;
 };
 
 /** One case's walkthrough. `passed` is set only for a case that ran: whether it returned the expected value. */
@@ -192,6 +194,19 @@ function solve(ctx: SolveCtx, pc: PlanContext, feedback = ""): Promise<SolutionP
   });
 }
 
+/** Shows the approach the solve stage settled on and the cases it picked, all waiting to run. */
+function showPlan(ctx: SolveCtx, plan: SolutionPlan) {
+  const cases = casesOf(plan);
+  ctx.progress.update((p) => {
+    p.approach = plan.summary || plan.name;
+    p.plan = { name: plan.name, time: plan.timeComplexity, space: plan.spaceComplexity };
+    p.cases = cases.map((c) => ({ id: c.id, label: c.label, description: c.description, expected: c.expected, state: "pending" }));
+    delete p.program;
+    delete p.simulating;
+    delete p.reworking;
+  });
+}
+
 // Stage 2: trace ------------------------------------------------------------
 
 type CaseRun = { result: SandboxResult; steps: Step[]; matched: boolean };
@@ -236,8 +251,24 @@ async function executeAll(ctx: SolveCtx, plan: SolutionPlan): Promise<Execution 
       throw err;
     }
 
+    ctx.progress.update((p) => {
+      p.program = { lines: lineCount, added: 0 };
+      for (const c of p.cases ?? []) c.state = "running";
+    });
     const { runs, problem } = await runOnCases(t, cases, lineCount);
+    // Shows the cases waiting for a rebuilt program, unless this was the last try.
+    const rebuilding = () => {
+      if (attempt > 0) return;
+      ctx.progress.update((p) => {
+        p.program = { lines: lineCount, added: 0, retrying: true };
+        for (const c of p.cases ?? []) {
+          c.state = "pending";
+          delete c.actual;
+        }
+      });
+    };
     if (problem) {
+      rebuilding();
       feedback = problem;
       continue;
     }
@@ -250,6 +281,7 @@ async function executeAll(ctx: SolveCtx, plan: SolutionPlan): Promise<Execution 
     };
     if (!best || matchedShare(execution) > matchedShare(best)) best = execution;
     if (allMatched(execution)) return execution;
+    rebuilding();
     feedback = `${mismatches(cases, execution)}\nCheck that the program follows <solution_code> exactly and builds its input from the arguments it's given.`;
   }
   return best;
@@ -339,20 +371,37 @@ function traceBySimulation(ctx: SolveCtx, plan: SolutionPlan, c: PipelineCase): 
 
 /** Every case's walkthrough: narrated runs where execution worked, simulations elsewhere, in parallel. */
 function traceCases(ctx: SolveCtx, plan: SolutionPlan, exec: Execution | null): Promise<CaseTrace[]> {
+  const finished = (t: CaseTrace) => {
+    ctx.progress.updateCase(t.id, { state: "done", actual: t.actualOutput, steps: t.steps.length });
+    return t;
+  };
+  // Cases the program couldn't trace are simulated by hand; with none traced, that's all of them.
+  if (!exec) {
+    ctx.progress.update((p) => {
+      p.simulating = true;
+      delete p.program;
+      for (const c of p.cases ?? []) c.state = "simulating";
+    });
+  }
   return Promise.all(
     casesOf(plan).map(async (c, i): Promise<CaseTrace> => {
       const run = exec?.runs[i];
-      if (!exec || !run) return traceBySimulation(ctx, plan, c);
+      if (!exec || !run) {
+        ctx.progress.updateCase(c.id, { state: "simulating" });
+        return finished(await traceBySimulation(ctx, plan, c));
+      }
       const steps = prefixStepIds(c.id, collapseSteps(run.steps, exec.loops));
-      return {
+      const actualOutput = actualOutputOf(run.result);
+      ctx.progress.updateCase(c.id, { state: "explaining", actual: actualOutput, steps: steps.length });
+      return finished({
         ...c,
         mode: "execution",
         structures: exec.structures,
         loops: exec.loops,
         steps: await narrate(ctx, plan, c, steps, run.result),
-        actualOutput: actualOutputOf(run.result),
+        actualOutput,
         passed: run.matched,
-      };
+      });
     }),
   );
 }
@@ -419,6 +468,11 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
   if (!solution) return;
   const meter = new UsageMeter();
   const signal = startRun(solutionId);
+  // Only while it's still running, so a late snapshot can't land on a finished or removed solution.
+  const progress = new ProgressTracker(async (snapshot) => {
+    await Solution.updateOne({ _id: solutionId, status: { $nin: ["done", "error"] } }, { $set: { progress: snapshot } });
+    emit(solutionId, { type: "progress", progress: snapshot });
+  });
 
   try {
     const [problem, user, attempt, existing] = await Promise.all([
@@ -447,6 +501,7 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
       source,
       reference,
       signal,
+      progress,
     };
     const pc: PlanContext = {
       attempt: attempt
@@ -467,22 +522,27 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
 
     await setStatus(solutionId, "solving", signal);
     let plan = await solve(ctx, pc);
+    showPlan(ctx, plan);
 
     await setStatus(solutionId, "tracing", signal);
     let exec = await executeAll(ctx, plan);
     if (exec && !allMatched(exec)) {
       // Even a faithful program disagrees, so the code itself may be wrong: ask for a fix once and keep
       // whichever version gets more cases right.
+      progress.update((p) => void (p.reworking = true));
       const retryPlan = await solve(
         ctx,
         pc,
         `Running your solution gave results that differ from the ones you said it returns:\n${mismatches(casesOf(plan), exec)}\nFix the solution (or an expected value if that was wrong).`,
       );
+      showPlan(ctx, retryPlan);
       const retry = await executeAll(ctx, retryPlan);
       if (retry && (allMatched(retry) || matchedShare(retry) > matchedShare(exec))) {
         plan = retryPlan;
         exec = retry;
       }
+      // Back to the version being kept, whichever it is.
+      showPlan(ctx, plan);
     }
 
     await setStatus(solutionId, "narrating", signal);
@@ -506,9 +566,14 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
       parsed.data,
     );
 
+    await progress.flush();
+
     await Solution.updateOne(
       { _id: solutionId },
-      { $set: { status: "done", content, traceMode: mode, ...stored, tokenUsage: meter.snapshot() } },
+      {
+        $set: { status: "done", content, traceMode: mode, ...stored, tokenUsage: meter.snapshot() },
+        $unset: { progress: 1 },
+      },
     );
     // The key worked, so it's no longer one the provider refused.
     await clearKeyRejected(user.ai?.keyId).catch(() => {});
@@ -533,9 +598,11 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
     }
     // Flag a refused key so Settings can point at it.
     if (safe.code === "invalid_key") await markMainKeyRejected(solution.userId).catch(() => {});
-    await Solution.updateOne({ _id: solutionId }, { $set: { status: "error", error: safe, tokenUsage: meter.snapshot() } }).catch(
-      () => {},
-    );
+    await progress.flush();
+    await Solution.updateOne(
+      { _id: solutionId },
+      { $set: { status: "error", error: safe, tokenUsage: meter.snapshot() }, $unset: { progress: 1 } },
+    ).catch(() => {});
     emit(solutionId, { type: "error", ...safe });
   } finally {
     endRun(solutionId);

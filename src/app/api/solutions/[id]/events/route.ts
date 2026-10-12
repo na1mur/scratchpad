@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { handle, requireUser } from "@/lib/api";
 import { subscribe, type SolutionEvent } from "@/lib/ai/pipeline/events";
+import type { RunProgress } from "@/lib/runProgress";
 import { getOwnedSolution } from "@/lib/solutions";
 
 export const maxDuration = 300;
@@ -44,13 +45,18 @@ export function GET(req: NextRequest, ctx: RouteContext<"/api/solutions/[id]/eve
           if (e.type === "done" || e.type === "error") cleanup();
         };
         /** Sends the stored state; the stale check in getOwnedSolution turns a dead run into an error. */
-        const sync = async () => {
+        const sync = async (withProgress = false) => {
           try {
             const s = await getOwnedSolution(session.userId, id);
             if (s.status === "done") send({ type: "done" });
             else if (s.status === "error") {
               send({ type: "error", code: s.error?.code ?? "error", message: s.error?.message ?? "Writing the solution failed." });
-            } else send({ type: "status", status: s.status });
+            } else {
+              send({ type: "status", status: s.status });
+              // A page that connects mid-run (or after a reload) starts from what's been produced so far. Only
+              // the first sync does this: a later one could overwrite a newer snapshot that was just emitted.
+              if (withProgress && s.progress) send({ type: "progress", progress: s.progress as RunProgress });
+            }
           } catch {
             // Deleted meanwhile: nothing more will happen to it.
             send({ type: "error", code: "not_found", message: "This solution no longer exists." });
@@ -73,7 +79,7 @@ export function GET(req: NextRequest, ctx: RouteContext<"/api/solutions/[id]/eve
             } catch {}
           }
         };
-        void sync();
+        void sync(true);
       },
       cancel() {
         cleanup();

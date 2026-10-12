@@ -61,6 +61,55 @@ function Note({ busy, children }: { busy?: boolean; children: React.ReactNode })
   );
 }
 
+/** A solution run's partial output, per stage, for `ProgressStepper`'s `details`. */
+export function solutionProgressDetails(p: RunProgress | null | undefined): Partial<Record<string, React.ReactNode>> {
+  if (!p) return {};
+  const cases = p.cases ?? [];
+  const done = cases.filter((c) => c.state === "done").length;
+  const caseList = cases.length > 0 && (
+    <ul className="flex flex-col gap-1.5">
+      {cases.map((c) => (
+        <CaseRow key={c.id} c={c} />
+      ))}
+    </ul>
+  );
+  return {
+    solving: p.plan && (
+      <div className={`flex flex-col gap-1.5 ${appear}`}>
+        <p className="text-xs font-medium">
+          {p.plan.name}
+          {(p.plan.time || p.plan.space) && (
+            <span className="font-mono font-normal text-muted-foreground">
+              {" "}
+              · {[p.plan.time && `${p.plan.time} time`, p.plan.space && `${p.plan.space} space`].filter(Boolean).join(", ")}
+            </span>
+          )}
+        </p>
+        {p.approach && (
+          <blockquote className="border-l-2 border-brand pl-2.5 text-xs text-foreground/80 italic">{p.approach}</blockquote>
+        )}
+        {cases.length > 0 && <Note>Picked {cases.length} test cases</Note>}
+      </div>
+    ),
+    tracing: cases.length > 0 && (
+      <div className="flex flex-col gap-2">
+        {p.simulating ? (
+          <Note busy={done < cases.length}>Couldn&apos;t run it directly, so it&apos;s being traced by hand</Note>
+        ) : p.reworking ? (
+          <Note busy>Running it disagreed with the expected values, rewriting the solution</Note>
+        ) : p.program?.retrying ? (
+          <Note busy>The first runnable version didn&apos;t work, rebuilding it</Note>
+        ) : p.program ? (
+          <Note>Turned the solution into {p.program.lines} runnable lines</Note>
+        ) : (
+          <Note busy>Turning the solution into something runnable</Note>
+        )}
+        {caseList}
+      </div>
+    ),
+  };
+}
+
 /** An attempt run's partial output, per stage, for `ProgressStepper`'s `details`. */
 export function attemptProgressDetails(p: RunProgress | null | undefined): Partial<Record<string, React.ReactNode>> {
   if (!p) return {};
