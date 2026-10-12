@@ -64,6 +64,7 @@ import type { ProblemDetail } from "@/lib/problems";
 import { PROVIDER_LABELS, type ProviderId } from "@/lib/providers";
 import { createAttemptSchema, type CreateAttemptInput } from "@/lib/schemas/attempts";
 import { MAX_TEXT } from "@/lib/schemas/problems";
+import { playCompletionSound } from "@/lib/sounds";
 import { readSSE } from "@/lib/sse";
 import { VERDICT_LABELS } from "@/lib/verdicts";
 import type { RunProgress } from "@/lib/runProgress";
@@ -265,8 +266,11 @@ export function Workspace({
 
   function notifyFinished(attempt: AttemptDetail) {
     if (attempt.status === "error") toast.error(attempt.error?.message ?? "Processing failed.");
-    else if (attempt.verdict === "works") toast.success("Analysis ready: your approach works on this input.");
-    else toast.success("Analysis ready. Step through it to see where it breaks.");
+    else {
+      playCompletionSound();
+      if (attempt.verdict === "works") toast.success("Analysis ready: your approach works on this input.");
+      else toast.success("Analysis ready. Step through it to see where it breaks.");
+    }
   }
 
   async function onProcess(values: CreateAttemptInput) {

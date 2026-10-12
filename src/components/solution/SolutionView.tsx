@@ -32,6 +32,7 @@ import { ApiClientError, api, apiRaw, toApiError } from "@/lib/fetcher";
 import type { ProblemDetail } from "@/lib/problems";
 import type { SolutionDetail, SolutionSummary } from "@/lib/solutions";
 import { problemPath } from "@/lib/slug";
+import { playCompletionSound } from "@/lib/sounds";
 import { readSSE } from "@/lib/sse";
 import type { SolutionStatus } from "@/models/Solution";
 import type { ChatLayout } from "@/models/User";
@@ -147,8 +148,10 @@ export function SolutionView({
       setSolutions((list) => list.map((s) => (s.id === solution.id ? { ...s, ...pickSummary(solution) } : s)));
       setPlayerIndex(0);
       setCaseIndex(0);
-      if (solution.status === "done") toast.success("Solution ready.");
-      else toast.error(solution.error?.message ?? "Writing the solution failed.");
+      if (solution.status === "done") {
+        playCompletionSound();
+        toast.success("Solution ready.");
+      } else toast.error(solution.error?.message ?? "Writing the solution failed.");
       return true;
     };
 
