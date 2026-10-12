@@ -646,8 +646,16 @@ export async function diagnose(ctx: Ctx, u: Understanding, trace: TraceResult, s
   return { ...d, failingCaseIds: d.failingCaseIds.filter((id) => caseIds.has(id)) };
 }
 
-/** Lightweight check: does this text give away a working solution? */
-export async function revealsSolution(ctx: Ctx, text: string): Promise<{ reveals: boolean; sentence: string }> {
+/**
+ * Lightweight check: does this text give away more of the solution than it should? With `question`
+ * (a chat answer), describing the fix is allowed when the learner asked for it.
+ */
+export async function revealsSolution(
+  ctx: Ctx,
+  text: string,
+  question?: string,
+): Promise<{ reveals: boolean; sentence: string }> {
+  const asked = question ? `\n\n<question>\n${question}\n</question>` : "";
   const r = await generateStructured({
     model: ctx.model,
     meter: ctx.meter,
@@ -655,19 +663,20 @@ export async function revealsSolution(ctx: Ctx, text: string): Promise<{ reveals
     name: "solution check",
     schema: guardrailSchema,
     instructions: GUARDRAIL_ROLE,
-    prompt: `<problem>\n${ctx.learner.statement}\n</problem>\n\n<feedback>\n${text}\n</feedback>`,
+    prompt: `<problem>\n${ctx.learner.statement}\n</problem>${asked}\n\n<feedback>\n${text}\n</feedback>`,
   });
   return { reveals: r.revealsSolution, sentence: r.offendingSentence };
 }
 
+/** Labelled so the guardrail can tell the up-front parts from the hints revealed on request. */
 export function diagnosisText(d: DiagnosisOutput): string {
   return [
-    d.whatGoesWrong,
-    d.whyItGoesWrong,
-    ...d.failingInputs,
-    d.brokenAssumption,
+    d.whatGoesWrong && `What goes wrong: ${d.whatGoesWrong}`,
+    d.whyItGoesWrong && `Why: ${d.whyItGoesWrong}`,
+    ...d.failingInputs.map((f) => `Failing input: ${f}`),
+    d.brokenAssumption && `Broken assumption: ${d.brokenAssumption}`,
     d.shiftInThinking && `A different way to think about it: ${d.shiftInThinking}`,
-    ...d.thinkingHints.map((h, i) => `Hint ${i + 1}: ${h}`),
+    ...d.thinkingHints.map((h, i) => `Hint ${i + 1} of ${d.thinkingHints.length}: ${h}`),
   ]
     .filter(Boolean)
     .join("\n");

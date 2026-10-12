@@ -136,14 +136,14 @@ export const diagnosisOutputSchema = z.object({
   thinkingHints: z
     .array(z.string())
     .max(4)
-    .describe("Progressive, vague to more specific. Questions and properties to notice. Never the fix."),
+    .describe("Technical and progressive: where it breaks, the precise issue, then what must change, in words. Never code."),
   rethinkScope: z
     .enum(["none", ...RETHINK_SCOPES])
     .describe("'none' if the approach works; otherwise whether the idea is sound but slips on details, or the strategy itself can't work."),
   brokenAssumption: z.string().describe("The assumption their approach relies on that the problem breaks. Empty string if it works."),
   shiftInThinking: z
     .string()
-    .describe("A different way to look at the problem, as a question or property to notice. Never names the technique. Empty string if it works."),
+    .describe("The property of the problem to build on instead, stated technically. Doesn't name the technique. Empty string if it works."),
 });
 export type DiagnosisOutput = z.infer<typeof diagnosisOutputSchema>;
 

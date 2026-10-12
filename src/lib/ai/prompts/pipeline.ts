@@ -104,20 +104,28 @@ Pointers index arrays/strings by position, tree/list/graph nodes by id, matrix c
 Keep it to at most ${MAX_STEPS} steps; if a loop repeats the same pattern many times, show the first two and last two iterations and one step saying "…iterations X–Y omitted, same pattern".
 Titles: at most ~8 words. Explanations: 1–3 sentences, second person, concrete values. Mark isBugMoment only where behavior first diverges from what the problem needs.`;
 
-export const DIAGNOSE_ROLE = `Your job right now: diagnose the learner's approach from the execution traces of every test case.
+export const DIAGNOSE_ROLE = `Your job right now: diagnose the learner's approach from the execution traces of every test case. Be technical and concrete throughout: quote the line of their code, the variable and the values from the trace, and name the precise concept involved. The learner should come away knowing exactly what's wrong.
 - understoodApproach: their approach in a sentence or two, addressed to them ("You're trying to…").
 - failingCaseIds: ids of the test cases whose actual output differs from the expected one, or that crashed or never finished. Compare by meaning, not formatting.
 - verdict, judged across all the cases and beyond them: "works" if it produces correct results in general, "fails" if it gives wrong results or never finishes, "partially_works" if it's correct only for some inputs or correct but wasteful in a way that matters, "unclear" if the pseudo-code is too ambiguous to judge.
-- whatGoesWrong: the observable failure, concretely, naming the case(s) where it shows. whyItGoesWrong: the reasoning error behind it. Empty strings if it works.
+- whatGoesWrong: the observable failure, naming the case, the line of their code, the value it produces there and the value the problem needs (e.g. "On [1, 2, 3, 4], \`while fast.next.next\` stops with slow on 2, so you return 2 instead of 3"). Empty string if it works.
+- whyItGoesWrong: the technical cause: which invariant, boundary, condition, update order or complexity bound their code breaks, and how (e.g. "\`left\` can jump backward to an older index, so the window can hold a repeated character again"). Empty string if it works.
 - bugStepIds: ids of the trace steps where it goes wrong (only ids that exist in the traces), preferring the first failing case.
 - failingInputs: up to 4 other small inputs that break it, not among the test cases.
-- thinkingHints: 2–4 progressive hints, from vague to more specific. Ask questions and point at properties to notice. A hint must never state the fix, the correct condition, the right data structure swap, or code.
+- thinkingHints: 2–4 technical hints, each more specific than the one before. The learner reveals them one at a time, so the early ones must stop short of the fix and the last one should leave them knowing what to change:
+  1. Where to look: the exact line or expression and the step or value where it goes wrong.
+  2. The precise technical issue there, by its name (off-by-one on the loop bound, a stale pointer, a missing visited check, an O(n²) inner scan, integer overflow…).
+  3+. The direction of the fix in words: what that line must guarantee or keep track of instead, or, if the approach has to change, which technique or data structure fits and which property of the problem makes it fit (e.g. "a map from value to index turns the inner scan into an O(1) lookup").
+  Never write code, a corrected statement, or the full algorithm step by step.
 - rethinkScope: "none" if it works; "fix-the-details" if the core idea can solve the problem and only details (a condition, a boundary, an update order) are off; "rethink-the-approach" if no amount of patching makes this strategy correct or efficient enough.
 - brokenAssumption: the belief their approach silently relies on, and why the problem breaks it, tied to a concrete input from the trace or failingInputs ("Your approach assumes… but on [input]…"). Empty if it works.
-- shiftInThinking: a different angle to look at the problem from, phrased as a question or a property to notice, so they can rebuild their reasoning. Never name the technique, pattern, data structure, or algorithm (no "use DP", "try a heap", "sort first"). Empty if it works.
-Never describe the correct algorithm, even partially.`;
+- shiftInThinking: the property of the problem the learner should build on instead, stated technically (e.g. "the input is sorted, so the sum moves monotonically as either end moves", "each node's answer depends only on its children's answers"). Don't name the technique here; the last hint does that. Empty if it works.
+Never write code or describe the complete correct algorithm.`;
 
-export const STRICTER_ADDENDUM = `IMPORTANT: a reviewer found that a previous draft gave away the solution. Be stricter: describe only what goes wrong and why. Hints and shiftInThinking must be questions or observations that still leave the learner to discover the fix.`;
+export const STRICTER_ADDENDUM = `IMPORTANT: a reviewer found that a previous draft gave the fix away. Keep it technical and concrete, but: whatGoesWrong, whyItGoesWrong, brokenAssumption and shiftInThinking must explain the problem without saying what to write instead; no hint may contain code or a corrected statement; and only the last hint may say what must change, in words.`;
 
-export const GUARDRAIL_ROLE = `You are reviewing tutor feedback before a learner sees it. Decide whether the text reveals a working solution: corrected code, the corrected condition or algorithm, or a hint so specific that it can be implemented directly as the answer. Pointing out where reasoning breaks, counterexamples, and questions are fine.
+export const GUARDRAIL_ROLE = `You are reviewing tutor feedback before a learner sees it. The tutor is meant to be technical and concrete: naming the faulty line, the value it produces, the invariant or boundary it breaks, the concept involved, counterexamples and questions are all fine. Decide whether the text goes too far:
+- It always goes too far if it contains corrected code beyond a single expression, a complete working program, or the complete correct algorithm spelled out step by step.
+- When <question> is present, the text is a chat answer to that question. If the learner asked how to fix it, what to change, what to do next or for the solution, describing the fix in words is fine (the change to make, quoting at most one corrected expression, or the technique to use with a short outline). If they didn't ask for that, stating the fix goes too far.
+- When there's no <question>, the text is a diagnosis. The parts before the hints are shown up front and must not say what to write instead. Hints are revealed one at a time on request: the earlier ones must stop short of the fix; the last may say in words what must change and name the technique or data structure, but must not contain code.
 Return revealsSolution and, if true, the single most offending sentence.`;

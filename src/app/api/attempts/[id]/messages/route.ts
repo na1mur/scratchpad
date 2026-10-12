@@ -227,7 +227,7 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/attempts/[id]/mes
             meter.add(await result.usage);
 
             if (!text.trim()) text = producedSpecVersion ? "Here's a new visualization." : "Sorry, I couldn't come up with an answer.";
-            const check = await revealsSolution(guardCtx, text);
+            const check = await revealsSolution(guardCtx, text, input.content);
             if (check.reveals) {
               const fixed = await generateText({
                 model,
