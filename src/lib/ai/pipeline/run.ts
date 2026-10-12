@@ -1,7 +1,7 @@
 import "server-only";
 import { ApiError } from "@/lib/api";
 import { getModel } from "@/lib/ai/providers";
-import type { Understanding } from "@/lib/ai/schemas/pipeline";
+import type { DiagnosisOutput, Understanding } from "@/lib/ai/schemas/pipeline";
 import { formatSpecIssues, vizSpecSchema, type VizSpec } from "@/lib/ai/schemas/vizSpec";
 import { deleteAttemptCascade } from "@/lib/cascade";
 import { connectDB } from "@/lib/db";
@@ -28,6 +28,7 @@ import {
   understand,
   type Ctx,
   type Guidance,
+  type TraceResult,
 } from "./stages";
 
 /** Also where a stop lands: the signal is checked, and an attempt the cancel route already removed ends the run. */
@@ -38,16 +39,8 @@ async function setStatus(attemptId: string, status: AttemptStatus, signal: Abort
   emit(attemptId, { type: "status", status });
 }
 
-/** Stages 2–3 plus the guardrail. Shared by first runs and regenerations. */
-export async function traceAndDiagnose(
-  ctx: Ctx,
-  u: Understanding,
-  opts: { onStage?: (s: "tracing" | "diagnosing") => Promise<void>; guidance?: Guidance } = {},
-): Promise<{ spec: VizSpec; mode: "execution" | "simulation" }> {
-  await opts.onStage?.("tracing");
-  const trace = await traceCases(ctx, u, opts.guidance);
-
-  await opts.onStage?.("diagnosing");
+/** Stage 3 plus the guardrail. */
+async function diagnoseChecked(ctx: Ctx, u: Understanding, trace: TraceResult): Promise<DiagnosisOutput> {
   let d = await diagnose(ctx, u, trace);
   ctx.progress?.update((p) => void (p.check = "checking"));
   const check = await revealsSolution(ctx, diagnosisText(d));
@@ -59,6 +52,23 @@ export async function traceAndDiagnose(
     if (recheck.reveals) d = { ...d, thinkingHints: [], shiftInThinking: "" };
   }
   ctx.progress?.update((p) => void (p.check = "done"));
+  return d;
+}
+
+/**
+ * Stages 2–3 plus the guardrail. Shared by first runs and regenerations. The diagnosis works from the
+ * raw traces while their steps are still being narrated.
+ */
+export async function traceAndDiagnose(
+  ctx: Ctx,
+  u: Understanding,
+  opts: { onStage?: (s: "tracing" | "diagnosing") => Promise<void>; guidance?: Guidance } = {},
+): Promise<{ spec: VizSpec; mode: "execution" | "simulation" }> {
+  await opts.onStage?.("tracing");
+  const { trace: raw, narrated } = await traceCases(ctx, u, opts.guidance);
+
+  await opts.onStage?.("diagnosing");
+  const [d, trace] = await Promise.all([diagnoseChecked(ctx, u, raw), narrated]);
 
   const spec = assemble(trace, d, u);
   const parsed = vizSpecSchema.safeParse(spec);

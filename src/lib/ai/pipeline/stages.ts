@@ -484,11 +484,16 @@ async function traceBySimulation(
   });
 }
 
+/** Stage 2's output: every case traced, and the same traces once their steps are narrated. */
+export type TracedCases = { trace: TraceResult; narrated: Promise<TraceResult> };
+
 /**
  * Stage 2 for every case: one translation run on each case, narrated per case in parallel. A case
- * the program can't trace is simulated by hand instead, on the same completed code.
+ * the program can't trace is simulated by hand instead, on the same completed code. Returns once
+ * every case has its steps, while narration still runs: diagnosis only needs the raw trace, so it
+ * runs alongside. Narration keeps every step id, so the diagnosis's bugStepIds stay valid.
  */
-export async function traceCases(ctx: Ctx, u: Understanding, guidance?: Guidance): Promise<TraceResult> {
+export async function traceCases(ctx: Ctx, u: Understanding, guidance?: Guidance): Promise<TracedCases> {
   const cases = casesOf(u);
   const finished = (t: CaseTrace) => {
     ctx.progress?.updateCase(t.id, { state: "done", actual: t.actualOutput, steps: t.steps.length });
@@ -500,6 +505,7 @@ export async function traceCases(ctx: Ctx, u: Understanding, guidance?: Guidance
 
   const exec = await executeAll(ctx, cases, guidance);
   const traces: (CaseTrace | null)[] = cases.map(() => null);
+  const narrations: (Promise<CaseTrace> | null)[] = cases.map(() => null);
   let shared: { codeLines: string[]; addedLines: number[] };
   if (exec) {
     shared = { codeLines: exec.t.codeLines, addedLines: exec.t.addedLines };
@@ -522,17 +528,23 @@ export async function traceCases(ctx: Ctx, u: Understanding, guidance?: Guidance
       const run = exec?.runs[i];
       if (exec && run) {
         const steps = prefixStepIds(c.id, collapseSteps(run.steps, exec.t.loops));
-        const actualOutput = actualOutputOf(run.result);
-        ctx.progress?.updateCase(c.id, { state: "explaining", actual: actualOutput, steps: steps.length });
-        traces[i] = finished({
+        const trace: CaseTrace = {
           ...c,
           mode: "execution",
           structures: exec.t.structures,
           loops: exec.t.loops,
-          steps: await narrate(ctx, u, c, shared.codeLines, steps, run.result),
-          actualOutput,
+          steps,
+          actualOutput: actualOutputOf(run.result),
           runNote: runNoteFor(run.result),
-        });
+        };
+        ctx.progress?.updateCase(c.id, { state: "explaining", actual: trace.actualOutput, steps: steps.length });
+        traces[i] = trace;
+        const narration = narrate(ctx, u, c, shared.codeLines, steps, run.result).then((narrated) =>
+          finished({ ...trace, steps: narrated }),
+        );
+        // Awaited below, maybe after a simulation fails first; this keeps that from counting as unhandled.
+        narration.catch(() => {});
+        narrations[i] = narration;
       } else {
         ctx.progress?.updateCase(c.id, { state: "simulating" });
         traces[i] = finished((await traceBySimulation(ctx, c, guidance, shared)).trace);
@@ -540,13 +552,16 @@ export async function traceCases(ctx: Ctx, u: Understanding, guidance?: Guidance
     }),
   );
 
-  const done = traces as CaseTrace[];
-  return {
+  const result = (done: CaseTrace[]): TraceResult => ({
     mode: done.every((t) => t.mode === "execution") ? "execution" : "simulation",
     codeLines: shared.codeLines,
     addedLines: shared.addedLines,
     cases: done,
-  };
+  });
+  const raw = traces as CaseTrace[];
+  const narrated = Promise.all(raw.map((t, i) => narrations[i] ?? t)).then(result);
+  narrated.catch(() => {});
+  return { trace: result(raw), narrated };
 }
 
 // Stage 3 ---------------------------------------------------------------
