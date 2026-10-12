@@ -22,14 +22,14 @@ import { api } from "@/lib/fetcher";
 import { MAX_SOLUTION_NOTE, createSolutionSchema, type CreateSolutionInput } from "@/lib/schemas/solutions";
 import type { SolutionSummary } from "@/lib/solutions";
 
-const OPTIONS: { kind: Exclude<SolutionRequestKind, "initial">; label: string; detail: string }[] = [
+const OPTIONS: { kind: Exclude<SolutionRequestKind, "initial" | "from_attempt">; label: string; detail: string }[] = [
   { kind: "different_approach", label: "A different approach", detail: "Another technique for the same problem." },
   { kind: "better_time", label: "Better time complexity", detail: "Faster in Big-O than what you have." },
   { kind: "better_space", label: "Better space complexity", detail: "Less extra memory in Big-O." },
   { kind: "custom", label: "Something specific", detail: "Describe what you'd like to see." },
 ];
 
-export type SolutionRequest = { kind: Exclude<SolutionRequestKind, "initial">; note: string };
+export type SolutionRequest = { kind: Exclude<SolutionRequestKind, "initial" | "from_attempt">; note: string };
 
 export function NewSolutionDialog({
   problemId,

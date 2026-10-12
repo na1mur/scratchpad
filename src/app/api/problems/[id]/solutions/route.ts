@@ -42,19 +42,6 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/problems/[id]/sol
     if (!user.ai) throw new ApiError(400, "no_provider", "Set up an AI provider in Settings first.");
     if (!user.ai.apiKey) throw noKey();
 
-    const others = await Solution.find({ problemId: problem._id, userId: session.userId })
-      .select({ status: 1, updatedAt: 1, specR2Key: 1 })
-      .lean();
-    for (const s of others) {
-      // Goes through the stale check, so a run that died with the server doesn't block new ones forever.
-      if (SOLUTION_IN_PROGRESS.has(s.status) && SOLUTION_IN_PROGRESS.has((await getOwnedSolution(session.userId, String(s._id))).status)) {
-        throw new ApiError(409, "in_progress", "A solution is already being written for this problem. Wait for it to finish.");
-      }
-    }
-    if (input.kind === "initial" && others.some((s) => s.status === "done")) {
-      throw new ApiError(409, "exists", "This problem already has a solution.");
-    }
-
     const attempt = input.attemptId
       ? await Attempt.findOne({ _id: input.attemptId, problemId: problem._id, userId: session.userId, status: "done" })
           .select({ version: 1 })
@@ -65,6 +52,34 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/problems/[id]/sol
             .select({ version: 1 })
             .lean()
         : null;
+    if (input.kind === "from_attempt" && !attempt) {
+      throw new ApiError(404, "not_found", "That attempt isn't available. Pick an attempt that finished analysing.");
+    }
+
+    const others = await Solution.find({ problemId: problem._id, userId: session.userId })
+      .select({ ...SOLUTION_SUMMARY_FIELDS, updatedAt: 1, specR2Key: 1, basedOnAttemptId: 1 })
+      .lean();
+
+    // Solutions are kept, never regenerated: an attempt that already has one (done or still being written) gets it back.
+    if (input.kind === "from_attempt" && attempt) {
+      const same = others.find(
+        (s) =>
+          s.status !== "error" &&
+          (s.request?.kind === "initial" || s.request?.kind === "from_attempt") &&
+          String(s.basedOnAttemptId) === String(attempt._id),
+      );
+      if (same) return NextResponse.json({ solution: serializeSolutionSummary(same), existing: true });
+    }
+
+    for (const s of others) {
+      // Goes through the stale check, so a run that died with the server doesn't block new ones forever.
+      if (SOLUTION_IN_PROGRESS.has(s.status) && SOLUTION_IN_PROGRESS.has((await getOwnedSolution(session.userId, String(s._id))).status)) {
+        throw new ApiError(409, "in_progress", "A solution is already being written for this problem. Wait for it to finish.");
+      }
+    }
+    if (input.kind === "initial" && others.some((s) => s.status === "done")) {
+      throw new ApiError(409, "exists", "This problem already has a solution.");
+    }
 
     const limit = await rateLimits.solutions().consume(session.userId);
     if (!limit.ok) {

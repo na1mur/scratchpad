@@ -27,6 +27,7 @@ import { ProgressStepper } from "@/components/workspace/ProgressStepper";
 import { UsageBadge } from "@/components/workspace/UsageBadge";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import type { SolutionEvent } from "@/lib/ai/pipeline/events";
+import { buildsOnAttempt } from "@/lib/ai/schemas/solution";
 import { stepAt, stepRefs } from "@/lib/ai/schemas/vizSpec";
 import { ApiClientError, api, apiRaw, toApiError } from "@/lib/fetcher";
 import type { ProblemDetail } from "@/lib/problems";
@@ -51,7 +52,7 @@ const ORDER = ["queued", "solving", "tracing", "narrating", "done"];
 const versionLabel = (s: SolutionSummary) =>
   `v${s.version} · ${s.name ?? (IN_PROGRESS.has(s.status) ? "being written…" : s.status === "error" ? "failed" : "…")}${
     s.time ? ` · ${s.time}` : ""
-  }`;
+  }${buildsOnAttempt(s.requestKind) && s.basedOnAttemptVersion ? ` · from attempt v${s.basedOnAttemptVersion}` : ""}`;
 
 export function SolutionView({
   problem,
@@ -215,7 +216,9 @@ export function SolutionView({
         body: {
           kind: failed.requestKind,
           note: failed.requestNote,
-          ...(failed.requestKind === "initial" && baseAttempt && { attemptId: baseAttempt.id }),
+          ...(failed.basedOnAttemptId
+            ? { attemptId: failed.basedOnAttemptId }
+            : failed.requestKind === "initial" && baseAttempt && { attemptId: baseAttempt.id }),
         },
       });
       await onCreated(solution);
@@ -474,7 +477,7 @@ export function SolutionView({
           onProposal={
             canGenerate
               ? (p) => {
-                  if (p.kind === "initial") return;
+                  if (buildsOnAttempt(p.kind)) return;
                   setPrefill({ kind: p.kind, note: p.note });
                   setNewOpen(true);
                 }

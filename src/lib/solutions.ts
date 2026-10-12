@@ -30,18 +30,22 @@ export const SOLUTION_SUMMARY_FIELDS = {
   version: 1,
   status: 1,
   request: 1,
+  basedOnAttemptVersion: 1,
   createdAt: 1,
   "content.name": 1,
   "content.complexity": 1,
 } as const;
 
-export function serializeSolutionSummary(s: Pick<SolutionDoc, "_id" | "version" | "status" | "request" | "createdAt" | "content">) {
+export function serializeSolutionSummary(
+  s: Pick<SolutionDoc, "_id" | "version" | "status" | "request" | "basedOnAttemptVersion" | "createdAt" | "content">,
+) {
   const c = s.content as Partial<SolutionContent> | undefined;
   return {
     id: String(s._id),
     version: s.version,
     status: s.status,
     requestKind: s.request?.kind ?? "initial",
+    basedOnAttemptVersion: s.basedOnAttemptVersion ?? null,
     name: c?.name ?? null,
     time: c?.complexity?.time ?? null,
     space: c?.complexity?.space ?? null,
@@ -55,7 +59,7 @@ export async function serializeSolution(s: SolutionDoc) {
     ...serializeSolutionSummary(s),
     problemId: String(s.problemId),
     requestNote: s.request?.note ?? "",
-    basedOnAttemptVersion: s.basedOnAttemptVersion ?? null,
+    basedOnAttemptId: s.basedOnAttemptId ? String(s.basedOnAttemptId) : null,
     language: s.language,
     content: s.status === "done" ? ((s.content as SolutionContent | undefined) ?? null) : null,
     vizSpec: s.status === "done" ? await loadSpec(s) : null,

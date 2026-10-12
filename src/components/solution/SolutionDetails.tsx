@@ -9,7 +9,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CaseBar } from "@/components/viz/CaseBar";
 import { CodePane } from "@/components/viz/CodePane";
 import { Player } from "@/components/viz/Player";
-import { SOLUTION_REQUEST_LABELS, type SolutionContent, type SolutionRequestKind } from "@/lib/ai/schemas/solution";
+import {
+  SOLUTION_REQUEST_LABELS,
+  buildsOnAttempt,
+  type SolutionContent,
+  type SolutionRequestKind,
+} from "@/lib/ai/schemas/solution";
 import { caseView, stepAt, type VizSpec } from "@/lib/ai/schemas/vizSpec";
 import { languageLabel } from "@/lib/languages";
 import { PROVIDER_LABELS, type ProviderId } from "@/lib/providers";
@@ -40,7 +45,7 @@ export function SolutionApproach({
           {origin && (
             <p className="text-xs text-muted-foreground">
               {SOLUTION_REQUEST_LABELS[origin.requestKind]}
-              {origin.requestKind === "initial" && origin.basedOnAttemptVersion
+              {buildsOnAttempt(origin.requestKind) && origin.basedOnAttemptVersion
                 ? ` v${origin.basedOnAttemptVersion}`
                 : origin.requestNote
                   ? `: ${origin.requestNote}`
@@ -73,7 +78,7 @@ export function SolutionApproach({
             <GitBranchIcon className="mt-0.5 size-4 shrink-0 text-brand-strong" aria-hidden />
             <div>
               <p className="font-medium">
-                {origin.requestKind === "initial"
+                {buildsOnAttempt(origin.requestKind)
                   ? `From your attempt${origin.basedOnAttemptVersion ? ` v${origin.basedOnAttemptVersion}` : ""}`
                   : "Compared with your other solutions"}
               </p>

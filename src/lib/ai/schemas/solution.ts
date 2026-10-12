@@ -7,11 +7,28 @@ import { structureDeclSchema } from "./pipeline";
  * walkthrough itself is a regular VizSpec.
  */
 
-export const SOLUTION_REQUEST_KINDS = ["initial", "different_approach", "better_time", "better_space", "custom"] as const;
+/**
+ * `initial` is the problem's first solution; `from_attempt` is a later one that fixes a chosen attempt, built
+ * the same way. The others answer a request and are compared with the solutions that already exist.
+ */
+export const SOLUTION_REQUEST_KINDS = [
+  "initial",
+  "from_attempt",
+  "different_approach",
+  "better_time",
+  "better_space",
+  "custom",
+] as const;
 export type SolutionRequestKind = (typeof SOLUTION_REQUEST_KINDS)[number];
+
+/** Kinds built on the learner's attempt (`basedOnAttemptVersion`) rather than on the existing solutions. */
+export function buildsOnAttempt(kind: SolutionRequestKind): kind is "initial" | "from_attempt" {
+  return kind === "initial" || kind === "from_attempt";
+}
 
 export const SOLUTION_REQUEST_LABELS: Record<SolutionRequestKind, string> = {
   initial: "Built from your attempt",
+  from_attempt: "Fixed from your attempt",
   different_approach: "A different approach",
   better_time: "Better time complexity",
   better_space: "Better space complexity",

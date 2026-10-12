@@ -46,6 +46,7 @@ import { HintsPanel } from "@/components/viz/HintsPanel";
 import { Player } from "@/components/viz/Player";
 import { LoadingButton } from "@/components/loading-button";
 import { ShareButton } from "@/components/share/share-button";
+import { FixAttemptButton } from "@/components/solution/FixAttemptButton";
 import { SolutionButton } from "@/components/solution/SolutionButton";
 import { ChangeModelLink } from "@/components/workspace/ChangeModelLink";
 import { ChatDock, useChatDock } from "@/components/workspace/ChatDock";
@@ -736,6 +737,16 @@ export function Workspace({
           <VerdictBadge verdict={spec.summary.verdict} />
           <p className="min-w-0 flex-1 text-sm text-muted-foreground">{casesPassedText(spec)}</p>
           <UsageBadge attempt={viewing} />
+          {spec.summary.verdict !== "works" && (
+            <FixAttemptButton
+              key={`fix-${viewing.id}`}
+              problemId={problem.id}
+              problemSlug={problem.slug}
+              attempt={{ id: viewing.id, version: viewing.version }}
+              canGenerate={canRun}
+              disabled={Boolean(running) || loadingAttempt}
+            />
+          )}
           {viewing.specVersions.length > 1 && (
             <Select
               items={viewing.specVersions.map((v) => ({ value: String(v.version), label: specLabel(v.version) }))}

@@ -13,6 +13,7 @@ import { referenceBlock, sourceBlock } from "@/lib/ai/prompts/system";
 import { narrationSchema, simulationSchema } from "@/lib/ai/schemas/pipeline";
 import {
   SOLUTION_REQUEST_LABELS,
+  buildsOnAttempt,
   solutionContentSchema,
   solutionPlanSchema,
   solutionTranslationSchema,
@@ -156,7 +157,7 @@ function planPrompt(ctx: SolveCtx, pc: PlanContext): string {
       `<existing_solutions>\n${pc.existing.map((s) => `v${s.version}: ${s.name} (time ${s.time}, space ${s.space})`).join("\n")}\n</existing_solutions>`,
     );
   }
-  if (pc.request.kind !== "initial") {
+  if (!buildsOnAttempt(pc.request.kind)) {
     parts.push(`<request>\n${SOLUTION_REQUEST_LABELS[pc.request.kind]}${pc.request.note ? `: ${pc.request.note}` : ""}\n</request>`);
   }
   return parts.join("\n\n");
@@ -456,7 +457,8 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
             spec: await loadSpec(attempt.specVersions?.at(-1) ?? attempt).catch(() => null),
           }
         : undefined,
-      existing: existing.map((s) => {
+      // A fixed attempt is built like a first solution: from the attempt, not as a variant of the others.
+      existing: (buildsOnAttempt(solution.request?.kind ?? "initial") ? [] : existing).map((s) => {
         const c = s.content as Partial<SolutionContent> | undefined;
         return { version: s.version, name: c?.name ?? "?", time: c?.complexity?.time ?? "?", space: c?.complexity?.space ?? "?" };
       }),

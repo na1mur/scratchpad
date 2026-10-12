@@ -11,8 +11,9 @@ export const createSolutionSchema = z
       .trim()
       .max(MAX_SOLUTION_NOTE, `Keep it under ${MAX_SOLUTION_NOTE} characters`)
       .default(""),
-    /** The attempt the first solution builds on; defaults to the newest analysed one. */
+    /** The attempt the solution builds on: required for `from_attempt`; `initial` defaults to the newest analysed one. */
     attemptId: z.string().regex(/^[a-f\d]{24}$/i).optional(),
   })
-  .refine((v) => v.kind !== "custom" || v.note.length > 0, { path: ["note"], message: "Say what you'd like to see" });
+  .refine((v) => v.kind !== "custom" || v.note.length > 0, { path: ["note"], message: "Say what you'd like to see" })
+  .refine((v) => v.kind !== "from_attempt" || v.attemptId, { path: ["attemptId"], message: "Pick the attempt to fix" });
 export type CreateSolutionInput = z.input<typeof createSolutionSchema>;
