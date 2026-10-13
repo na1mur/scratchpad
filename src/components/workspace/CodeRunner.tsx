@@ -18,7 +18,7 @@ import { cn } from "cn";
 import { Player } from "@/components/viz/Player";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { answerText, sameAnswer, type HarnessView } from "@/lib/harness/types";
 import { languageLabel } from "@/lib/languages";
 import { providedCode } from "@/lib/runner/entry";
@@ -152,43 +152,53 @@ export function CodeRunner({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[92dvh] w-[calc(100%-1rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl">
-        <DialogHeader className="border-b px-4 py-3 pr-12">
-          <DialogTitle>Edit &amp; run</DialogTitle>
-          <DialogDescription>
-            A scratch run in your browser: no tokens, nothing saved. Start a new attempt when you want feedback.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(14rem,45%)_1fr] lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:grid-rows-1">
-          <div className="flex min-h-0 flex-col border-b lg:border-r lg:border-b-0">
-            <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-              <span className="text-xs font-medium text-muted-foreground">{languageLabel(language)}</span>
-              <div className="ml-auto flex flex-wrap items-center gap-2">
-                <label className="flex items-center gap-1.5 text-xs">
-                  <Checkbox checked={trace} onCheckedChange={(v) => setTrace(Boolean(v))} disabled={running} />
-                  Show steps
-                </label>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => edit(initialCode)}
-                  disabled={running || code === initialCode}
-                  title="Back to the code you started from"
-                >
-                  <RotateCcwIcon /> Reset
-                </Button>
-                {running ? (
-                  <Button variant="soft" size="sm" onClick={() => stopRef.current?.()}>
-                    <SquareIcon /> Stop
-                  </Button>
-                ) : (
-                  <Button variant="brand" size="sm" onClick={start} disabled={!code.trim()} title="Ctrl/⌘ + Enter">
-                    <PlayIcon /> Run
-                  </Button>
-                )}
-              </div>
+      {/* A full-screen page rather than a card: the editor and the results both need the room. */}
+      <DialogContent
+        showCloseButton={false}
+        className="inset-0 top-0 left-0 flex h-dvh w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 ring-0 sm:max-w-none"
+      >
+        <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-3 py-2.5 sm:px-4">
+          <DialogClose render={<Button variant="ghost" size="icon-sm" />} aria-label="Close" title="Close (Esc)">
+            <XIcon />
+          </DialogClose>
+          <div aria-hidden className="h-6 w-px bg-border" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-2 whitespace-nowrap">
+              <DialogTitle>Edit &amp; run</DialogTitle>
+              <span className="text-xs text-muted-foreground">{languageLabel(language)}</span>
             </div>
+            <DialogDescription className="mt-1 hidden text-xs sm:block">
+              A scratch run in your browser: no tokens, nothing saved. Start a new attempt when you want feedback.
+            </DialogDescription>
+          </div>
+          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+            <label className="flex items-center gap-1.5 text-xs">
+              <Checkbox checked={trace} onCheckedChange={(v) => setTrace(Boolean(v))} disabled={running} />
+              Show steps
+            </label>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => edit(initialCode)}
+              disabled={running || code === initialCode}
+              title="Back to the code you started from"
+            >
+              <RotateCcwIcon /> Reset
+            </Button>
+            {running ? (
+              <Button variant="soft" size="sm" onClick={() => stopRef.current?.()}>
+                <SquareIcon /> Stop
+              </Button>
+            ) : (
+              <Button variant="brand" size="sm" onClick={start} disabled={!code.trim()} title="Ctrl/⌘ + Enter">
+                <PlayIcon /> Run
+              </Button>
+            )}
+          </div>
+        </header>
+
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(14rem,45%)_1fr] lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:grid-rows-1">
+          <div className="flex min-h-0 flex-col border-b lg:border-r lg:border-b-0">
             <details className="group border-b bg-tile/60 px-3 py-1.5 text-xs">
               <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
                 <span className="shrink-0 text-muted-foreground">The tests call</span>
