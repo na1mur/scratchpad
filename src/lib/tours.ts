@@ -3,8 +3,11 @@
  * `preferences.toursSeen`. Steps point at elements by `data-tour="<name>"`; a step whose element isn't on
  * the page (no notebook upload, a passing attempt with nothing to fix, ...) is left out.
  */
-export const TOURS = ["workspace", "analysis", "solution"] as const;
+export const TOURS = ["workspace", "analysis", "solution", "editRun"] as const;
 export type TourId = (typeof TOURS)[number];
+
+/** The tours that existed when TOURS_SINCE was set; older accounts count as having seen only these. */
+const ORIGINAL_TOURS: readonly TourId[] = ["workspace", "analysis", "solution"];
 
 export type TourStep = {
   /** The `data-tour` value of the element to highlight. */
@@ -12,6 +15,8 @@ export type TourStep = {
   title: string;
   description: string;
   side?: "top" | "right" | "bottom" | "left";
+  /** A tour this step stands in for: when the step is shown, that tour counts as seen too. */
+  covers?: TourId;
 };
 
 export const TOUR_STEPS: Record<TourId, TourStep[]> = {
@@ -20,14 +25,21 @@ export const TOUR_STEPS: Record<TourId, TourStep[]> = {
     {
       target: "statement",
       title: "The problem statement",
-      description: "Open it any time to re-read the problem without leaving your attempt.",
+      description: "Open it any time to re-read the problem and its test cases without leaving your attempt.",
       side: "bottom",
+    },
+    {
+      target: "test-cases",
+      title: "The test cases",
+      description:
+        "Every attempt runs on these, and its answers are checked against the correct ones. Name your function as shown here.",
+      side: "right",
     },
     {
       target: "pseudo",
       title: "Write your approach here",
       description:
-        "Pseudo-code or real code, in any language. It doesn't have to be neat: it's run step by step on small test inputs.",
+        "Pseudo-code or real code, in any language. It doesn't have to be neat: it's completed into runnable code and run step by step on the test cases.",
       side: "right",
     },
     {
@@ -67,7 +79,8 @@ export const TOUR_STEPS: Record<TourId, TourStep[]> = {
     {
       target: "cases",
       title: "Test cases",
-      description: "The AI picked inputs that cover different situations. Switch between them; failing ones come first.",
+      description:
+        "Your code ran on each one and its answer was checked against the correct one. Switch between them; failing ones come first.",
       side: "bottom",
     },
     {
@@ -76,6 +89,14 @@ export const TOUR_STEPS: Record<TourId, TourStep[]> = {
       description:
         "Play, pause, or use the arrow keys. Shift-click steps to attach them to a question in the chat.",
       side: "top",
+    },
+    {
+      target: "edit-run",
+      title: "Edit & run",
+      description:
+        "Change the completed code and run it on the test cases right in your browser: no tokens, nothing saved. Turn on Show steps to watch it run.",
+      side: "bottom",
+      covers: "editRun",
     },
     {
       target: "tabs",
@@ -125,6 +146,14 @@ export const TOUR_STEPS: Record<TourId, TourStep[]> = {
       side: "right",
     },
     {
+      target: "edit-run",
+      title: "Try your own version",
+      description:
+        "Edit this solution, or write it another way, and run it on the test cases in your browser to see whether it still passes.",
+      side: "bottom",
+      covers: "editRun",
+    },
+    {
       target: "cases",
       title: "Test inputs",
       description: "The walkthrough was run for real on each of these inputs. Switch between them to compare.",
@@ -143,6 +172,16 @@ export const TOUR_STEPS: Record<TourId, TourStep[]> = {
       side: "top",
     },
   ],
+  // The first time Edit & run shows up for someone who already took the tour of that page.
+  editRun: [
+    {
+      target: "edit-run",
+      title: "New: Edit & run",
+      description:
+        "Change the code and run it on the problem's test cases right in your browser: pass or fail per case, errors with line numbers, and the steps if you want them. No tokens, nothing saved.",
+      side: "bottom",
+    },
+  ],
 };
 
 /**
@@ -154,5 +193,6 @@ export const TOURS_SINCE = new Date("2026-10-12T00:00:00Z");
 export function toursSeenBy(user: { createdAt?: Date; preferences?: { toursSeen?: readonly TourId[] | null } | null }): TourId[] {
   const seen = user.preferences?.toursSeen;
   if (seen) return [...seen];
-  return user.createdAt && user.createdAt < TOURS_SINCE ? [...TOURS] : [];
+  // Tours added later (editRun) still show to them.
+  return user.createdAt && user.createdAt < TOURS_SINCE ? [...ORIGINAL_TOURS] : [];
 }

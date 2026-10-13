@@ -72,7 +72,7 @@ export function TestCases({ problemId, initial, language }: { problemId: string;
     ? providedCode(language, harness).signature
     : `${harness.functionName}(${harness.params.map((p) => `${p.name}: ${p.type}`).join(", ")}) -> ${harness.returnType}`;
   return (
-    <section aria-labelledby="test-cases-heading">
+    <section aria-labelledby="test-cases-heading" data-tour="test-cases">
       <h2 id="test-cases-heading" className="text-sm font-medium">
         Test cases
       </h2>

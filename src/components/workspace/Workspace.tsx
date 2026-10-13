@@ -450,14 +450,27 @@ export function Workspace({
 
   // First time on a problem: the form. First finished analysis: the results.
   useTour("workspace", { seen: toursSeen, ready: mode === "new" && !running && !confirmingNew });
+  // Edit & Run needs a language the browser can run and the problem's test cases.
+  const harness = problem.harness;
+  const runnable = isRunLanguage(problem.language) && harness.status === "ready" ? { language: problem.language, view: harness } : null;
+
+  // Edit & run for someone who took the analysis tour before it had that step; the tour itself covers it.
+  useTour("editRun", {
+    seen: toursSeen,
+    ready:
+      Boolean(runnable) &&
+      toursSeen.includes("analysis") &&
+      mode === "view" &&
+      viewing?.status === "done" &&
+      Boolean(viewing.vizSpec) &&
+      !running &&
+      !loadingAttempt,
+  });
   useTour("analysis", {
     seen: toursSeen,
     ready: mode === "view" && viewing?.status === "done" && Boolean(viewing.vizSpec) && !running && !loadingAttempt,
   });
 
-  // Edit & Run needs a language the browser can run and the problem's test cases.
-  const harness = problem.harness;
-  const runnable = isRunLanguage(problem.language) && harness.status === "ready" ? { language: problem.language, view: harness } : null;
 
   const left = (
     <div className="flex flex-col gap-4 p-4">

@@ -312,6 +312,8 @@ export function SolutionView({
       : null;
 
   useTour("solution", { seen: toursSeen, ready: Boolean(spec && content) && !loading });
+  // Edit & run for someone who took the solution tour before it had that step; the tour itself covers it.
+  useTour("editRun", { seen: toursSeen, ready: Boolean(runnable) && toursSeen.includes("solution") && !loading });
 
   const left = (
     <div className="flex flex-col gap-4 p-4">
@@ -418,6 +420,7 @@ export function SolutionView({
                 size="sm"
                 onClick={() => setRunnerOpen(true)}
                 title="Edit this solution (or write your own) and run it on the test cases, in your browser"
+                data-tour="edit-run"
               >
                 <CodeIcon /> Edit &amp; run
               </Button>
