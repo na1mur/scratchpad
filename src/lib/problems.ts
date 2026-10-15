@@ -56,6 +56,16 @@ export async function listProblems(userId: string, query: ListProblemsQuery) {
   return { items: items.map(serializeProblemSummary), page, pageCount, total };
 }
 
+/** The problems the learner most recently worked on (only ones with an attempt), newest first. */
+export async function recentProblems(userId: string, limit: number) {
+  await connectDB();
+  const items = await Problem.find({ userId: new Types.ObjectId(userId), attemptCount: { $gt: 0 } })
+    .sort({ updatedAt: -1 })
+    .limit(limit)
+    .lean();
+  return items.map(serializeProblemSummary);
+}
+
 /** Tags the user actually has, in canonical order; drives the list tabs. */
 export async function distinctTags(userId: string): Promise<Tag[]> {
   await connectDB();
