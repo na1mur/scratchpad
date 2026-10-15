@@ -66,9 +66,6 @@ const PART_ICONS: Record<Exclude<PartIcon, "whole">, LucideIcon> = {
   column: Columns3Icon,
 };
 
-/** Suggested items open on load, up to this many, so the panel stays short. */
-const OPEN_AT_START = 3;
-
 const dragProps = (part: Part) => ({
   draggable: true,
   onDragStart: (e: React.DragEvent) => {
@@ -173,7 +170,8 @@ function Group({ store, group, open, onToggle }: { store: SketchStore; group: Pa
 export function Palette({ store, suggested }: { store: SketchStore; suggested: readonly PaletteKind[] }) {
   const first = PART_GROUPS.filter((g) => suggested.includes(g.kind));
   const rest = PART_GROUPS.filter((g) => !suggested.includes(g.kind));
-  const [open, setOpen] = useState(() => new Set(first.slice(0, OPEN_AT_START).map((g) => g.kind)));
+  // Every group starts closed; the lists are long and the learner opens what they need.
+  const [open, setOpen] = useState(() => new Set<PaletteKind>());
   const toggle = (kind: PaletteKind) =>
     setOpen((prev) => {
       const next = new Set(prev);
