@@ -529,61 +529,8 @@ export function Workspace({
     <div className="flex flex-col gap-4 p-4">
       <Collapsible defaultOpen={!initialAttempt}>
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h1 className="text-xl leading-snug font-semibold tracking-tight text-balance">{problem.title}</h1>
-            {(problem.tags.length > 0 || problem.sourceUrl) && (
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                {problem.tags.length > 0 && (
-                  <ul className="flex flex-wrap items-center gap-1" aria-label="Topics">
-                    {problem.tags.map((t) => (
-                      <li key={t}>
-                        <Badge variant="secondary">{t}</Badge>
-                      </li>
-                    ))}
-                    {problem.tagsSource === "auto" && (
-                      <li className="text-xs text-muted-foreground" title="Suggested by the AI. Edit the problem to change them.">
-                        auto-tagged
-                      </li>
-                    )}
-                  </ul>
-                )}
-                {problem.sourceUrl && <SourceLink url={problem.sourceUrl} />}
-              </div>
-            )}
-          </div>
-          <div className="flex shrink-0 items-center">
-            <Link
-              href={`${problemPath(problem)}/sketch`}
-              className={buttonVariants({ variant: "soft", className: "mr-2" })}
-              title="Draw the problem with arrays, pointers, nodes and notes"
-              aria-label="Sketch"
-            >
-              <PencilRulerIcon />
-              <span className="hidden sm:inline">Sketch</span>
-            </Link>
-            {runner && (
-              <Button
-                variant="pen"
-                className="mr-2 ring-3 ring-pen-red/25 hover:ring-pen-red/40 shadow-sm"
-                onClick={() => setRunnerOpen(true)}
-                title={runner.title}
-                aria-label="Playground"
-                data-tour="edit-run"
-              >
-                <CodeIcon />
-                <span className="hidden sm:inline">Playground</span>
-              </Button>
-            )}
-            <span className="mr-2" data-tour="solution">
-              <SolutionButton
-                problemId={problem.id}
-                problemSlug={problem.slug}
-                hasSolution={hasSolution}
-                attempt={solutionBase && { id: solutionBase.id, version: solutionBase.version }}
-                canGenerate={canRun}
-                disabled={Boolean(running)}
-              />
-            </span>
+          <h1 className="min-w-0 text-xl leading-snug font-semibold tracking-tight text-balance">{problem.title}</h1>
+          <div className="flex shrink-0 items-center gap-1">
             <CollapsibleTrigger
               data-tour="statement"
               render={<Button variant="soft" size="sm" className="data-panel-open:[&_svg]:rotate-180" />}
@@ -592,6 +539,62 @@ export function Workspace({
             </CollapsibleTrigger>
             <ProblemActions problem={problem} />
           </div>
+        </div>
+        {(problem.tags.length > 0 || problem.sourceUrl) && (
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            {problem.tags.length > 0 && (
+              <ul className="flex flex-wrap items-center gap-1" aria-label="Topics">
+                {problem.tags.map((t) => (
+                  <li key={t}>
+                    <Badge variant="secondary">{t}</Badge>
+                  </li>
+                ))}
+                {problem.tagsSource === "auto" && (
+                  <li className="text-xs text-muted-foreground" title="Suggested by the AI. Edit the problem to change them.">
+                    auto-tagged
+                  </li>
+                )}
+              </ul>
+            )}
+            {problem.sourceUrl && <SourceLink url={problem.sourceUrl} />}
+          </div>
+        )}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Link
+            href={`${problemPath(problem)}/sketch`}
+            className={buttonVariants({
+              variant: "ink",
+              className: "shadow-sm ring-3 ring-pen-blue/25 hover:ring-pen-blue/40",
+            })}
+            title="Draw the problem on a whiteboard with arrays, pointers, nodes and notes"
+            aria-label="Whiteboard"
+          >
+            <PencilRulerIcon />
+            Whiteboard
+          </Link>
+          {runner && (
+            <Button
+              variant="pen"
+              className="shadow-sm ring-3 ring-pen-red/25 hover:ring-pen-red/40"
+              onClick={() => setRunnerOpen(true)}
+              title={runner.title}
+              aria-label="Playground"
+              data-tour="edit-run"
+            >
+              <CodeIcon />
+              Playground
+            </Button>
+          )}
+          <span data-tour="solution">
+            <SolutionButton
+              problemId={problem.id}
+              problemSlug={problem.slug}
+              hasSolution={hasSolution}
+              attempt={solutionBase && { id: solutionBase.id, version: solutionBase.version }}
+              canGenerate={canRun}
+              disabled={Boolean(running)}
+            />
+          </span>
         </div>
         <CollapsibleContent>
           <pre className="mt-3 max-h-64 overflow-auto rounded-lg border bg-tile p-3 font-sans text-sm whitespace-pre-wrap">

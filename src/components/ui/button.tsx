@@ -20,6 +20,8 @@ const buttonVariants = cva(
           "bg-brand text-brand-foreground hover:bg-brand/85 focus-visible:border-brand focus-visible:ring-brand/50",
         pen:
           "bg-pen-red text-white hover:bg-pen-red/85 focus-visible:border-pen-red focus-visible:ring-pen-red/50 dark:text-paper",
+        ink:
+          "bg-pen-blue text-white hover:bg-pen-blue/85 focus-visible:border-pen-blue focus-visible:ring-pen-blue/50 dark:text-paper",
         soft:
           "border-pen-blue/25 bg-pen-blue/10 text-pen-blue hover:bg-pen-blue/20 focus-visible:border-pen-blue/50 focus-visible:ring-pen-blue/30 aria-expanded:bg-pen-blue/20",
         link: "text-primary underline-offset-4 hover:underline",
