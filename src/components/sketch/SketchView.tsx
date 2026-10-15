@@ -105,8 +105,6 @@ export function SketchView({
     if (cut.length) toast(`Only the first values of ${cut.join(", ")} fit on the canvas.`);
   };
 
-  const empty = s.live.length === 0;
-
   return (
     <div className="flex flex-col" style={{ height: "calc(100dvh - 3.5rem - 1px)" }}>
       <header className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
@@ -147,22 +145,6 @@ export function SketchView({
             <p className="absolute top-3 right-3 left-3 z-20 rounded-lg border bg-popover p-2 text-center text-xs text-muted-foreground shadow-sm">
               Editing a sketch needs a larger screen. You can pan and zoom here.
             </p>
-          )}
-          {empty && !readOnly && (
-            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
-              <div className="pointer-events-auto max-w-sm rounded-xl border bg-popover p-5 text-center shadow-sm">
-                <h2 className="font-medium">Draw your thinking</h2>
-                <p className="mt-1 text-sm text-muted-foreground text-pretty">
-                  Lay out the input, then add pointers and notes for what your approach does to it.
-                  {harness ? " Start from a test case, or drag" : " Drag"} elements from the left.
-                </p>
-                {harness && harness.cases[0] && (
-                  <Button variant="brand" className="mt-4" onClick={() => startFrom(harness.cases[0])}>
-                    Start from {harness.cases[0].label || "case 1"}
-                  </Button>
-                )}
-              </div>
-            </div>
           )}
         </main>
 
