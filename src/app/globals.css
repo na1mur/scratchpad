@@ -338,7 +338,7 @@
   border-bottom-color: var(--popover);
 }
 
-/* Edit & Run editor (CodeMirrorEditor): syntax colours for both themes. */
+/* Playground editor (CodeMirrorEditor): syntax colours for both themes. */
 .cm-tok-keyword {
   color: oklch(0.5 0.2 300);
 }

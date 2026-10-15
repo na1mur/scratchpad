@@ -451,11 +451,11 @@ export function Workspace({
 
   // First time on a problem: the form. First finished analysis: the results.
   useTour("workspace", { seen: toursSeen, ready: mode === "new" && !running && !confirmingNew });
-  // Edit & Run needs a language the browser can run and the problem's test cases.
+  // Playground needs a language the browser can run and the problem's test cases.
   const harness = problem.harness;
   const runnable = isRunLanguage(problem.language) && harness.status === "ready" ? { language: problem.language, view: harness } : null;
 
-  // Edit & run is there from the start, beside the title. It opens the code the visualization shows once an
+  // Playground is there from the start, beside the title. It opens the code the visualization shows once an
   // analysis has it (the completed code, added lines included), the attempt as written before that, and while
   // drafting, the draft; with nothing written yet, an empty function with the signature the tests call.
   let runner: { draftKey: string; code: string; title: string } | null = null;
@@ -486,7 +486,7 @@ export function Workspace({
     seen: toursSeen,
     ready: mode === "view" && viewing?.status === "done" && Boolean(viewing.vizSpec) && !running && !loadingAttempt,
   });
-  // Edit & run for someone who took the workspace tour before it had that step. Called after the analysis
+  // Playground for someone who took the workspace tour before it had that step. Called after the analysis
   // tour so that one goes first when both are due (it covers this one).
   useTour("editRun", {
     seen: toursSeen,
@@ -523,16 +523,15 @@ export function Workspace({
           <div className="flex shrink-0 items-center">
             {runner && (
               <Button
-                variant="soft"
-                size="sm"
-                className="mr-2"
+                variant="pen"
+                className="mr-2 ring-3 ring-pen-red/25 hover:ring-pen-red/40 shadow-sm"
                 onClick={() => setRunnerOpen(true)}
                 title={runner.title}
-                aria-label="Edit & run"
+                aria-label="Playground"
                 data-tour="edit-run"
               >
                 <CodeIcon />
-                <span className="hidden sm:inline">Edit &amp; run</span>
+                <span className="hidden sm:inline">Playground</span>
               </Button>
             )}
             <span className="mr-2" data-tour="solution">
@@ -635,7 +634,7 @@ export function Workspace({
           </DialogHeader>
           <DialogFooter>
             <Button
-              variant="soft"
+              variant="pen"
               onClick={() => {
                 setConfirmingNew(false);
                 startNewAttempt(viewing);

@@ -305,7 +305,7 @@ export function SolutionView({
   const content = viewing?.status === "done" ? viewing.content : null;
   const currentLine = (spec && stepAt(spec, caseIndex, playerIndex)?.line) ?? null;
   const viewingSummary = viewing ? (solutions.find((s) => s.id === viewing.id) ?? null) : null;
-  // Edit & run, always beside the title when the browser can run it on the problem's test cases: the solution
+  // Playground, always beside the title when the browser can run it on the problem's test cases: the solution
   // being viewed, e.g. to try another way of solving it, or (none finished yet) the learner's own scratch code
   // in the problem's language, shared with the workspace's draft.
   const harness = problem.harness;
@@ -319,7 +319,7 @@ export function SolutionView({
   }
 
   useTour("solution", { seen: toursSeen, ready: Boolean(spec && content) && !loading });
-  // Edit & run for someone who took the solution tour before it had that step; the tour itself covers it.
+  // Playground for someone who took the solution tour before it had that step; the tour itself covers it.
   useTour("editRun", { seen: toursSeen, ready: Boolean(runner) && toursSeen.includes("solution") && !loading });
 
   const left = (
@@ -345,19 +345,19 @@ export function SolutionView({
           <div className="flex shrink-0 items-center gap-2">
             {runner && (
               <Button
-                variant="soft"
-                size="sm"
+                variant="pen"
+                className="ring-3 ring-pen-red/25 hover:ring-pen-red/40 shadow-sm"
                 onClick={() => setRunnerOpen(true)}
                 title={
                   content
                     ? "Edit this solution (or write your own) and run it on the test cases, in your browser"
                     : "Run your own code on the test cases, in your browser"
                 }
-                aria-label="Edit & run"
+                aria-label="Playground"
                 data-tour="edit-run"
               >
                 <CodeIcon />
-                <span className="hidden sm:inline">Edit &amp; run</span>
+                <span className="hidden sm:inline">Playground</span>
               </Button>
             )}
             <CollapsibleTrigger render={<Button variant="soft" size="sm" className="data-panel-open:[&_svg]:rotate-180" />}>

@@ -71,7 +71,7 @@ function VerdictIcon({ verdict, running }: { verdict: Verdict | null; running: b
 }
 
 /**
- * Edit & Run: the learner edits code (the attempt's completed code, or their draft) and runs it on the
+ * Playground: the learner edits code (the attempt's completed code, or their draft) and runs it on the
  * problem's fixed test cases, in their own browser: JavaScript and TypeScript in a worker, Python through
  * Pyodide. It costs no tokens and nothing is saved. With "Show steps" each case can be stepped through in
  * the same player as an analysis, built from the run itself.
@@ -171,7 +171,7 @@ export function CodeRunner({
           <div aria-hidden className="h-6 w-px bg-border" />
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2 whitespace-nowrap">
-              <DialogTitle>Edit &amp; run</DialogTitle>
+              <DialogTitle>Playground</DialogTitle>
               <span className="text-xs text-muted-foreground">{languageLabel(language)}</span>
             </div>
             <DialogDescription className="mt-1 hidden text-xs sm:block">

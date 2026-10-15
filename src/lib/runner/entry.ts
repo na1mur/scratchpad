@@ -155,7 +155,7 @@ function header(language: RunLanguage, sig: Signature): { head: string; note: st
   return { head, note };
 }
 
-/** An empty function with the signature the tests call, for Edit & run before there's any code to start from. */
+/** An empty function with the signature the tests call, for Playground before there's any code to start from. */
 export function starterCode(language: RunLanguage, sig: Signature): string {
   const { head, note } = header(language, sig);
   return language === "python" ? `${head}${note}\n    pass\n` : `${head} {${note}\n  \n}\n`;

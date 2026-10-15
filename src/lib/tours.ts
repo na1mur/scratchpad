@@ -64,7 +64,7 @@ export const TOUR_STEPS: Record<TourId, TourStep[]> = {
       target: "edit-run",
       title: "Or just run it",
       description:
-        "Edit & run runs real code on the test cases right in your browser, before or after processing: no tokens, nothing saved. Turn on Show steps to watch it run.",
+        "Playground runs real code on the test cases right in your browser, before or after processing: no tokens, nothing saved. Turn on Show steps to watch it run.",
       side: "bottom",
       covers: "editRun",
     },
@@ -100,7 +100,7 @@ export const TOUR_STEPS: Record<TourId, TourStep[]> = {
     },
     {
       target: "edit-run",
-      title: "Edit & run",
+      title: "Playground",
       description:
         "Change the completed code and run it on the test cases right in your browser: no tokens, nothing saved. Turn on Show steps to watch it run.",
       side: "bottom",
@@ -180,11 +180,11 @@ export const TOUR_STEPS: Record<TourId, TourStep[]> = {
       side: "top",
     },
   ],
-  // The first time Edit & run shows up for someone who already took the tour of that page.
+  // The first time Playground shows up for someone who already took the tour of that page.
   editRun: [
     {
       target: "edit-run",
-      title: "New: Edit & run",
+      title: "New: Playground",
       description:
         "Change the code and run it on the problem's test cases right in your browser: pass or fail per case, errors with line numbers, and the steps if you want them. No tokens, nothing saved.",
       side: "bottom",

@@ -36,7 +36,7 @@ const theme = EditorView.theme({
 });
 
 /**
- * CodeMirror 6 for Edit & Run. Uncontrolled inside: `value` replaces the document only when it differs
+ * CodeMirror 6 for Playground. Uncontrolled inside: `value` replaces the document only when it differs
  * from what's there (e.g. a reset), so typing never fights a re-render. Ctrl/Cmd+Enter runs.
  */
 export function CodeMirrorEditor({

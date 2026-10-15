@@ -2,7 +2,7 @@ import type { CallSpec } from "@/lib/harness/types";
 import type { AutoEvent } from "@/lib/trace/steps";
 
 /**
- * Edit & Run: the learner's own code, run in their browser on the problem's fixed test cases. Nothing
+ * Playground: the learner's own code, run in their browser on the problem's fixed test cases. Nothing
  * here touches the server or a model. These are the messages between the page and the run's worker.
  */
 
