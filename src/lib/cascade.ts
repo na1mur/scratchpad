@@ -6,6 +6,7 @@ import { Attempt } from "@/models/Attempt";
 import { Message } from "@/models/Message";
 import { Problem } from "@/models/Problem";
 import { Share } from "@/models/Share";
+import { Sketch } from "@/models/Sketch";
 import { Solution } from "@/models/Solution";
 
 const R2_FIELDS = { images: 1, specR2Key: 1, specVersions: 1 } as const;
@@ -38,6 +39,7 @@ export async function deleteProblemCascade(userId: string, problemId: Types.Obje
   await Attempt.deleteMany({ problemId, userId });
   await Solution.deleteMany({ problemId, userId });
   await Share.deleteMany({ problemId, userId });
+  await Sketch.deleteMany({ problemId, userId });
   await Problem.deleteOne({ _id: problemId, userId });
   await cleanupR2([...attempts.flatMap(attemptR2Keys), ...solutions.flatMap((s) => (s.specR2Key ? [s.specR2Key] : []))]);
 }

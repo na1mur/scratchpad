@@ -14,6 +14,7 @@ import {
   EraserIcon,
   InfoIcon,
   LockIcon,
+  PencilRulerIcon,
   PlayIcon,
   RotateCcwIcon,
   SparklesIcon,
@@ -69,6 +70,7 @@ import { TestCases } from "./TestCases";
 import { starterCode } from "@/lib/runner/entry";
 import { isRunLanguage } from "@/lib/runner/protocol";
 import { PROVIDER_LABELS, type ProviderId } from "@/lib/providers";
+import { problemPath } from "@/lib/slug";
 import { createAttemptSchema, type CreateAttemptInput } from "@/lib/schemas/attempts";
 import { MAX_TEXT } from "@/lib/schemas/problems";
 import { playCompletionSound } from "@/lib/sounds";
@@ -521,6 +523,15 @@ export function Workspace({
             )}
           </div>
           <div className="flex shrink-0 items-center">
+            <Link
+              href={`${problemPath(problem)}/sketch`}
+              className={buttonVariants({ variant: "soft", className: "mr-2" })}
+              title="Draw the problem with arrays, pointers, nodes and notes"
+              aria-label="Sketch"
+            >
+              <PencilRulerIcon />
+              <span className="hidden sm:inline">Sketch</span>
+            </Link>
             {runner && (
               <Button
                 variant="pen"
