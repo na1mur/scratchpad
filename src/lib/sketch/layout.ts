@@ -1,4 +1,16 @@
-import { isCells, isTable, type Anchor, type CellsElement, type ElementOf, type LinkPort, type SketchElement, type TableElement } from "./types";
+import { CHAR_WIDTH, FONT_SIZE_PX, FREEHAND_PX, styleOf, type Style } from "./style";
+import {
+  MAX_SHAPE_SIZE,
+  MIN_SHAPE_SIZE,
+  isCells,
+  isTable,
+  type Anchor,
+  type CellsElement,
+  type ElementOf,
+  type LinkPort,
+  type SketchElement,
+  type TableElement,
+} from "./types";
 
 /**
  * Geometry, in scene units. Every size follows from the element's content, so the renderer draws exactly these
@@ -101,15 +113,208 @@ function wrappedLines(text: string, perLine: number): number {
   return text.split("\n").reduce((n, line) => n + Math.max(1, Math.ceil(chars(line) / perLine)), 0);
 }
 
+/** Font size in pixels, average glyph width and line height, for text drawn in a style. */
+export type TextMetrics = { px: number; charW: number; lineH: number };
+
+export function textMetrics(style: Pick<Style, "fontFamily" | "fontSize" | "fontWeight">, lineHeight = 1.35): TextMetrics {
+  const px = FONT_SIZE_PX[style.fontSize];
+  return { px, charW: px * CHAR_WIDTH[style.fontFamily] * (style.fontWeight === "bold" ? 1.06 : 1), lineH: px * lineHeight };
+}
+
+/** How many lines `text` wraps to at `width`, breaking between words as the browser does (and inside long words). */
+export function wrappedLineCount(text: string, width: number, charW: number): number {
+  const perLine = Math.max(1, Math.floor(width / charW));
+  let total = 0;
+  for (const para of text.split("\n")) {
+    let lines = 1;
+    let used = 0;
+    for (const word of para.split(" ")) {
+      const len = chars(word);
+      const need = used === 0 ? len : used + 1 + len;
+      if (need <= perLine) {
+        used = need;
+        continue;
+      }
+      if (used > 0) lines++;
+      lines += Math.max(0, Math.ceil(len / perLine) - 1);
+      used = len % perLine || (len ? perLine : 0);
+    }
+    total += lines;
+  }
+  return total;
+}
+
+const LEGACY_NOTE: TextMetrics = { px: 13, charW: 7, lineH: 20 };
+
+/** A note's text metrics: 13px on 20px lines until a font size, family or weight is picked. */
+export function noteMetrics(el: ElementOf<"note">): TextMetrics {
+  if (!el.fontSize && !el.fontFamily && !el.fontWeight) return LEGACY_NOTE;
+  const style = styleOf(el);
+  const px = el.fontSize ? FONT_SIZE_PX[el.fontSize] : LEGACY_NOTE.px;
+  return { px, charW: px * CHAR_WIDTH[style.fontFamily] * (style.fontWeight === "bold" ? 1.06 : 1), lineH: Math.round(px * 1.5) };
+}
+
 /** A note's height grows with its text (the renderer wraps at the same width). */
-export function noteHeight(text: string): number {
-  return 20 + wrappedLines(text || " ", Math.floor((NOTE_W - 20) / 7)) * 20;
+export function noteHeight(text: string, metrics: TextMetrics = LEGACY_NOTE): number {
+  return 20 + wrappedLines(text || " ", Math.max(1, Math.floor((NOTE_W - 20) / metrics.charW))) * metrics.lineH;
 }
 
 export function textBox(el: ElementOf<"text">): { w: number; h: number } {
-  const px = TEXT_SIZE_PX[el.size];
+  const m = textMetrics(styleOf(el));
   const lines = (el.text || " ").split("\n");
-  return { w: Math.max(px, ...lines.map((l) => chars(l) * px * 0.6)) + 4, h: lines.length * px * 1.35 };
+  return { w: Math.max(m.px, ...lines.map((l) => chars(l) * m.charW)) + 4, h: lines.length * m.lineH };
+}
+
+/** Space between a shape's outline and its text. */
+export const SHAPE_TEXT_PAD = 8;
+export const SHAPE_LINE_HEIGHT = 1.25;
+
+/** How much of a shape's width and height its text may use: the largest rectangle inside an ellipse or diamond. */
+function textShare(el: ElementOf<"shape">): number {
+  return el.shape === "ellipse" ? Math.SQRT1_2 : el.shape === "diamond" ? 0.5 : 1;
+}
+
+/** Where a shape's text wraps and centres: inside the outline, less padding. */
+export function shapeTextRect(el: ElementOf<"shape">): Rect {
+  const k = textShare(el);
+  const w = Math.max(0, el.w * k - SHAPE_TEXT_PAD * 2);
+  const h = Math.max(0, el.h * k - SHAPE_TEXT_PAD * 2);
+  return { x: el.x + (el.w - w) / 2, y: el.y + (el.h - h) / 2, w, h };
+}
+
+/** The height `text` takes inside the shape, wrapped to its text area. */
+export function shapeTextHeight(el: ElementOf<"shape">, text = el.text): number {
+  if (!text) return 0;
+  const m = textMetrics(styleOf(el), SHAPE_LINE_HEIGHT);
+  return wrappedLineCount(text, shapeTextRect(el).w, m.charW) * m.lineH;
+}
+
+/** The shape's height grown, if needed, so its text fits (Excalidraw grows a container the same way). */
+export function fittedShapeHeight(el: ElementOf<"shape">, text = el.text): number {
+  const need = shapeTextHeight(el, text);
+  if (!need) return el.h;
+  return Math.min(MAX_SHAPE_SIZE, Math.max(el.h, Math.ceil((need + SHAPE_TEXT_PAD * 2) / textShare(el))));
+}
+
+/** The largest corner radius of a rounded rectangle (Excalidraw's adaptive radius). */
+const ROUND_RADIUS = 32;
+
+/**
+ * A shape's outline as an SVG path, in the shape's own coordinates, inset by half the stroke so the stroke stays
+ * inside the element's box.
+ */
+export function shapeOutlinePath(el: Pick<ElementOf<"shape">, "shape" | "w" | "h">, strokePx: number): string {
+  const i = Math.min(strokePx / 2, el.w / 2, el.h / 2);
+  const w = el.w;
+  const h = el.h;
+  switch (el.shape) {
+    case "rectangle":
+      return `M ${i} ${i} H ${w - i} V ${h - i} H ${i} Z`;
+    case "rounded": {
+      const r = Math.max(0, Math.min(ROUND_RADIUS, Math.min(w, h) * 0.25) - i);
+      return [
+        `M ${i + r} ${i} H ${w - i - r}`,
+        `A ${r} ${r} 0 0 1 ${w - i} ${i + r} V ${h - i - r}`,
+        `A ${r} ${r} 0 0 1 ${w - i - r} ${h - i} H ${i + r}`,
+        `A ${r} ${r} 0 0 1 ${i} ${h - i - r} V ${i + r}`,
+        `A ${r} ${r} 0 0 1 ${i + r} ${i} Z`,
+      ].join(" ");
+    }
+    case "ellipse": {
+      const rx = w / 2 - i;
+      const ry = h / 2 - i;
+      return `M ${i} ${h / 2} A ${rx} ${ry} 0 1 0 ${w - i} ${h / 2} A ${rx} ${ry} 0 1 0 ${i} ${h / 2} Z`;
+    }
+    case "diamond":
+      return `M ${w / 2} ${i} L ${w - i} ${h / 2} L ${w / 2} ${h - i} L ${i} ${h / 2} Z`;
+  }
+}
+
+/**
+ * An arrowhead at `tip` for a line arriving from `from`: an open chevron ("arrow") or a closed triangle, sized
+ * with the stroke and never longer than half the segment.
+ */
+export function arrowheadPath(tip: Point, from: Point, kind: "arrow" | "triangle", strokePx: number): string {
+  const segment = Math.hypot(tip.x - from.x, tip.y - from.y);
+  if (!segment) return "";
+  const size = Math.min(8 + strokePx * 3.5, segment / 2);
+  const a = Math.atan2(tip.y - from.y, tip.x - from.x);
+  const spread = 0.45;
+  const l = { x: tip.x - size * Math.cos(a - spread), y: tip.y - size * Math.sin(a - spread) };
+  const r = { x: tip.x - size * Math.cos(a + spread), y: tip.y - size * Math.sin(a + spread) };
+  return `M ${l.x} ${l.y} L ${tip.x} ${tip.y} L ${r.x} ${r.y}${kind === "triangle" ? " Z" : ""}`;
+}
+
+/** Whether `p` is inside the shape's outline: the real ellipse or diamond, not its box. */
+export function insideShape(el: ElementOf<"shape">, p: Point): boolean {
+  const nx = (p.x - (el.x + el.w / 2)) / (el.w / 2);
+  const ny = (p.y - (el.y + el.h / 2)) / (el.h / 2);
+  if (el.shape === "ellipse") return nx * nx + ny * ny <= 1;
+  if (el.shape === "diamond") return Math.abs(nx) + Math.abs(ny) <= 1;
+  return Math.abs(nx) <= 1 && Math.abs(ny) <= 1;
+}
+
+/** The topmost shape whose outline contains `p` (a double-click inside an empty shape writes in it). */
+export function shapeAt(candidates: readonly SketchElement[], p: Point): ElementOf<"shape"> | null {
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const el = candidates[i];
+    if (el.type === "shape" && insideShape(el, p)) return el;
+  }
+  return null;
+}
+
+/** A line's points in scene coordinates. */
+export function linePoints(el: ElementOf<"line">): Point[] {
+  return el.points.map(([x, y]) => ({ x: el.x + x, y: el.y + y }));
+}
+
+function lineBounds(el: ElementOf<"line">): Rect {
+  const xs = el.points.map(([x]) => x);
+  const ys = el.points.map(([, y]) => y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  return { x: el.x + minX, y: el.y + minY, w: Math.max(1, Math.max(...xs) - minX), h: Math.max(1, Math.max(...ys) - minY) };
+}
+
+export const RESIZE_HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
+export type ResizeHandle = (typeof RESIZE_HANDLES)[number];
+
+/**
+ * The box after dragging `handle` to `p`: the opposite side or corner stays put, and dragging past it flips. With
+ * `keepRatio`, corners scale both ways by the larger change and edges scale the other side around its middle.
+ */
+export function resizeRect(start: Rect, handle: ResizeHandle, p: Point, keepRatio: boolean): Rect {
+  const movesX = handle.includes("e") || handle.includes("w");
+  const movesY = handle.includes("n") || handle.includes("s");
+  let fx = handle.includes("w") ? start.x + start.w : start.x;
+  let fy = handle.includes("n") ? start.y + start.h : start.y;
+  let ex = movesX ? p.x - fx : start.w;
+  let ey = movesY ? p.y - fy : start.h;
+  const sign = (v: number) => (v < 0 ? -1 : 1);
+  if (keepRatio && start.w > 0 && start.h > 0) {
+    if (movesX && movesY) {
+      const s = Math.max(Math.abs(ex) / start.w, Math.abs(ey) / start.h);
+      ex = sign(ex) * start.w * s;
+      ey = sign(ey) * start.h * s;
+    } else if (movesX) {
+      ey = (Math.abs(ex) * start.h) / start.w;
+      fy = start.y + start.h / 2 - ey / 2;
+    } else {
+      ex = (Math.abs(ey) * start.w) / start.h;
+      fx = start.x + start.w / 2 - ex / 2;
+    }
+  }
+  ex = sign(ex) * Math.min(MAX_SHAPE_SIZE, Math.max(MIN_SHAPE_SIZE, Math.abs(ex)));
+  ey = sign(ey) * Math.min(MAX_SHAPE_SIZE, Math.max(MIN_SHAPE_SIZE, Math.abs(ey)));
+  return { x: Math.min(fx, fx + ex), y: Math.min(fy, fy + ey), w: Math.abs(ex), h: Math.abs(ey) };
+}
+
+/** `to` moved onto the nearest multiple of `step` degrees around `from`, keeping its distance (Shift on a line). */
+export function snapAngle(from: Point, to: Point, step = 15): Point {
+  const len = Math.hypot(to.x - from.x, to.y - from.y);
+  const unit = (step * Math.PI) / 180;
+  const angle = Math.round(Math.atan2(to.y - from.y, to.x - from.x) / unit) * unit;
+  return { x: from.x + Math.cos(angle) * len, y: from.y + Math.sin(angle) * len };
 }
 
 function freehandBounds(el: ElementOf<"freehand">): Rect {
@@ -123,7 +328,8 @@ function freehandBounds(el: ElementOf<"freehand">): Rect {
     maxX = Math.max(maxX, x);
     maxY = Math.max(maxY, y);
   }
-  return { x: el.x + minX - 4, y: el.y + minY - 4, w: maxX - minX + 8, h: maxY - minY + 8 };
+  const pad = Math.max(4, FREEHAND_PX[styleOf(el).strokeWidth] / 2 + 1);
+  return { x: el.x + minX - pad, y: el.y + minY - pad, w: maxX - minX + pad * 2, h: maxY - minY + pad * 2 };
 }
 
 /** The element's box, for selection outlines and marquee selection. Null for links, which have no box. */
@@ -154,11 +360,15 @@ export function elementBounds(el: SketchElement): Rect | null {
     case "pointer":
       return pointerLabelRect(el);
     case "note":
-      return { x: el.x, y: el.y, w: NOTE_W, h: noteHeight(el.text) };
+      return { x: el.x, y: el.y, w: NOTE_W, h: noteHeight(el.text, noteMetrics(el)) };
     case "text":
       return { x: el.x, y: el.y, ...textBox(el) };
     case "freehand":
       return freehandBounds(el);
+    case "shape":
+      return { x: el.x, y: el.y, w: el.w, h: el.h };
+    case "line":
+      return lineBounds(el);
     case "link":
       return null;
   }

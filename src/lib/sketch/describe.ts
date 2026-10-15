@@ -19,14 +19,25 @@ const KIND: Record<SketchElement["type"], string> = {
   note: "Note",
   text: "Text",
   freehand: "Drawing",
+  shape: "Shape",
+  line: "Line",
 };
 
+const SHAPE_NAMES = { rectangle: "Rectangle", rounded: "Rounded rectangle", ellipse: "Ellipse", diamond: "Diamond" } as const;
+
 const list = (values: readonly string[]) => values.map((v) => v || "empty").join(", ");
+
+const quote = (text: string) => {
+  const line = text.trim().split("\n")[0];
+  return `"${line.length > 40 ? `${line.slice(0, 40)}…` : line}"`;
+};
 
 function nameOf(elements: ReadonlyMap<string, SketchElement>, id: string): string {
   const el = elements.get(id);
   if (!el) return "a removed element";
   if (el.type === "node") return `node ${el.value || "(empty)"}`;
+  if (el.type === "shape") return `${SHAPE_NAMES[el.shape].toLowerCase()}${el.text.trim() ? ` ${quote(el.text)}` : ""}`;
+  if ((el.type === "note" || el.type === "text") && el.text.trim()) return `${el.type} ${quote(el.text)}`;
   return "label" in el && el.label ? el.label : KIND[el.type].toLowerCase();
 }
 
@@ -68,5 +79,16 @@ export function describeElement(elements: ReadonlyMap<string, SketchElement>, el
       return `Text: ${el.text || "empty"}`;
     case "freehand":
       return "Drawing";
+    case "shape":
+      return `${SHAPE_NAMES[el.shape]}${el.text.trim() ? `: ${el.text}` : ""}`;
+    case "line": {
+      const heads = [el.startHead, el.endHead].filter((h) => h && h !== "none").length;
+      const what = heads === 2 ? "Double-headed arrow" : heads === 1 ? "Arrow" : "Line";
+      // Which way an arrow points: a head on the start alone means it points back at the start.
+      const reversed = el.startHead && el.startHead !== "none" && (!el.endHead || el.endHead === "none");
+      const [a, b] = reversed ? [el.endBinding, el.startBinding] : [el.startBinding, el.endBinding];
+      const ends = [a && ` from ${nameOf(elements, a.elementId)}`, b && ` to ${nameOf(elements, b.elementId)}`].filter(Boolean).join("");
+      return `${what}${ends}${el.points.length > 2 ? ` through ${el.points.length} points` : ""}`;
+    }
   }
 }

@@ -2,15 +2,11 @@
 
 import { CopyIcon, MinusIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { addChild, addEntry, addNextNode, insertCell, removeCell, removeEntry, resizeMatrix } from "@/lib/sketch/actions";
-import { withChanges } from "@/lib/sketch/elements";
-import { elementBounds, pointerLabelRect } from "@/lib/sketch/layout";
-import { INK_TONES, MAX_CELLS, MAX_ENTRIES, MAX_MATRIX, TEXT_SIZES, isCells, isTable, type SketchElement } from "@/lib/sketch/types";
+import { elementBounds, linkSegment, pointerLabelRect } from "@/lib/sketch/layout";
+import { MAX_CELLS, MAX_ENTRIES, MAX_MATRIX, isCells, isTable, type SketchElement } from "@/lib/sketch/types";
 import { deleteSelection, duplicateSelection } from "./commands";
 import { useSketch, type SketchStore } from "./store";
-
-const TONE_SWATCH = { ink: "bg-ink", blue: "bg-pen-blue", red: "bg-pen-red" } as const;
 
 function Action({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
   return (
@@ -20,10 +16,16 @@ function Action({ label, onClick, disabled, children }: { label: string; onClick
   );
 }
 
-/** Edits for the one selected element, floating above it: add and remove cells, children, sizes, colours. */
+/** Edits for the one selected element, floating above it: add and remove cells, entries and children, copy, delete. */
 export function ElementToolbar({ store, element: el }: { store: SketchStore; element: SketchElement }) {
   const { camera, activeCell, elements } = useSketch(store);
-  const bounds = el.type === "pointer" ? pointerLabelRect(el) : elementBounds(el);
+  // A link has no box: its toolbar sits above the middle of its line.
+  const seg = el.type === "link" ? linkSegment(elements, el) : null;
+  const bounds = seg
+    ? { x: (seg.from.x + seg.to.x) / 2 - 12, y: (seg.from.y + seg.to.y) / 2 - 8, w: 0, h: 0 }
+    : el.type === "pointer"
+      ? pointerLabelRect(el)
+      : elementBounds(el);
   if (!bounds) return null;
   const left = Math.max(8, (bounds.x + camera.x) * camera.zoom);
   const top = Math.max(8, (bounds.y + camera.y) * camera.zoom - 44);
@@ -140,38 +142,8 @@ export function ElementToolbar({ store, element: el }: { store: SketchStore; ele
         </Action>,
       );
     }
-  } else if (el.type === "text") {
-    actions.push(
-      ...TEXT_SIZES.map((size) => (
-        <Button
-          key={size}
-          variant="ghost"
-          size="icon-xs"
-          aria-pressed={el.size === size}
-          className={cn("font-mono uppercase", el.size === size && "bg-muted")}
-          title={`Text size ${size.toUpperCase()}`}
-          onClick={() => store.commit(el.size === size ? [] : [withChanges(el, { size })])}
-        >
-          {size}
-        </Button>
-      )),
-    );
-  } else if (el.type === "freehand") {
-    actions.push(
-      ...INK_TONES.map((tone) => (
-        <Button
-          key={tone}
-          variant="ghost"
-          size="icon-xs"
-          aria-pressed={el.tone === tone}
-          title={`${tone[0].toUpperCase()}${tone.slice(1)} pen`}
-          onClick={() => store.commit(el.tone === tone ? [] : [withChanges(el, { tone })])}
-        >
-          <span className={cn("size-3 rounded-full", TONE_SWATCH[tone], el.tone === tone && "ring-2 ring-brand ring-offset-1 ring-offset-popover")} />
-        </Button>
-      )),
-    );
   }
+  // Text size, colours and the rest of the look are in the style panel (StylePanel.tsx).
 
   return (
     <div
@@ -184,9 +156,12 @@ export function ElementToolbar({ store, element: el }: { store: SketchStore; ele
     >
       {actions}
       {actions.length > 0 && <span className="mx-0.5 h-4 w-px bg-border" />}
-      <Button variant="ghost" size="icon-xs" title="Duplicate (Ctrl+D)" aria-label="Duplicate" onClick={() => duplicateSelection(store)}>
-        <CopyIcon />
-      </Button>
+      {/* A link is copied with its nodes, not alone. */}
+      {el.type !== "link" && (
+        <Button variant="ghost" size="icon-xs" title="Duplicate (Ctrl+D)" aria-label="Duplicate" onClick={() => duplicateSelection(store)}>
+          <CopyIcon />
+        </Button>
+      )}
       <Button variant="ghost" size="icon-xs" title="Delete (Del)" aria-label="Delete" onClick={() => deleteSelection(store)}>
         <Trash2Icon />
       </Button>

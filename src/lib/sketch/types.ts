@@ -119,12 +119,66 @@ export const pointerElementSchema = base.extend({
   end: point.optional(),
 });
 
-export const noteElementSchema = base.extend({ type: z.literal("note"), text: z.string().max(MAX_TEXT_LENGTH) });
+/**
+ * Style, as in Excalidraw's properties panel. Every field is optional, so elements saved before styles existed
+ * stay valid; style.ts fills in each type's defaults (which match how those elements always looked). Colours are
+ * palette names, not hex, and map to theme variables, so a sketch follows light and dark mode.
+ */
+export const SKETCH_COLORS = ["ink", "gray", "red", "amber", "green", "brand", "blue", "violet"] as const;
+export type SketchColor = (typeof SKETCH_COLORS)[number];
+/** Backgrounds: none, the paper itself (hides what's behind), or a pale tint of a palette colour. */
+export const FILL_COLORS = ["transparent", "paper", "gray", "red", "amber", "green", "brand", "blue", "violet"] as const;
+export type FillColor = (typeof FILL_COLORS)[number];
+export const STROKE_WIDTHS = ["thin", "bold", "extraBold"] as const;
+export type StrokeWidth = (typeof STROKE_WIDTHS)[number];
+export const STROKE_STYLES = ["solid", "dashed", "dotted"] as const;
+export type StrokeStyle = (typeof STROKE_STYLES)[number];
+/** "hand" is the landing page's handwriting font (Caveat). */
+export const FONT_FAMILIES = ["hand", "normal", "code"] as const;
+export type FontFamily = (typeof FONT_FAMILIES)[number];
+export const FONT_SIZES = ["s", "m", "l", "xl"] as const;
+export type FontSize = (typeof FONT_SIZES)[number];
+export const FONT_WEIGHTS = ["normal", "bold"] as const;
+export type FontWeight = (typeof FONT_WEIGHTS)[number];
+export const TEXT_ALIGNS = ["left", "center", "right"] as const;
+export type TextAlign = (typeof TEXT_ALIGNS)[number];
+export const ARROWHEADS = ["none", "arrow", "triangle"] as const;
+export type Arrowhead = (typeof ARROWHEADS)[number];
+
+const strokeColor = { strokeColor: z.enum(SKETCH_COLORS).optional() };
+const stroke = {
+  ...strokeColor,
+  strokeWidth: z.enum(STROKE_WIDTHS).optional(),
+  strokeStyle: z.enum(STROKE_STYLES).optional(),
+};
+const fill = { fillColor: z.enum(FILL_COLORS).optional() };
+const font = {
+  fontFamily: z.enum(FONT_FAMILIES).optional(),
+  fontSize: z.enum(FONT_SIZES).optional(),
+  fontWeight: z.enum(FONT_WEIGHTS).optional(),
+  textAlign: z.enum(TEXT_ALIGNS).optional(),
+};
+/** Percent. */
+const opacity = { opacity: z.number().int().min(0).max(100).optional() };
+
+export const noteElementSchema = base.extend({
+  type: z.literal("note"),
+  text: z.string().max(MAX_TEXT_LENGTH),
+  ...strokeColor,
+  ...fill,
+  ...font,
+  ...opacity,
+});
+/** The sizes text had before `fontSize`; still accepted, and read as the font size when that isn't set. */
 export const TEXT_SIZES = ["s", "m", "l"] as const;
 export const textElementSchema = base.extend({
   type: z.literal("text"),
   text: z.string().max(MAX_TEXT_LENGTH),
-  size: z.enum(TEXT_SIZES),
+  /** Older text's size. `fontSize` wins; setting a style clears this. */
+  size: z.enum(TEXT_SIZES).optional(),
+  ...strokeColor,
+  ...font,
+  ...opacity,
 });
 export const INK_TONES = ["ink", "blue", "red"] as const;
 export type InkTone = (typeof INK_TONES)[number];
@@ -132,7 +186,48 @@ export const freehandElementSchema = base.extend({
   type: z.literal("freehand"),
   /** [x, y, pressure], relative to the element's x/y. */
   points: z.array(z.tuple([coord, coord, z.number().min(0).max(1)])).min(1).max(MAX_FREEHAND_POINTS),
+  /** The pen it was drawn with; `strokeColor`, when set, wins. */
   tone: z.enum(INK_TONES),
+  ...strokeColor,
+  strokeWidth: z.enum(STROKE_WIDTHS).optional(),
+  ...opacity,
+});
+
+export const MIN_SHAPE_SIZE = 8;
+export const MAX_SHAPE_SIZE = 4000;
+export const MAX_LINE_POINTS = 100;
+export const SHAPE_KINDS = ["rectangle", "rounded", "ellipse", "diamond"] as const;
+export type ShapeKind = (typeof SHAPE_KINDS)[number];
+const dimension = z.number().finite().min(1).max(MAX_SHAPE_SIZE);
+/** A free shape with optional text inside it, wrapped to the shape and centred (layout.ts `shapeTextRect`). */
+export const shapeElementSchema = base.extend({
+  type: z.literal("shape"),
+  shape: z.enum(SHAPE_KINDS),
+  w: dimension,
+  h: dimension,
+  text: z.string().max(MAX_TEXT_LENGTH),
+  ...stroke,
+  ...fill,
+  ...font,
+  ...opacity,
+});
+/**
+ * An arrow's end attached to another element: the end sits on that element's outline, aimed along the arrow, and
+ * follows it when it moves or changes size (bindings.ts).
+ */
+export const lineBindingSchema = z.object({ elementId: id });
+export type LineBinding = z.infer<typeof lineBindingSchema>;
+
+/** A line through two or more points, relative to the element's x/y. An arrow is a line with a head. */
+export const lineElementSchema = base.extend({
+  type: z.literal("line"),
+  points: z.array(z.tuple([coord, coord])).min(2).max(MAX_LINE_POINTS),
+  startHead: z.enum(ARROWHEADS).optional(),
+  endHead: z.enum(ARROWHEADS).optional(),
+  startBinding: lineBindingSchema.nullable().optional(),
+  endBinding: lineBindingSchema.nullable().optional(),
+  ...stroke,
+  ...opacity,
 });
 
 export const sketchElementSchema = z.discriminatedUnion("type", [
@@ -149,6 +244,8 @@ export const sketchElementSchema = z.discriminatedUnion("type", [
   noteElementSchema,
   textElementSchema,
   freehandElementSchema,
+  shapeElementSchema,
+  lineElementSchema,
 ]);
 
 export type SketchElement = z.infer<typeof sketchElementSchema>;

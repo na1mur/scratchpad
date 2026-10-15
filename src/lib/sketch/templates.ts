@@ -1,6 +1,6 @@
 import { createElement, randomId } from "./elements";
 import { keysAfter } from "./order";
-import { isCells, type Anchor, type NewElement, type SketchElement } from "./types";
+import { isCells, type Anchor, type LineBinding, type NewElement, type SketchElement } from "./types";
 import type { Point } from "./layout";
 
 /**
@@ -135,6 +135,12 @@ export function instantiate(
     if (fields.type === "pointer") {
       fields.target = fields.target && ({ ...fields.target, elementId: remap(fields.target.elementId) } as Anchor);
       if (fields.end) fields.end = { x: fields.end.x + offset.x, y: fields.end.y + offset.y };
+    }
+    if (fields.type === "line") {
+      // An arrow stays attached only to elements copied with it; the original's would pull it back.
+      const rebind = (b: LineBinding | null | undefined) => (b && ids.has(b.elementId) ? { elementId: remap(b.elementId) } : null);
+      if (fields.startBinding) fields.startBinding = rebind(fields.startBinding);
+      if (fields.endBinding) fields.endBinding = rebind(fields.endBinding);
     }
     const placed = createElement(fields, keys[i]);
     return originId ? { ...placed, originId } : placed;

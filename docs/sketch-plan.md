@@ -4,6 +4,15 @@ A structured canvas where the learner draws a problem the way they would on pape
 
 **Progress:** phase 1 (canvas core) is built. These parts of section 8 are still open: the workspace thumbnail and the `sketch` tour. Phase 1 also left out the note `codeLine` field, which phase 3 needs.
 
+Built after phase 1, at the user's request (not in the phases below):
+- **Palette parts.** Each palette item expands into parts (`parts.ts`, `applyPart()`), such as node, `head`, `tail`, next → null, push or `i`. A part attaches to the element it's dropped on, then to a fitting selection, then to the only fitting structure on the canvas. Otherwise it's placed on its own, or refused with a reason. A pointer whose name already exists in the same structure is moved, not duplicated. Dropping a pointer's name on a node or cell rebinds it.
+- **Shapes and lines.** `shape` covers rectangle, rounded, ellipse and diamond, with text inside. `line` takes optional arrowheads. Style fields are optional on shapes, lines, text, notes and freehand (`style.ts`, `StylePanel.tsx`). Colours are stored as palette names so they follow the theme.
+- **Attached arrows and lines.** An arrow or line drawn from one element to another stays on both, as in Excalidraw (`bindings.ts`). Holding Ctrl or Cmd leaves the ends free. Each end sits on the element's outline and follows it as it moves, is resized or grows.
+- **Saving on an interval.** Changes are sent together at most every 30 s, on Ctrl+S, and in one keepalive request when the page is hidden or left. Earlier versions saved 1.5 s after each change.
+- **Paste for iterations.** Ctrl+V places the copy below the copied set, then below the last paste (`placement.ts`).
+- **Export PNG.** It covers the whole sketch or the selection (`exportImage.ts`, `modern-screenshot`). Anything marked `data-export-skip` is left out.
+- **Draft an attempt.** `POST /api/problems/[id]/sketch/read` sends the captured PNG and the `describe.ts` element list to the vision model. Code written on the canvas is transcribed into Pseudo-code; the drawn states are described in Idea / explanation. The workspace draft is filled through a sessionStorage handoff (`reading.ts`) and is never submitted.
+
 ### 1. Product summary
 
 Learners solve DSA problems by drawing the state: boxes for the array, arrows for `i` and `j`, nodes being relinked. Scratchpad only sees their thinking once it has become code. Sketch adds the step before that.

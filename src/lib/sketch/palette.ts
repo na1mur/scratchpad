@@ -71,9 +71,7 @@ export function suggestedKinds(harness: HarnessView, tags: readonly string[]): P
   }
   for (const tag of tags) for (const k of TAG_KINDS[tag] ?? []) out.add(k);
   if (!out.size) for (const k of ["array", "hashmap", "variables"] as const) out.add(k);
-  // Nodes come with their structure: the single-node items go with the list and the tree.
-  if (out.has("linkedList")) out.add("listNode");
-  if (out.has("tree")) out.add("treeNode");
+  // Single nodes aren't items of their own: they're parts of the list, tree and graph items (parts.ts).
   // Keep the palette's own order, so items don't jump around between problems.
   return PALETTE_KINDS.filter((k) => out.has(k));
 }

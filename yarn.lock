@@ -5352,6 +5352,11 @@ minimist@^1.2.0, minimist@^1.2.6:
   resolved "https://registry.yarnpkg.com/minimist/-/minimist-1.2.8.tgz#c1a464e7693302e082a075cee0c057741ac4772c"
   integrity sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==
 
+modern-screenshot@4.7.0:
+  version "4.7.0"
+  resolved "https://registry.yarnpkg.com/modern-screenshot/-/modern-screenshot-4.7.0.tgz#22f6831de41df5717235a119bcd0cc309dacf7a9"
+  integrity sha512-9YxN+ddPSMMlhylOv25VHzXrl9u67QRxoh7+SEewGtgUw7t6hHTrjptSDJUSne9oG4Xk/h2cwG15nIt4Hc9ujg==
+
 mongodb-connection-string-url@^7.0.2:
   version "7.0.2"
   resolved "https://registry.yarnpkg.com/mongodb-connection-string-url/-/mongodb-connection-string-url-7.0.2.tgz#a58163e04a900b7da38054de03b36d6f8b6d3ad1"

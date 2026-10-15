@@ -1,12 +1,23 @@
+import { bindOutline } from "./bindings";
 import { randomId, supersedes, withChanges } from "./elements";
 import { anchorShape, pointerLabelRect } from "./layout";
 import { repairOrder, sortByOrder } from "./order";
-import { isCells, sketchElementSchema, type ElementOf, type LinkPort, type NodeVariant, type SketchElement } from "./types";
+import {
+  MIN_SHAPE_SIZE,
+  isCells,
+  sketchElementSchema,
+  type ElementOf,
+  type LineBinding,
+  type LinkPort,
+  type NodeVariant,
+  type SketchElement,
+} from "./types";
 
 /**
  * The trust boundary for anything loaded, pasted or saved: drops elements that don't fit the schema, keeps the
  * newer copy of a duplicated id, and repairs what the schema can't express (links and pointers to elements that
- * are gone, cell ids out of step with the values, order keys that collide). Repairs are ordinary changes with a
+ * are gone, cell ids out of step with the values, order keys that collide, shapes too small to grab, lines with
+ * no length, arrows attached to elements that are gone). Repairs are ordinary changes with a
  * higher version, so every tab adopts them. Runs the same on the client and the server.
  */
 
@@ -60,6 +71,15 @@ export function restoreElements(input: readonly unknown[]): RestoreResult {
     }
     // Storyboard frames aren't drawn yet, so no element can belong to one.
     if (el.frameId !== null) put(withChanges(byId.get(el.id)!, { frameId: null }));
+    // A shape too small to grab grows to the smallest size the canvas draws.
+    if (el.type === "shape" && (el.w < MIN_SHAPE_SIZE || el.h < MIN_SHAPE_SIZE)) {
+      const shape = byId.get(el.id) as ElementOf<"shape">;
+      put(withChanges(shape, { w: Math.max(MIN_SHAPE_SIZE, shape.w), h: Math.max(MIN_SHAPE_SIZE, shape.h) }));
+    }
+    // A line whose points all coincide can't be seen or clicked.
+    if (el.type === "line" && !el.isDeleted && el.points.every(([x, y]) => x === el.points[0][0] && y === el.points[0][1])) {
+      put(withChanges(byId.get(el.id)!, { isDeleted: true }));
+    }
   }
 
   const liveNode = (id: string) => {
@@ -93,6 +113,20 @@ export function restoreElements(input: readonly unknown[]): RestoreResult {
     if (!anchorShape(byId, el.target)) {
       const label = pointerLabelRect(el);
       put(withChanges(el, { target: null, end: { x: label.x + label.w / 2, y: label.y - 40 } }));
+    }
+  }
+
+  // Arrow ends attached to elements that are gone, or that take no arrows, come loose where they are.
+  for (const el of byId.values()) {
+    if (el.type !== "line" || el.isDeleted || (!el.startBinding && !el.endBinding)) continue;
+    const holds = (b: LineBinding | null | undefined) => {
+      const target = b && byId.get(b.elementId);
+      return Boolean(target && target.id !== el.id && bindOutline(target));
+    };
+    const start = holds(el.startBinding);
+    const end = holds(el.endBinding);
+    if ((el.startBinding && !start) || (el.endBinding && !end)) {
+      put(withChanges(el, { startBinding: start ? el.startBinding : null, endBinding: end ? el.endBinding : null }));
     }
   }
 

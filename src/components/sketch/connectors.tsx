@@ -61,7 +61,7 @@ export function Connectors({
         const directed = el.from.port !== "edge";
         return (
           <g key={el.id} data-el={el.id}>
-            {selected && <path d={line(seg)} className="stroke-brand/50" strokeWidth={8} strokeLinecap="round" />}
+            {selected && <path data-export-skip="" d={line(seg)} className="stroke-brand/50" strokeWidth={8} strokeLinecap="round" />}
             <path
               d={line(seg)}
               className="stroke-ink"
@@ -91,7 +91,7 @@ export function Connectors({
         const selected = selection.has(el.id);
         return (
           <g key={el.id} data-el={el.id}>
-            {selected && <path d={line(seg)} className="stroke-brand/50" strokeWidth={8} strokeLinecap="round" />}
+            {selected && <path data-export-skip="" d={line(seg)} className="stroke-brand/50" strokeWidth={8} strokeLinecap="round" />}
             <path
               d={line(seg)}
               className={red ? "stroke-pen-red" : "stroke-pen-blue"}
@@ -104,6 +104,7 @@ export function Connectors({
               <circle
                 data-el={el.id}
                 data-handle="aim"
+                data-export-skip=""
                 cx={seg.to.x}
                 cy={seg.to.y}
                 r={6}
@@ -118,10 +119,20 @@ export function Connectors({
         );
       })}
 
-      {overlay?.kind === "pointer" && <Preview from={overlay.from} to={overlay.to} snap={overlay.snap} />}
-      {overlay?.kind === "aim" && <AimPreview elements={elements} overlay={overlay} />}
+      {/* Unfinished gestures and selection highlights are marked so an exported picture leaves them out. */}
+      {overlay?.kind === "pointer" && (
+        <g data-export-skip="">
+          <Preview from={overlay.from} to={overlay.to} snap={overlay.snap} />
+        </g>
+      )}
+      {overlay?.kind === "aim" && (
+        <g data-export-skip="">
+          <AimPreview elements={elements} overlay={overlay} />
+        </g>
+      )}
       {overlay?.kind === "link" && linkFrom?.type === "node" && (
         <path
+          data-export-skip=""
           d={line({ from: center(nodeShape(linkFrom)), to: overlay.to })}
           className="stroke-brand-strong"
           strokeWidth={2}
@@ -129,7 +140,7 @@ export function Connectors({
           markerEnd="url(#sk-head-brand)"
         />
       )}
-      {overlay?.kind === "freehand" && <path d={strokePath(overlay.points)} className="fill-ink" />}
+      {overlay?.kind === "freehand" && <path data-export-skip="" d={strokePath(overlay.points)} className="fill-ink" />}
     </svg>
   );
 }

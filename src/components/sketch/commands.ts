@@ -7,8 +7,9 @@ import {
   moveElements,
   sendToBack,
 } from "@/lib/sketch/actions";
-import { GRID, elementBounds, snap, unionRect, type Point } from "@/lib/sketch/layout";
+import { GRID, elementBounds, snap, unionRect, type ElementMap, type Point, type Rect } from "@/lib/sketch/layout";
 import { sortByOrder } from "@/lib/sketch/order";
+import { pasteOffset } from "@/lib/sketch/placement";
 import { instantiate } from "@/lib/sketch/templates";
 import { isCells, isTable, type NewElement, type SketchElement } from "@/lib/sketch/types";
 import type { EditTarget, SketchStore } from "./store";
@@ -61,33 +62,70 @@ export function duplicateSelection(store: SketchStore) {
   store.commit(copies, { select: copies.filter((el) => el.type !== "link").map((el) => el.id) });
 }
 
-/** Copied elements live for the session, like the Playground drafts. */
-let clipboard: SketchElement[] = [];
-let pasteCount = 0;
-
-export function copySelection(store: SketchStore) {
-  const { elements, selection } = store.state;
-  if (!selection.size) return;
-  clipboard = sortByOrder(
+/** The selected elements and the links between them (a link comes along when both of its ends do), in drawing order. */
+export function selectedWithLinks(elements: ElementMap, selection: ReadonlySet<string>): SketchElement[] {
+  return sortByOrder(
     [...elements.values()].filter(
       (el) =>
         !el.isDeleted &&
         (el.type === "link" ? selection.has(el.from.elementId) && (!el.to || selection.has(el.to.elementId)) : selection.has(el.id)),
     ),
   );
-  pasteCount = 0;
+}
+
+function boundsOf(elements: readonly SketchElement[]): Rect | null {
+  return unionRect(
+    elements.flatMap((el) => {
+      const b = elementBounds(el);
+      return b ? [b] : [];
+    }),
+  );
+}
+
+/**
+ * Copied elements live for the session, like the Playground drafts. A paste lands below the copied selection,
+ * then below the previous paste, so copying one state and pasting again and again stacks the iterations of a
+ * loop down the canvas.
+ */
+let clipboard: { elements: SketchElement[]; bounds: Rect } | null = null;
+/** What the last paste placed, so the next one goes under it, wherever it has been dragged since. */
+let lastPasted: string[] = [];
+/** After a cut, the first paste puts the elements back where they were. */
+let fromCut = false;
+
+/** Returns whether anything was copied (links on their own aren't). */
+export function copySelection(store: SketchStore): boolean {
+  const { elements, selection } = store.state;
+  if (!selection.size) return false;
+  const copied = selectedWithLinks(elements, selection);
+  const bounds = boundsOf(copied);
+  if (!bounds) return false;
+  clipboard = { elements: copied, bounds };
+  lastPasted = [];
+  fromCut = false;
+  return true;
 }
 
 export function cutSelection(store: SketchStore) {
-  copySelection(store);
+  if (copySelection(store)) fromCut = true;
   deleteSelection(store);
 }
 
 export function paste(store: SketchStore) {
-  if (!clipboard.length) return;
-  pasteCount++;
-  const copies = instantiate(clipboard, { x: pasteCount * 24, y: pasteCount * 24 }, store.lastKey);
-  store.commit(copies, { select: copies.filter((el) => el.type !== "link").map((el) => el.id) });
+  if (!clipboard) return;
+  const { elements, live } = store.state;
+  const previous = boundsOf(
+    lastPasted.flatMap((id) => {
+      const el = elements.get(id);
+      return el && !el.isDeleted ? [el] : [];
+    }),
+  );
+  const below = previous ?? (fromCut ? null : clipboard.bounds);
+  const offset = pasteOffset(clipboard.bounds, below, live.flatMap((el) => elementBounds(el) ?? []));
+  const copies = instantiate(clipboard.elements, offset, store.lastKey);
+  lastPasted = copies.filter((el) => el.type !== "link").map((el) => el.id);
+  store.commit(copies, { select: lastPasted });
+  revealRect(store, { ...clipboard.bounds, x: clipboard.bounds.x + offset.x, y: clipboard.bounds.y + offset.y });
 }
 
 export function nudge(store: SketchStore, dx: number, dy: number) {
@@ -118,7 +156,11 @@ export function cycleSelection(store: SketchStore, back: boolean) {
 /** Pans just enough to bring the element into view. */
 export function revealElement(store: SketchStore, el: SketchElement) {
   const b = elementBounds(el);
-  if (!b) return;
+  if (b) revealRect(store, b);
+}
+
+/** Pans just enough to bring a scene rectangle into view; when it's bigger than the view, its top left. */
+export function revealRect(store: SketchStore, b: Rect) {
   const { camera } = store.state;
   const { w, h } = store.viewport;
   const left = (b.x + camera.x) * camera.zoom;
@@ -129,9 +171,9 @@ export function revealElement(store: SketchStore, el: SketchElement) {
   let dx = 0;
   let dy = 0;
   if (left < margin) dx = margin - left;
-  else if (right > w - margin) dx = w - margin - right;
+  else if (right > w - margin) dx = Math.max(w - margin - right, margin - left);
   if (top < margin) dy = margin - top;
-  else if (bottom > h - margin) dy = h - margin - bottom;
+  else if (bottom > h - margin) dy = Math.max(h - margin - bottom, margin - top);
   if (dx || dy) store.setCamera({ ...camera, x: camera.x + dx / camera.zoom, y: camera.y + dy / camera.zoom });
 }
 
@@ -148,7 +190,7 @@ export function startEditing(store: SketchStore) {
     if (el.entries.length) target = { kind: "entry", elementId: el.id, row: 0, part: 0 };
   } else if (el.type === "matrix") target = { kind: "matrixCell", elementId: el.id, row: 0, col: 0 };
   else if (el.type === "node") target = { kind: "value", elementId: el.id };
-  else if (el.type === "note" || el.type === "text") target = { kind: "text", elementId: el.id };
+  else if (el.type === "note" || el.type === "text" || el.type === "shape") target = { kind: "text", elementId: el.id };
   else if (el.type === "pointer") target = { kind: "name", elementId: el.id };
   if (target) store.setEditing(target);
 }

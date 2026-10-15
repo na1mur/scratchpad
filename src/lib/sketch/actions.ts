@@ -1,5 +1,19 @@
+import { looseOutside } from "./bindings";
 import { createElement, randomId, withChanges } from "./elements";
-import { anchorShape, center, elementBounds, nodeSize, type ElementMap, type Point } from "./layout";
+import {
+  CHAR_W,
+  GRID,
+  POINTER_H,
+  anchorShape,
+  center,
+  elementBounds,
+  nodeSize,
+  pointerLabelRect,
+  rectsIntersect,
+  type ElementMap,
+  type Point,
+  type Rect,
+} from "./layout";
 import { keysAfter, keysBefore, sortByOrder } from "./order";
 import { instantiate } from "./templates";
 import {
@@ -33,6 +47,14 @@ export function deleteElements(elements: ElementMap, ids: ReadonlySet<string>): 
       out.push(withChanges(el, { isDeleted: true }));
     } else if (el.type === "pointer" && el.target && ids.has(el.target.elementId)) {
       out.push(unbind(elements, el));
+    } else if (el.type === "line" && ((el.startBinding && ids.has(el.startBinding.elementId)) || (el.endBinding && ids.has(el.endBinding.elementId)))) {
+      // An arrow on a removed element stays where it is, attached to nothing at that end.
+      out.push(
+        withChanges(el, {
+          startBinding: el.startBinding && ids.has(el.startBinding.elementId) ? null : el.startBinding,
+          endBinding: el.endBinding && ids.has(el.endBinding.elementId) ? null : el.endBinding,
+        }),
+      );
     }
   }
   return out;
@@ -43,7 +65,11 @@ function unbind(elements: ElementMap, el: ElementOf<"pointer">): ElementOf<"poin
   return withChanges(el, { target: null, end: shape ? center(shape) : { x: el.x, y: el.y - 40 } });
 }
 
-/** Moves elements, and the pointers aimed at them so a pointer travels with its array. */
+/**
+ * Moves elements, and the pointers aimed at them so a pointer travels with its array. An arrow moved without the
+ * element an end is attached to comes loose at that end; arrows attached to moved elements are redrawn by the
+ * store (bindings.ts).
+ */
 export function moveElements(elements: ElementMap, ids: ReadonlySet<string>, dx: number, dy: number): Changes {
   if (!dx && !dy) return [];
   const out: Changes = [];
@@ -52,6 +78,7 @@ export function moveElements(elements: ElementMap, ids: ReadonlySet<string>, dx:
     const follows = el.type === "pointer" && el.target && ids.has(el.target.elementId);
     if (!ids.has(el.id) && !follows) continue;
     if (el.type === "pointer" && el.end) out.push(withChanges(el, { x: el.x + dx, y: el.y + dy, end: { x: el.end.x + dx, y: el.end.y + dy } }));
+    else if (el.type === "line") out.push(withChanges(looseOutside(el, ids), { x: el.x + dx, y: el.y + dy }));
     else out.push(withChanges(el, { x: el.x + dx, y: el.y + dy }));
   }
   return out;
@@ -213,7 +240,10 @@ export function portToward(from: ElementOf<"node">, p: Point): LinkPort {
   return p.x < from.x + w / 2 ? "left" : "right";
 }
 
-/** A new list node after this one, spliced in before whatever this one pointed at. */
+/**
+ * A new list node after this one, spliced in before whatever this one pointed at. The nodes after it on its row
+ * move right (with their pointers) when the new one would cover the next.
+ */
 export function addNextNode(elements: ElementMap, node: ElementOf<"node">, lastKey: string | null): { changes: Changes; created: string } {
   const [nodeKey, linkKey, nextLinkKey] = keysAfter(lastKey, 3);
   const { w } = nodeSize(node);
@@ -224,8 +254,25 @@ export function addNextNode(elements: ElementMap, node: ElementOf<"node">, lastK
   changes.push(createElement({ type: "link", x: 0, y: 0, from: { elementId: node.id, port: "next" }, to: { elementId: created.id } }, linkKey));
   if (existing) {
     changes.push(createElement({ type: "link", x: 0, y: 0, from: { elementId: created.id, port: "next" }, to: existing.to }, nextLinkKey));
+    const next = existing.to && elements.get(existing.to.elementId);
+    if (next?.type === "node" && !next.isDeleted) {
+      const need = created.x + (created.x - node.x) - next.x;
+      if (need > 0) changes.push(...moveElements(elements, rowAfter(elements, node, next), Math.ceil(need / GRID) * GRID, 0));
+    }
   }
   return { changes, created: created.id };
+}
+
+/** The nodes from `start` along `next` that sit to the right of `node`, stopping where a cycle turns back. */
+function rowAfter(elements: ElementMap, node: ElementOf<"node">, start: ElementOf<"node">): Set<string> {
+  const out = new Set<string>();
+  let cur: SketchElement | undefined = start;
+  while (cur?.type === "node" && !cur.isDeleted && cur.id !== node.id && !out.has(cur.id) && cur.x > node.x) {
+    out.add(cur.id);
+    const link = linkAt(elements, cur.id, "next");
+    cur = link?.to ? elements.get(link.to.elementId) : undefined;
+  }
+  return out;
 }
 
 /** A new child on an empty side of a tree node, or a new neighbour of a graph node. */
@@ -262,24 +309,47 @@ export function createPointer(
   target: Anchor | null,
   end: Point,
   lastKey: string | null,
+  name = pointerName(elements, target),
 ): ElementOf<"pointer"> {
-  const name = pointerName(elements, target);
   return createElement(
     { type: "pointer", x: label.x, y: label.y, name, target, ...(target ? {} : { end }) },
     keysAfter(lastKey, 1)[0],
   ) as ElementOf<"pointer">;
 }
 
-/** Where a new pointer's name goes: under a cell or entry, above a node. */
-export function pointerLabelFor(elements: ElementMap, target: Anchor): Point | null {
+/**
+ * Where a new pointer's name goes: under a cell, right of an entry, left of a stack, above a node. When other
+ * pointers' names are already there it steps away from them (`ignore`: a pointer being moved, which doesn't count).
+ */
+export function pointerLabelFor(elements: ElementMap, target: Anchor, name = "i", ignore?: string): Point | null {
   const shape = anchorShape(elements, target);
   if (!shape) return null;
   const c = center(shape);
   const el = elements.get(target.elementId);
   const box = el && elementBounds(el);
-  if (target.kind === "node") return { x: c.x - 12, y: (box?.y ?? c.y) - 44 };
-  if (target.kind === "entry" && box) return { x: box.x + box.w + 24, y: c.y - 11 };
-  // A stack grows upward, so its pointers sit to its left.
-  if (el?.type === "stack" && box) return { x: box.x - 72, y: c.y - 11 };
-  return { x: c.x - 12, y: (box ? box.y + box.h : c.y) + 28 };
+  let at: Point;
+  let away: (other: Rect, w: number) => Point;
+  if (target.kind === "node") {
+    at = { x: c.x - 12, y: (box?.y ?? c.y) - 44 };
+    away = (other) => ({ x: at.x, y: other.y - POINTER_H - 4 });
+  } else if (target.kind === "entry" && box) {
+    at = { x: box.x + box.w + 24, y: c.y - 11 };
+    away = (other) => ({ x: other.x + other.w + 6, y: at.y });
+  } else if (el?.type === "stack" && box) {
+    // A stack grows upward, so its pointers sit to its left.
+    at = { x: box.x - 72, y: c.y - 11 };
+    away = (other, w) => ({ x: other.x - w - 6, y: at.y });
+  } else {
+    at = { x: c.x - 12, y: (box ? box.y + box.h : c.y) + 28 };
+    away = (other) => ({ x: at.x, y: other.y + POINTER_H + 4 });
+  }
+  const w = [...name].length * CHAR_W + 16;
+  const others = liveList(elements).flatMap((p) => (p.type === "pointer" && p.id !== ignore ? [pointerLabelRect(p)] : []));
+  for (let tries = 0; tries < 8; tries++) {
+    const mine = { x: at.x, y: at.y, w, h: POINTER_H };
+    const blocking = others.find((r) => rectsIntersect(r, mine));
+    if (!blocking) break;
+    at = away(blocking, w);
+  }
+  return at;
 }

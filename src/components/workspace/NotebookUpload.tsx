@@ -15,7 +15,7 @@ export type UploadedImage = {
   extractedText?: string;
 };
 
-const MAX_IMAGES = 4;
+export const MAX_IMAGES = 4;
 
 /**
  * Notebook photos: posted to our API, which stores them in R2 and then
@@ -164,5 +164,8 @@ export function useNotebookUpload({
       </ul>
     ) : null;
 
-  return { button, thumbnails };
+  /** Shows a picture that was attached some other way (a sketch read on the sketch page). */
+  const addPreview = (r2Key: string, url: string) => setPreviews((p) => ({ ...p, [r2Key]: url }));
+
+  return { button, thumbnails, addPreview };
 }

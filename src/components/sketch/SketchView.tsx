@@ -15,6 +15,7 @@ import { problemPath } from "@/lib/slug";
 import { CanvasToolbar } from "./CanvasToolbar";
 import { insertElements } from "./commands";
 import { Palette } from "./Palette";
+import { SketchActions } from "./SketchActions";
 import { SketchCanvas } from "./SketchCanvas";
 import { SketchStore, useSketch, type SaveStatus } from "./store";
 
@@ -31,6 +32,13 @@ function SaveState({ status, error }: { status: SaveStatus; error: string | null
     return (
       <span className={common} role="status">
         <CheckIcon className="size-3.5" /> Saved
+      </span>
+    );
+  }
+  if (status === "pending") {
+    return (
+      <span className={common} role="status" title="Saved every 30 seconds and when you leave. Ctrl+S saves now.">
+        <span className="size-1.5 rounded-full bg-muted-foreground/60" aria-hidden /> Unsaved changes
       </span>
     );
   }
@@ -54,17 +62,17 @@ export function SketchView({ problem, initialElements }: { problem: ProblemDetai
   const harness = problem.harness.status === "ready" ? (problem.harness as ReadyHarnessView) : null;
   const suggested = suggestedKinds(problem.harness, problem.tags);
 
+  // Changes are saved on an interval (store.ts); whatever is left goes out as the page is left, and leaving
+  // goes ahead without asking.
   useEffect(() => {
-    const save = () => void store.flush({ keepalive: true });
+    const save = () => void store.flushOnLeave();
     const onVisibility = () => {
       if (document.visibilityState === "hidden") save();
       else void store.refresh();
     };
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (store.hasUnsaved) {
-        save();
-        e.preventDefault();
-      }
+      // Only a save too large to send while unloading needs the learner to wait for it.
+      if (!store.flushOnLeave()) e.preventDefault();
     };
     window.addEventListener("pagehide", save);
     window.addEventListener("beforeunload", onBeforeUnload);
@@ -73,7 +81,7 @@ export function SketchView({ problem, initialElements }: { problem: ProblemDetai
       window.removeEventListener("pagehide", save);
       window.removeEventListener("beforeunload", onBeforeUnload);
       document.removeEventListener("visibilitychange", onVisibility);
-      // Leaving for another page of the app.
+      // Leaving for another page of the app, or going back.
       save();
     };
   }, [store]);
@@ -101,6 +109,7 @@ export function SketchView({ problem, initialElements }: { problem: ProblemDetai
         <h1 className="sr-only">Sketch of {problem.title}</h1>
         <div className="ml-auto flex items-center gap-3">
           <SaveState status={s.save} error={s.saveError} />
+          <SketchActions store={store} problem={problem} />
           {desktop && (
             <Button
               variant="ghost"

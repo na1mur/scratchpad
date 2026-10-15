@@ -5,16 +5,22 @@ import { addEntry, insertCell, setCell, setEntry, setMatrixCell, type Changes } 
 import { withChanges } from "@/lib/sketch/elements";
 import {
   LABEL_H,
-  TEXT_SIZE_PX,
+  SHAPE_LINE_HEIGHT,
   cellRect,
   elementBounds,
+  fittedShapeHeight,
   matrixCellRect,
+  noteMetrics,
   pointerLabelRect,
+  shapeTextHeight,
+  shapeTextRect,
   tableColumns,
   tableRowRect,
+  textMetrics,
   type ElementMap,
   type Rect,
 } from "@/lib/sketch/layout";
+import { styleOf } from "@/lib/sketch/style";
 import {
   MAX_CELLS,
   MAX_ENTRIES,
@@ -26,6 +32,7 @@ import {
   isTable,
   type SketchElement,
 } from "@/lib/sketch/types";
+import { textCss } from "./elements";
 import type { EditTarget, SketchStore } from "./store";
 
 /** Where the editor sits, what it starts with and how long the text may be; null when the target is gone. */
@@ -59,10 +66,30 @@ function describe(el: SketchElement, target: EditTarget): { rect: Rect; value: s
       return { rect: { ...r, w: Math.max(r.w, 72) }, value: el.name, max: MAX_POINTER_NAME, multiline: false };
     }
     case "text": {
+      // A shape's text is typed where it's drawn; the editor's height follows the text (see InlineEditor).
+      if (el.type === "shape") return { rect: shapeTextRect(el), value: el.text, max: MAX_TEXT_LENGTH, multiline: true };
       if (el.type !== "note" && el.type !== "text") return null;
       const b = elementBounds(el)!;
       return { rect: { ...b, w: Math.max(b.w, 200), h: Math.max(b.h, 60) }, value: el.text, max: MAX_TEXT_LENGTH, multiline: true };
     }
+  }
+}
+
+/** The editor's font: the element's own, so typing looks like the result. */
+function editorFont(el: SketchElement): React.CSSProperties {
+  switch (el.type) {
+    case "text": {
+      const s = styleOf(el);
+      return textCss(s, textMetrics(s));
+    }
+    case "note":
+      return textCss(styleOf(el), noteMetrics(el));
+    case "shape": {
+      const s = styleOf(el);
+      return textCss(s, textMetrics(s, SHAPE_LINE_HEIGHT));
+    }
+    default:
+      return { fontSize: 13 };
   }
 }
 
@@ -85,6 +112,8 @@ function applyEdit(elements: ElementMap, el: SketchElement, target: EditTarget, 
     }
     case "text":
       if (el.type === "text" && !value.trim()) return [withChanges(el, { isDeleted: true })];
+      // A shape keeps its size unless the text needs more height, and stays when its text is cleared.
+      if (el.type === "shape") return el.text !== value ? [withChanges(el, { text: value, h: fittedShapeHeight(el, value) })] : [];
       return (el.type === "note" || el.type === "text") && el.text !== value ? [withChanges(el, { text: value })] : [];
   }
 }
@@ -171,10 +200,23 @@ export function InlineEditor({ store, target, element }: { store: SketchStore; t
     onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => e.target.select(),
     onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
     "aria-label": "Edit",
+    "data-export-skip": "",
   };
+  if (element.type === "shape") {
+    // Centred on the shape's text area at the height the text takes, without a box: the shape is the box.
+    const m = textMetrics(styleOf(element), SHAPE_LINE_HEIGHT);
+    const h = Math.max(m.lineH, shapeTextHeight(element, value || " "));
+    const w = Math.max(spec.rect.w, m.px * 3);
+    return (
+      <textarea
+        {...handlers}
+        className="absolute z-30 resize-none overflow-hidden border-0 bg-transparent p-0 break-words outline-none"
+        style={{ left: spec.rect.x + (spec.rect.w - w) / 2, top: spec.rect.y + (spec.rect.h - h) / 2, width: w, height: h, ...editorFont(element) }}
+      />
+    );
+  }
   if (spec.multiline) {
-    const fontSize = element.type === "text" ? TEXT_SIZE_PX[element.size] : 13;
-    return <textarea {...handlers} className={`${className} resize-none py-1.5 leading-[1.35]`} style={{ ...style, fontSize }} />;
+    return <textarea {...handlers} className={`${className} resize-none py-1.5`} style={{ ...style, ...editorFont(element) }} />;
   }
   return <input {...handlers} className={`${className} text-center`} style={style} />;
 }

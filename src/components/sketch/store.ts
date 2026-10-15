@@ -2,20 +2,31 @@
 
 import { useSyncExternalStore } from "react";
 import { ApiClientError, api } from "@/lib/fetcher";
+import { followBindings } from "@/lib/sketch/bindings";
 import { mergeElements } from "@/lib/sketch/elements";
 import { History, type HistoryEntry } from "@/lib/sketch/history";
 import type { Point, Rect, Shape } from "@/lib/sketch/layout";
 import { sortByOrder } from "@/lib/sketch/order";
 import { restoreElements } from "@/lib/sketch/restore";
+import { DEFAULT_NEW_STYLE, type Style, type StylePatch } from "@/lib/sketch/style";
 import type { SketchElement } from "@/lib/sketch/types";
 
 /**
  * The sketch page's state, outside React so pointer moves don't go through component state. Components read it
- * with useSketch(). Every edit goes through commit(), which records one undo entry and schedules a save of the
- * changed elements; the server merges them and answers with the whole sketch, which is merged back by version.
+ * with useSketch(). Every edit goes through commit(), which records one undo entry and marks the changed elements
+ * unsaved; they're sent together on an interval or when the page is left, the server merges them and answers
+ * with the whole sketch, which is merged back by version.
  */
 
-export type Tool = "select" | "hand" | "pointer" | "link" | "freehand" | "note" | "text";
+export type Tool = "select" | "hand" | "pointer" | "link" | "freehand" | "note" | "text" | ShapeTool;
+
+/** Tools that draw a free shape or line by dragging. */
+export const SHAPE_TOOLS = ["rectangle", "rounded", "diamond", "ellipse", "arrow", "line"] as const;
+export type ShapeTool = (typeof SHAPE_TOOLS)[number];
+
+export function isShapeTool(tool: Tool): tool is ShapeTool {
+  return (SHAPE_TOOLS as readonly string[]).includes(tool);
+}
 
 /** Screen position = (scene position + x/y) × zoom. */
 export type Camera = { x: number; y: number; zoom: number };
@@ -53,6 +64,13 @@ export type SketchSnapshot = {
   camera: Camera;
   /** Elements being dragged, and by how much; committed when the drag ends. */
   drag: { ids: ReadonlySet<string>; dx: number; dy: number } | null;
+  /**
+   * Elements drawn in place of their stored copies (or in addition, when new) while a gesture is unfinished:
+   * a shape being drawn or resized, a style being slid. Nothing is saved until the gesture commits.
+   */
+  preview: ReadonlyMap<string, SketchElement> | null;
+  /** The style the shape and line tools draw with: the last one picked in the style panel. */
+  newStyle: Style;
   overlay: Overlay | null;
   canUndo: boolean;
   canRedo: boolean;
@@ -60,8 +78,11 @@ export type SketchSnapshot = {
   saveError: string | null;
 };
 
-const SAVE_DELAY_MS = 1500;
+/** How long changes collect before they're sent while the learner keeps editing. */
+export const SAVE_INTERVAL_MS = 30_000;
 const RETRY_DELAY_MS = 5000;
+/** Below the 64 KB browsers allow a keepalive request's body, with room for the headers. */
+const KEEPALIVE_MAX_BYTES = 60_000;
 
 export class SketchStore {
   private snapshot: SketchSnapshot;
@@ -71,6 +92,8 @@ export class SketchStore {
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private saving = false;
   private saveAgain = false;
+  /** What the ordinary save on its way carries, so leaving the page can send it again. */
+  private inFlight: SketchElement[] = [];
   /** The highest order key ever used, deletions included, so new keys never collide. */
   private maxKey: string | null = null;
   /** The canvas size in CSS pixels. Nothing renders from it, so it isn't part of the snapshot. */
@@ -90,6 +113,8 @@ export class SketchStore {
       tool: "select",
       camera: { x: 0, y: 0, zoom: 1 },
       drag: null,
+      preview: null,
+      newStyle: DEFAULT_NEW_STYLE,
       overlay: null,
       canUndo: false,
       canRedo: false,
@@ -144,11 +169,14 @@ export class SketchStore {
     const prev = this.snapshot.elements;
     const elements = new Map(prev);
     const entry = new Map<string, { before: SketchElement | undefined; after: SketchElement }>();
-    for (const el of changes) {
+    const write = (el: SketchElement) => {
       entry.set(el.id, { before: entry.get(el.id)?.before ?? prev.get(el.id), after: el });
       elements.set(el.id, el);
       this.dirty.add(el.id);
-    }
+    };
+    for (const el of changes) write(el);
+    // Arrows attached to what changed are redrawn in the same undo entry.
+    for (const el of followBindings(elements, new Set(changes.map((c) => c.id)))) write(el);
     if (opts.record !== false) this.history.record(entry as HistoryEntry);
     this.set({
       ...this.derive(elements),
@@ -201,54 +229,100 @@ export class SketchStore {
     this.set({ overlay });
   }
 
-  // Saving
+  setPreview(elements: Iterable<SketchElement> | null) {
+    this.set({ preview: elements ? new Map([...elements].map((el) => [el.id, el])) : null });
+  }
+
+  setNewStyle(patch: StylePatch) {
+    this.set({ newStyle: { ...this.snapshot.newStyle, ...patch } });
+  }
+
+  // Saving: changes collect locally and go out together, at most once per SAVE_INTERVAL_MS while editing, and
+  // at once when the learner saves (Ctrl+S), switches tabs or leaves the page (flushOnLeave).
 
   private scheduleSave() {
     if (this.snapshot.save !== "saving") this.set({ save: "pending", saveError: null });
-    if (this.saveTimer) clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => void this.flush(), SAVE_DELAY_MS);
+    // The first change starts the clock; later ones ride along instead of pushing it back.
+    this.saveTimer ??= setTimeout(() => void this.flush(), SAVE_INTERVAL_MS);
   }
 
-  /** Sends the changed elements now. `keepalive` lets it finish while the page unloads. */
-  async flush(opts: { keepalive?: boolean } = {}) {
+  private clearTimer() {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = null;
+  }
+
+  private unsaved(ids: Iterable<string>): SketchElement[] {
+    return [...new Set(ids)].flatMap((id) => {
+      const el = this.snapshot.elements.get(id);
+      return el ? [el] : [];
+    });
+  }
+
+  /** Sends the changed elements now. */
+  async flush() {
+    this.clearTimer();
     if (this.saving) {
       this.saveAgain = true;
       return;
     }
     if (!this.dirty.size) return;
-    const sent = [...this.dirty].flatMap((id) => {
-      const el = this.snapshot.elements.get(id);
-      return el ? [el] : [];
-    });
+    const sent = this.unsaved(this.dirty);
     this.dirty.clear();
     this.saving = true;
+    this.inFlight = sent;
     this.set({ save: "saving" });
+    try {
+      await this.send(sent, false);
+    } finally {
+      this.saving = false;
+      this.inFlight = [];
+      if (this.saveAgain) {
+        this.saveAgain = false;
+        void this.flush();
+      }
+    }
+  }
+
+  private async send(sent: SketchElement[], keepalive: boolean) {
     try {
       const res = await api<{ elements: unknown[] }>(`/api/problems/${this.problemId}/sketch`, {
         method: "PUT",
         body: { elements: sent },
-        keepalive: opts.keepalive,
+        keepalive,
       });
       this.adopt(res.elements);
-      this.set({ save: this.dirty.size ? "pending" : "saved", saveError: null });
+      this.set({ save: this.dirty.size ? "pending" : keepalive && this.saving ? "saving" : "saved", saveError: null });
     } catch (err) {
       // Whatever didn't change since is still unsaved.
       for (const el of sent) if (this.snapshot.elements.get(el.id)?.version === el.version) this.dirty.add(el.id);
       const permanent = err instanceof ApiClientError && err.status >= 400 && err.status < 500 && err.status !== 409;
       this.set({ save: "error", saveError: err instanceof Error ? err.message : "Couldn't save." });
       if (!permanent) {
-        if (this.saveTimer) clearTimeout(this.saveTimer);
+        this.clearTimer();
         this.saveTimer = setTimeout(() => void this.flush(), RETRY_DELAY_MS);
       }
-    } finally {
-      this.saving = false;
-      if (this.saveAgain) {
-        this.saveAgain = false;
-        void this.flush();
-      }
     }
+  }
+
+  /**
+   * Saves before the page goes away (a tab switch, closing, reloading, navigating): everything not yet confirmed
+   * in one `keepalive` request, which the browser finishes after the page is gone. A save already on its way is
+   * sent again, since an ordinary request can be cut off by the unload; the server keeps the newer copy of each
+   * element, so a repeat is harmless. Returns false when the changes are too large for a keepalive request
+   * (browsers cap its body at 64 KB): an ordinary save is started instead, and the page should ask before closing.
+   */
+  flushOnLeave(): boolean {
+    const sent = this.unsaved([...this.dirty, ...this.inFlight.map((el) => el.id)]);
+    if (!sent.length) return true;
+    if (new TextEncoder().encode(JSON.stringify({ elements: sent })).length > KEEPALIVE_MAX_BYTES) {
+      void this.flush();
+      return false;
+    }
+    this.clearTimer();
+    this.dirty.clear();
+    this.set({ save: "saving" });
+    void this.send(sent, true);
+    return true;
   }
 
   /** Merges the server's copy: an element only replaces ours when its version is newer (another tab, a repair). */
@@ -266,10 +340,6 @@ export class SketchStore {
       const res = await api<{ elements: unknown[] }>(`/api/problems/${this.problemId}/sketch`);
       this.adopt(res.elements);
     } catch {}
-  }
-
-  get hasUnsaved() {
-    return this.dirty.size > 0 || this.saving;
   }
 }
 

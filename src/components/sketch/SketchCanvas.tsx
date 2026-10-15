@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { connect, createPointer, movedBy, moveElements, pointerLabelFor, portToward } from "@/lib/sketch/actions";
+import { bindOutline, bindTargetAt, looseOutside, resolveLine, type Outline } from "@/lib/sketch/bindings";
 import { describeElement } from "@/lib/sketch/describe";
-import { createElement, withChanges } from "@/lib/sketch/elements";
+import { createElement, randomId, withChanges } from "@/lib/sketch/elements";
 import {
   center,
   elementBounds,
@@ -13,13 +14,21 @@ import {
   nodeAt,
   nodeShape,
   pointerLabelRect,
+  fittedShapeHeight,
+  resizeRect,
+  shapeAt,
   snap,
+  snapAngle,
   type ElementMap,
   type Point,
+  type ResizeHandle,
+  type Shape,
 } from "@/lib/sketch/layout";
 import { keysAfter } from "@/lib/sketch/order";
+import { dropTargetShape, partById, partDropTarget, type PartDrop } from "@/lib/sketch/parts";
 import { PALETTE_KINDS, template, type PaletteKind } from "@/lib/sketch/templates";
-import type { Anchor, SketchElement } from "@/lib/sketch/types";
+import { styleFields } from "@/lib/sketch/style";
+import { MIN_SHAPE_SIZE, type Anchor, type ElementOf, type SketchElement } from "@/lib/sketch/types";
 import {
   arrange,
   copySelection,
@@ -38,9 +47,12 @@ import {
 } from "./commands";
 import { Connectors } from "./connectors";
 import { InlineEditor } from "./editor";
-import { ElementView, PointerLabel } from "./elements";
+import { ElementView, PointerLabel, SelectionHandles } from "./elements";
 import { ElementToolbar } from "./ElementToolbar";
-import { useSketch, type Camera, type SketchStore, type Tool } from "./store";
+import { PALETTE_PART_MIME, draggedPart, runPart, setDraggedPart } from "./partCommands";
+import { sketchFonts } from "./fonts";
+import { useSketch, type Camera, type ShapeTool, type SketchStore, type Tool } from "./store";
+import { StylePanel } from "./StylePanel";
 
 /** The drag type the palette uses, so the canvas only accepts its own items. */
 export const PALETTE_MIME = "application/x-scratchpad-sketch";
@@ -48,6 +60,8 @@ export const PALETTE_MIME = "application/x-scratchpad-sketch";
 const DRAG_THRESHOLD = 3;
 /** How close, in screen pixels, a pointer or link has to be dropped to snap to its target. */
 const SNAP_PX = 24;
+/** How close, in screen pixels, an arrow's end has to be to an element's outline to attach to it. */
+const BIND_PX = 12;
 
 type Gesture =
   | { kind: "pan"; start: Point; camera: Camera }
@@ -57,7 +71,24 @@ type Gesture =
   | { kind: "pointer"; origin: Point; start: Point; clickAnchor: Anchor | null; moved: boolean }
   | { kind: "aim"; pointerId: string }
   | { kind: "link"; fromId: string }
-  | { kind: "draw"; points: [number, number, number][] };
+  | { kind: "draw"; points: [number, number, number][] }
+  /**
+   * Drawing a shape or line from `origin`; `id` and `key` stay the same across the preview and the commit. An
+   * arrow's ends attach to the elements they start and end on (`startBind`, `endBind`).
+   */
+  | {
+      kind: "shape";
+      tool: ShapeTool;
+      origin: Point;
+      start: Point;
+      id: string;
+      key: string;
+      moved: boolean;
+      startBind: string | null;
+      endBind: string | null;
+    }
+  | { kind: "resize"; original: ElementOf<"shape">; handle: ResizeHandle; origin: Point }
+  | { kind: "endpoint"; original: ElementOf<"line">; end: "start" | "end"; origin: Point };
 
 type Hit = {
   id: string;
@@ -108,7 +139,26 @@ function anchorOf(elements: ElementMap, hit: Hit | null): Anchor | null {
   return null;
 }
 
-const TOOL_KEYS: Record<string, Tool> = { v: "select", h: "hand", p: "pointer", l: "link", d: "freehand", n: "note", t: "text" };
+const TOOL_KEYS: Record<string, Tool> = {
+  v: "select",
+  h: "hand",
+  p: "pointer",
+  l: "link",
+  d: "freehand",
+  n: "note",
+  t: "text",
+  // Shapes: mnemonic letters where they're free, and Excalidraw's number keys.
+  r: "rectangle",
+  "2": "rectangle",
+  u: "rounded",
+  "3": "diamond",
+  o: "ellipse",
+  "4": "ellipse",
+  a: "arrow",
+  "5": "arrow",
+  i: "line",
+  "6": "line",
+};
 
 const CURSOR: Record<Tool, string> = {
   select: "cursor-default",
@@ -118,7 +168,91 @@ const CURSOR: Record<Tool, string> = {
   freehand: "cursor-crosshair",
   note: "cursor-copy",
   text: "cursor-text",
+  rectangle: "cursor-crosshair",
+  rounded: "cursor-crosshair",
+  diamond: "cursor-crosshair",
+  ellipse: "cursor-crosshair",
+  arrow: "cursor-crosshair",
+  line: "cursor-crosshair",
 };
+
+/** A click without a drag makes a shape this size, centred on the click. */
+const DEFAULT_SHAPE = { w: 160, h: 80 };
+const DEFAULT_LINE = 160;
+
+/**
+ * The shape or line a drawing gesture makes when the pointer is at `p`: snapped to the grid, or with Shift, a
+ * square or circle (shapes) or an angle in 15° steps (lines). `p` null: a click, which makes a default-size one.
+ */
+function drawnElement(store: SketchStore, g: Extract<Gesture, { kind: "shape" }>, p: Point | null, shift: boolean): SketchElement {
+  const style = store.state.newStyle;
+  const o = g.origin;
+  if (g.tool === "line" || g.tool === "arrow") {
+    const end = !p ? { x: o.x + DEFAULT_LINE, y: o.y } : shift ? snapAngle(o, p) : { x: snap(p.x), y: snap(p.y) };
+    // The arrow tool keeps the heads last picked, and always draws at least one.
+    const heads =
+      g.tool === "arrow"
+        ? { startHead: style.startHead, endHead: style.startHead === "none" && style.endHead === "none" ? ("arrow" as const) : style.endHead }
+        : {};
+    const bindings = {
+      startBinding: g.startBind ? { elementId: g.startBind } : null,
+      endBinding: p && g.endBind ? { elementId: g.endBind } : null,
+    };
+    const line = createElement(
+      { id: g.id, type: "line", x: o.x, y: o.y, points: [[0, 0], [end.x - o.x, end.y - o.y]], ...styleFields("line", style), ...heads, ...bindings },
+      g.key,
+    ) as ElementOf<"line">;
+    return resolveLine(store.state.elements, line);
+  }
+  let rect;
+  if (!p) {
+    rect = { x: snap(o.x - DEFAULT_SHAPE.w / 2), y: snap(o.y - DEFAULT_SHAPE.h / 2), ...DEFAULT_SHAPE };
+  } else {
+    let w = snap(p.x) - o.x;
+    let h = snap(p.y) - o.y;
+    if (shift) {
+      const d = Math.max(Math.abs(w), Math.abs(h));
+      w = (w < 0 ? -1 : 1) * d;
+      h = (h < 0 ? -1 : 1) * d;
+    }
+    rect = { x: Math.min(o.x, o.x + w), y: Math.min(o.y, o.y + h), w: Math.max(MIN_SHAPE_SIZE, Math.abs(w)), h: Math.max(MIN_SHAPE_SIZE, Math.abs(h)) };
+  }
+  return createElement({ id: g.id, type: "shape", shape: g.tool, ...rect, text: "", ...styleFields("shape", style) }, g.key);
+}
+
+/** The point a resize handle drags: the corner or the middle of the edge it sits on. */
+function handlePoint(el: ElementOf<"shape">, handle: ResizeHandle): Point {
+  const x = handle.includes("w") ? el.x : handle.includes("e") ? el.x + el.w : el.x + el.w / 2;
+  const y = handle.includes("n") ? el.y : handle.includes("s") ? el.y + el.h : el.y + el.h / 2;
+  return { x, y };
+}
+
+/** The outline of the element an arrow's end would attach to, a little outside it. */
+function BindHint({ outline }: { outline: Outline }) {
+  const pad = 4;
+  const { x, y, w, h } = outline.rect;
+  const W = w + pad * 2;
+  const H = h + pad * 2;
+  return (
+    <svg
+      data-export-skip=""
+      className="pointer-events-none absolute z-10 overflow-visible fill-brand/10 stroke-brand"
+      style={{ left: x - pad, top: y - pad }}
+      width={W}
+      height={H}
+      strokeWidth={2}
+      aria-hidden
+    >
+      {outline.kind === "ellipse" ? (
+        <ellipse cx={W / 2} cy={H / 2} rx={W / 2} ry={H / 2} />
+      ) : outline.kind === "diamond" ? (
+        <path d={`M ${W / 2} 0 L ${W} ${H / 2} L ${W / 2} ${H} L 0 ${H / 2} Z`} />
+      ) : (
+        <rect width={W} height={H} rx={6} />
+      )}
+    </svg>
+  );
+}
 
 /** The element with a drag's offset applied, for drawing while the drag is in progress. */
 function shifted(el: SketchElement, dx: number, dy: number): SketchElement {
@@ -133,6 +267,18 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
   const gesture = useRef<Gesture | null>(null);
   const space = useRef(false);
   const touches = useRef(new Map<number, Point>());
+  /** What a palette part dragged over the canvas, or a pointer's name being dragged, would attach to. */
+  const [dropShape, setDropShape] = useState<Shape | null>(null);
+  const showDropShape = (shape: Shape | null) => {
+    if (JSON.stringify(shape) !== JSON.stringify(dropShape)) setDropShape(shape);
+  };
+  /** The element an arrow's end would attach to: under the arrow tool, or an end being drawn or dragged. */
+  const [bindHint, setBindHint] = useState<{ outline: Outline; hover: boolean } | null>(null);
+  const showBindHint = (el: SketchElement | null, hover = false) => {
+    const outline = el && bindOutline(el);
+    const next = outline && { outline, hover };
+    if (JSON.stringify(next) !== JSON.stringify(bindHint)) setBindHint(next);
+  };
 
   useEffect(() => {
     const node = ref.current!;
@@ -170,6 +316,30 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
   };
 
   const tolerance = () => SNAP_PX / store.state.camera.zoom;
+  const bindMargin = () => BIND_PX / store.state.camera.zoom;
+
+  /**
+   * The cell or node a lone pointer's name was dragged onto, when that's somewhere other than where it points:
+   * dropping it there points it there.
+   */
+  function rebindTarget(g: Extract<Gesture, { kind: "move" }>, p: Point): { pointer: ElementOf<"pointer">; anchor: Anchor; shape: Shape } | null {
+    if (g.ids.size !== 1) return null;
+    const st = store.state;
+    const el = st.elements.get(g.clicked);
+    if (el?.type !== "pointer" || !g.ids.has(el.id)) return null;
+    const found = nearestAnchor(st.elements, st.live, p, 0);
+    if (!found || (el.target && JSON.stringify(el.target) === JSON.stringify(found.anchor))) return null;
+    return { pointer: el, ...found };
+  }
+
+  /** Where a palette part is being dragged: the scene point, and the element and anchor under it or nearby. */
+  function partDropOf(e: React.DragEvent): PartDrop {
+    const st = store.state;
+    const point = toScene(e.clientX, e.clientY);
+    const hit = hitOf(e.target);
+    const anchor = anchorOf(st.elements, hit) ?? (hit ? null : (nearestAnchor(st.elements, st.live, point, tolerance())?.anchor ?? null));
+    return { point, elementId: hit?.id ?? anchor?.elementId ?? null, anchor };
+  }
 
   function startPinch() {
     const [a, b] = [...touches.current.values()];
@@ -201,11 +371,23 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
     }
     if (e.button !== 0) return;
     const hit = hitOf(e.target);
+    /** Ctrl or Cmd: draw a line or arrow whose ends attach to nothing. */
+    const mod = e.ctrlKey || e.metaKey;
 
     switch (st.tool) {
       case "select": {
         if (hit?.handle === "aim") {
           gesture.current = { kind: "aim", pointerId: hit.id };
+          return;
+        }
+        // Resize handles on a selected shape, endpoint handles on a selected line (SelectionHandles).
+        const handled = hit?.handle ? st.elements.get(hit.id) : undefined;
+        if (handled?.type === "shape" && hit!.handle!.startsWith("resize-")) {
+          gesture.current = { kind: "resize", original: handled, handle: hit!.handle!.slice(7) as ResizeHandle, origin: p };
+          return;
+        }
+        if (handled?.type === "line" && (hit!.handle === "line-start" || hit!.handle === "line-end")) {
+          gesture.current = { kind: "endpoint", original: handled, end: hit!.handle === "line-start" ? "start" : "end", origin: p };
           return;
         }
         if (hit && st.elements.get(hit.id)) {
@@ -253,6 +435,24 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
         store.setEditing({ kind: "text", elementId: el.id });
         return;
       }
+      case "rectangle":
+      case "rounded":
+      case "diamond":
+      case "ellipse":
+      case "arrow":
+      case "line":
+        gesture.current = {
+          kind: "shape",
+          tool: st.tool,
+          origin: { x: snap(p.x), y: snap(p.y) },
+          start,
+          id: randomId(),
+          key: keysAfter(store.lastKey, 1)[0],
+          moved: false,
+          startBind: (st.tool === "arrow" || st.tool === "line") && !mod ? (bindTargetAt(st.live, p, bindMargin())?.id ?? null) : null,
+          endBind: null,
+        };
+        return;
     }
   }
 
@@ -261,8 +461,14 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
       touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     }
     const g = gesture.current;
-    if (!g) return;
     const st = store.state;
+    if (!g) {
+      // The arrow and line tools show what one started here would attach to.
+      if ((st.tool === "arrow" || st.tool === "line") && !readOnly && e.pointerType !== "touch") {
+        showBindHint(e.ctrlKey || e.metaKey ? null : bindTargetAt(st.live, toScene(e.clientX, e.clientY), bindMargin()), true);
+      }
+      return;
+    }
     const p = toScene(e.clientX, e.clientY);
     const far = (start: Point) => Math.hypot(e.clientX - start.x, e.clientY - start.y) >= DRAG_THRESHOLD;
 
@@ -285,6 +491,7 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
         if (!g.moved && !far(g.start)) return;
         g.moved = true;
         store.setDrag({ ids: g.moving, dx: snap(p.x - g.origin.x), dy: snap(p.y - g.origin.y) });
+        showDropShape(rebindTarget(g, p)?.shape ?? null);
         return;
       }
       case "marquee": {
@@ -328,6 +535,41 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
         store.setOverlay({ kind: "freehand", points: g.points });
         return;
       }
+      case "shape": {
+        if (!g.moved && !far(g.start)) return;
+        g.moved = true;
+        if (g.tool === "arrow" || g.tool === "line") {
+          const target = e.ctrlKey || e.metaKey ? null : bindTargetAt(st.live, p, bindMargin(), g.startBind);
+          g.endBind = target?.id ?? null;
+          showBindHint(target);
+        }
+        store.setPreview([drawnElement(store, g, p, e.shiftKey)]);
+        return;
+      }
+      case "resize": {
+        const el = g.original;
+        // The handle follows the pointer from where it was grabbed, so the edge doesn't jump to the cursor.
+        const from = handlePoint(el, g.handle);
+        const q = { x: from.x + p.x - g.origin.x, y: from.y + p.y - g.origin.y };
+        const r = resizeRect({ x: el.x, y: el.y, w: el.w, h: el.h }, g.handle, e.shiftKey ? q : { x: snap(q.x), y: snap(q.y) }, e.shiftKey);
+        store.setPreview([{ ...el, ...r }]);
+        return;
+      }
+      case "endpoint": {
+        const el = g.original;
+        const i = g.end === "start" ? 0 : el.points.length - 1;
+        const other = el.points[g.end === "start" ? 1 : el.points.length - 2];
+        const q = { x: el.x + el.points[i][0] + p.x - g.origin.x, y: el.y + el.points[i][1] + p.y - g.origin.y };
+        const to = e.shiftKey ? snapAngle({ x: el.x + other[0], y: el.y + other[1] }, q) : { x: snap(q.x), y: snap(q.y) };
+        const points = el.points.map((pt, k) => (k === i ? ([to.x - el.x, to.y - el.y] as [number, number]) : pt));
+        // The end attaches to what it's dropped on (not with Ctrl or Cmd), and comes loose when dragged off it.
+        const otherBinding = g.end === "start" ? el.endBinding : el.startBinding;
+        const target = e.ctrlKey || e.metaKey ? null : bindTargetAt(st.live, p, bindMargin(), otherBinding?.elementId);
+        const binding = target ? { elementId: target.id } : null;
+        showBindHint(target);
+        store.setPreview([resolveLine(st.elements, { ...el, points, ...(g.end === "start" ? { startBinding: binding } : { endBinding: binding }) })]);
+        return;
+      }
     }
   }
 
@@ -342,6 +584,7 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
     gesture.current = null;
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
     if (!g) return;
+    showBindHint(null);
     const st = store.state;
     const p = toScene(e.clientX, e.clientY);
 
@@ -349,7 +592,13 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
       case "move": {
         const drag = st.drag;
         store.setDrag(null);
-        if (g.moved && drag) store.commit(moveElements(st.elements, g.ids, drag.dx, drag.dy));
+        showDropShape(null);
+        const rebind = g.moved && drag ? rebindTarget(g, p) : null;
+        if (rebind && drag) {
+          const { pointer, anchor } = rebind;
+          const label = pointerLabelFor(st.elements, anchor, pointer.name, pointer.id) ?? { x: pointer.x + drag.dx, y: pointer.y + drag.dy };
+          store.commit([withChanges(pointer, { target: anchor, end: undefined, ...label })]);
+        } else if (g.moved && drag) store.commit(moveElements(st.elements, g.ids, drag.dx, drag.dy));
         // A click on one of several selected elements selects just that one.
         else if (!g.moved && !g.additive && st.selection.size > 1) store.select([g.clicked]);
         return;
@@ -406,6 +655,32 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
         store.commit([createElement({ type: "freehand", x, y, points, tone: "ink" }, keysAfter(store.lastKey, 1)[0])]);
         return;
       }
+      case "shape": {
+        store.setPreview(null);
+        const el = drawnElement(store, g, g.moved ? p : null, e.shiftKey);
+        // A line dragged back onto its start has no length; drop it.
+        if (el.type === "line" && el.points[1][0] === el.points[0][0] && el.points[1][1] === el.points[0][1]) return;
+        store.commit([el], { select: [el.id] });
+        store.setTool("select");
+        return;
+      }
+      case "resize":
+      case "endpoint": {
+        const shown = st.preview?.get(g.original.id);
+        store.setPreview(null);
+        const current = st.elements.get(g.original.id);
+        if (!shown || !current || current.isDeleted) return;
+        if (current.type === "shape" && shown.type === "shape") {
+          // Narrowing a shape can make its text need more height.
+          const h = fittedShapeHeight({ ...current, w: shown.w, h: shown.h });
+          store.commit([withChanges(current, { x: shown.x, y: shown.y, w: shown.w, h })]);
+        } else if (current.type === "line" && shown.type === "line") {
+          const [x0, y0] = shown.points[0];
+          if (shown.points.every(([x, y]) => x === x0 && y === y0)) return;
+          store.commit([withChanges(current, { points: shown.points, startBinding: shown.startBinding, endBinding: shown.endBinding })]);
+        }
+        return;
+      }
       case "pan":
         return;
     }
@@ -418,6 +693,13 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
     if (!hit) {
       if (st.tool !== "select") return;
       const p = toScene(e.clientX, e.clientY);
+      // Inside an empty shape (whose inside doesn't take clicks), write in the shape.
+      const container = shapeAt(st.live, p);
+      if (container) {
+        store.select([container.id]);
+        store.setEditing({ kind: "text", elementId: container.id });
+        return;
+      }
       const el = createElement({ type: "text", x: snap(p.x), y: snap(p.y), text: "", size: "m" }, keysAfter(store.lastKey, 1)[0]);
       store.commit([el], { select: [el.id] });
       store.setEditing({ kind: "text", elementId: el.id });
@@ -430,7 +712,7 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
     else if (hit.entry !== null) store.setEditing({ kind: "entry", elementId: el.id, row: hit.entry, part: hit.part ?? 0 });
     else if (hit.label) store.setEditing({ kind: "label", elementId: el.id });
     else if (el.type === "node") store.setEditing({ kind: "value", elementId: el.id });
-    else if (el.type === "note" || el.type === "text") store.setEditing({ kind: "text", elementId: el.id });
+    else if (el.type === "note" || el.type === "text" || el.type === "shape") store.setEditing({ kind: "text", elementId: el.id });
     else if (el.type === "pointer") store.setEditing({ kind: "name", elementId: el.id });
   }
 
@@ -473,6 +755,7 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
     if (mod && key === "x") return cutSelection(store);
     if (mod && key === "v") return (handled(), paste(store));
     if (mod && key === "a") return (handled(), selectAll(store));
+    if (mod && key === "s") return (handled(), void store.flush());
     if (mod && e.shiftKey && e.key === "]") return (handled(), arrange(store, "front"));
     if (mod && e.shiftKey && e.key === "[") return (handled(), arrange(store, "back"));
     if (mod) return;
@@ -503,18 +786,58 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
     if (!e.altKey && TOOL_KEYS[key]) store.setTool(TOOL_KEYS[key]);
   }
 
+  function onDragOver(e: React.DragEvent<HTMLDivElement>) {
+    const { types } = e.dataTransfer;
+    if (readOnly || (!types.includes(PALETTE_MIME) && !types.includes(PALETTE_PART_MIME))) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    // The drag's data can't be read until the drop, so the palette says which part is on its way.
+    const part = draggedPart();
+    const target = part && partDropTarget(store.state.elements, part, partDropOf(e));
+    showDropShape(target ? dropTargetShape(store.state.elements, target) : null);
+  }
+
+  /** A part dropped on a node, cell or entry attaches there; on empty canvas it's placed where it was dropped. */
   function onDrop(e: React.DragEvent<HTMLDivElement>) {
+    showDropShape(null);
+    if (readOnly) return;
+    const part = partById(e.dataTransfer.getData(PALETTE_PART_MIME));
+    if (part) {
+      e.preventDefault();
+      setDraggedPart(null);
+      ref.current?.focus({ preventScroll: true });
+      runPart(store, part, partDropOf(e));
+      return;
+    }
     const kind = e.dataTransfer.getData(PALETTE_MIME) as PaletteKind;
-    if (readOnly || !(PALETTE_KINDS as readonly string[]).includes(kind)) return;
+    if (!(PALETTE_KINDS as readonly string[]).includes(kind)) return;
     e.preventDefault();
     insertElements(store, template(kind), toScene(e.clientX, e.clientY));
   }
 
-  const { camera, drag } = s;
-  const shown: ElementMap = drag
+  const { camera, drag, preview } = s;
+  let shown: ElementMap = drag
     ? new Map([...s.elements].map(([id, el]) => [id, drag.ids.has(id) ? shifted(el, drag.dx, drag.dy) : el]))
     : s.elements;
-  const live = drag ? s.live.map((el) => shown.get(el.id)!) : s.live;
+  let live = drag ? s.live.map((el) => shown.get(el.id)!) : s.live;
+  // An unfinished draw, resize or style change: drawn in place of the stored copy, or on top when new.
+  if (preview) {
+    shown = new Map([...shown, ...preview]);
+    live = [...live.map((el) => preview.get(el.id) ?? el), ...[...preview.values()].filter((el) => !s.elements.has(el.id))];
+  }
+  // Arrows attached to what's being dragged or resized follow it; one dragged without its elements comes loose.
+  if (drag || preview) {
+    const followed = new Map<string, SketchElement>();
+    for (const el of live) {
+      if (el.type !== "line" || (!el.startBinding && !el.endBinding)) continue;
+      const line = resolveLine(shown, drag?.ids.has(el.id) ? looseOutside(el, drag.ids) : el);
+      if (line !== el) followed.set(el.id, line);
+    }
+    if (followed.size) {
+      shown = new Map([...shown, ...followed]);
+      live = live.map((el) => followed.get(el.id) ?? el);
+    }
+  }
   const editingEl = s.editing && shown.get(s.editing.elementId);
   const selected = live.filter((el) => s.selection.has(el.id));
   const announcement = selected.length === 1 ? describeElement(shown, selected[0]) : selected.length > 1 ? `${selected.length} elements selected` : "";
@@ -528,6 +851,7 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
       aria-roledescription="canvas"
       aria-describedby="sketch-canvas-help"
       className={cn(
+        sketchFonts,
         "relative h-full w-full touch-none overflow-hidden bg-paper bg-graph outline-none select-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset",
         readOnly ? "cursor-grab" : CURSOR[s.tool],
       )}
@@ -547,20 +871,28 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
       onBlur={() => {
         space.current = false;
       }}
-      onDragOver={(e) => {
-        if (!readOnly && e.dataTransfer.types.includes(PALETTE_MIME)) {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = "copy";
-        }
+      onPointerLeave={() => {
+        if (!gesture.current) showBindHint(null);
+      }}
+      onDragOver={onDragOver}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) showDropShape(null);
       }}
       onDrop={onDrop}
     >
       <div
-        className="absolute top-0 left-0 origin-top-left"
+        data-sketch-scene
+        className={cn(sketchFonts, "absolute top-0 left-0 origin-top-left")}
         style={{ transform: `scale(${camera.zoom}) translate(${camera.x}px, ${camera.y}px)` }}
       >
         {live.map((el) => (
-          <ElementView key={el.id} el={el} activeCell={s.activeCell} />
+          <ElementView
+            key={el.id}
+            el={el}
+            activeCell={s.activeCell}
+            selected={s.selection.has(el.id)}
+            editingText={s.editing?.kind === "text" && s.editing.elementId === el.id}
+          />
         ))}
         <Connectors elements={shown} live={live} selection={s.selection} overlay={s.overlay} />
         {live.map((el) =>
@@ -570,31 +902,50 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
         )}
         {selected.map((el) => {
           const b = el.type === "pointer" ? pointerLabelRect(el) : elementBounds(el);
-          if (!b) return null;
+          // A selected line shows a halo along itself (LineView) instead of a box.
+          if (!b || el.type === "line") return null;
           return (
             <div
               key={`sel-${el.id}`}
+              data-export-skip
               className="pointer-events-none absolute rounded-md border-2 border-brand"
               style={{ left: b.x - 4, top: b.y - 4, width: b.w + 8, height: b.h + 8 }}
             />
           );
         })}
+        {!readOnly && !drag && !s.editing && selected.length === 1 && <SelectionHandles el={selected[0]} zoom={camera.zoom} />}
         {s.overlay?.kind === "marquee" && (
           <div
+            data-export-skip
             className="pointer-events-none absolute rounded-sm border border-brand bg-brand/10"
             style={{ left: s.overlay.rect.x, top: s.overlay.rect.y, width: s.overlay.rect.w, height: s.overlay.rect.h }}
           />
         )}
+        {dropShape && (
+          <div
+            data-export-skip
+            className={cn("pointer-events-none absolute z-10 border-2 border-brand bg-brand/15", dropShape.kind === "circle" ? "rounded-full" : "rounded-md")}
+            style={
+              dropShape.kind === "circle"
+                ? { left: dropShape.cx - dropShape.r - 3, top: dropShape.cy - dropShape.r - 3, width: dropShape.r * 2 + 6, height: dropShape.r * 2 + 6 }
+                : { left: dropShape.rect.x - 3, top: dropShape.rect.y - 3, width: dropShape.rect.w + 6, height: dropShape.rect.h + 6 }
+            }
+          />
+        )}
+        {bindHint && (!bindHint.hover || s.tool === "arrow" || s.tool === "line") && <BindHint outline={bindHint.outline} />}
         {s.editing && editingEl && !readOnly && (
           <InlineEditor key={JSON.stringify(s.editing)} store={store} target={s.editing} element={editingEl} />
         )}
       </div>
 
       {!readOnly && !drag && !s.editing && selected.length === 1 && <ElementToolbar store={store} element={selected[0]} />}
+      {!readOnly && <StylePanel store={store} />}
 
       <p id="sketch-canvas-help" className="sr-only">
         Tab moves between elements, Enter edits the selected one, arrow keys move it, Delete removes it. V selects, H pans, P adds a
-        pointer, L links nodes, D draws, N adds a note, T adds text.
+        pointer, L links nodes, D draws, N adds a note, T adds text. R draws a rectangle, U a rounded rectangle, 3 a diamond, O an
+        ellipse, A an arrow, I a line; Enter on a shape writes in it. An arrow or line drawn from one element to another stays
+        attached to both; hold Control to leave its ends free. Changes save every 30 seconds and when you leave; Control S saves now.
       </p>
       <div className="sr-only" aria-live="polite">
         {announcement}
