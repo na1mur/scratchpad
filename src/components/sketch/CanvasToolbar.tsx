@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   ArrowUpRightIcon,
   Grid3x3Icon,
@@ -10,6 +11,7 @@ import {
   ScanIcon,
   SplineIcon,
   StickyNoteIcon,
+  Trash2Icon,
   TypeIcon,
   Undo2Icon,
   ZoomInIcon,
@@ -17,8 +19,16 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { resetZoom, zoomAt, zoomToFit } from "./commands";
+import { clearCanvas, resetZoom, zoomAt, zoomToFit } from "./commands";
 import { useSketch, type ShapeTool, type SketchStore, type Tool } from "./store";
 
 const TOOLS: { tool: Tool; label: string; key: string; icon: LucideIcon }[] = [
@@ -63,6 +73,7 @@ const bar = "flex items-center gap-0.5 rounded-lg border bg-popover p-1 text-pop
 /** Tools and undo along the top of the canvas; zoom in the bottom corner. */
 export function CanvasToolbar({ store, readOnly }: { store: SketchStore; readOnly: boolean }) {
   const s = useSketch(store);
+  const [confirmClear, setConfirmClear] = useState(false);
   return (
     <>
       {!readOnly && (
@@ -106,8 +117,45 @@ export function CanvasToolbar({ store, readOnly }: { store: SketchStore; readOnl
           <Button variant="ghost" size="icon-sm" aria-label="Redo (Ctrl+Shift+Z)" title="Redo (Ctrl+Shift+Z)" disabled={!s.canRedo} onClick={() => store.redo()}>
             <Redo2Icon />
           </Button>
+          <span className="mx-1 h-5 w-px bg-border" />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Clear the canvas"
+            title="Clear the canvas"
+            disabled={s.live.length === 0}
+            className="hover:text-destructive"
+            onClick={() => setConfirmClear(true)}
+          >
+            <Trash2Icon />
+          </Button>
         </div>
       )}
+      <Dialog open={confirmClear} onOpenChange={setConfirmClear}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Clear the canvas?</DialogTitle>
+            <DialogDescription>
+              This erases everything you have drawn for this problem. You can bring it back right away with Undo (Ctrl+Z), but not after
+              you leave the page.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmClear(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                clearCanvas(store);
+                setConfirmClear(false);
+              }}
+            >
+              Clear canvas
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className={cn(bar, "absolute bottom-3 left-3 z-20")}>
         <Button variant="ghost" size="icon-sm" aria-label="Zoom out" title="Zoom out (-)" onClick={() => zoomAt(store, 1 / 1.2)}>
           <ZoomOutIcon />

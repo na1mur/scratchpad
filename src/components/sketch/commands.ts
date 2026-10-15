@@ -55,6 +55,14 @@ export function deleteSelection(store: SketchStore) {
   if (selection.size) store.commit(deleteElements(elements, selection), { select: [] });
 }
 
+/** Erases everything on the canvas as one undoable change. */
+export function clearCanvas(store: SketchStore) {
+  const { elements, live } = store.state;
+  if (!live.length) return;
+  store.setEditing(null);
+  store.commit(deleteElements(elements, new Set(live.map((el) => el.id))), { select: [] });
+}
+
 export function duplicateSelection(store: SketchStore) {
   const { elements, selection } = store.state;
   if (!selection.size) return;
