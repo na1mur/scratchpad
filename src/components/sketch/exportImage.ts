@@ -139,7 +139,7 @@ export async function captureSketch(store: SketchStore, opts: CaptureOptions): P
   if (opts.backdrop !== "none") host.style.backgroundColor = "var(--paper)";
   if (opts.backdrop === "grid") {
     // The same paper as the canvas, with its lines on the same scene coordinates.
-    host.className = "bg-graph";
+    host.className = "bg-graph-subtle";
     host.style.backgroundSize = `${GRID_SQUARE}px ${GRID_SQUARE}px`;
     host.style.backgroundPosition = `${PADDING - rect.x}px ${PADDING - rect.y}px`;
   }

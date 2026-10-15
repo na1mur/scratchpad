@@ -13,6 +13,7 @@ export const preferencesSchema = z
   .object({
     chatLayout: z.enum(["inline", "drawer"]).optional(),
     problemView: z.enum(["cards", "table"]).optional(),
+    sketchGrid: z.boolean().optional(),
   })
   .refine((p) => Object.values(p).some((v) => v !== undefined), "Nothing to save");
 

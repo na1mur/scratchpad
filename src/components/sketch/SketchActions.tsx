@@ -24,7 +24,8 @@ import { useSketch, type SketchStore } from "./store";
 /** Saves the sketch, or the selection, as a PNG at twice the size, on its graph paper or transparent. */
 function ExportMenu({ store, problem }: { store: SketchStore; problem: ProblemDetail }) {
   const s = useSketch(store);
-  const [background, setBackground] = useState(true);
+  // Plain by default, and not remembered between exports.
+  const [background, setBackground] = useState(false);
   const [busy, setBusy] = useState(false);
   const hasSelection = [...s.selection].some((id) => s.elements.get(id)?.type !== "link");
 

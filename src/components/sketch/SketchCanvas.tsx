@@ -852,7 +852,8 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
       aria-describedby="sketch-canvas-help"
       className={cn(
         sketchFonts,
-        "relative h-full w-full touch-none overflow-hidden bg-paper bg-graph outline-none select-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset",
+        "relative h-full w-full touch-none overflow-hidden bg-paper outline-none select-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset",
+        s.grid && "bg-graph-subtle",
         readOnly ? "cursor-grab" : CURSOR[s.tool],
       )}
       style={{

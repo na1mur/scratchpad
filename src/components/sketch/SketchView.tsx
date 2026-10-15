@@ -53,8 +53,16 @@ function SaveState({ status, error }: { status: SaveStatus; error: string | null
  * The sketch page: the palette on the left, the canvas, and the statement and test cases on the right. Phones
  * get the canvas read-only (pan and zoom), since dragging structures around needs a pointer.
  */
-export function SketchView({ problem, initialElements }: { problem: ProblemDetail; initialElements: SketchElement[] }) {
-  const [store] = useState(() => new SketchStore(problem.id, initialElements));
+export function SketchView({
+  problem,
+  initialElements,
+  initialGrid,
+}: {
+  problem: ProblemDetail;
+  initialElements: SketchElement[];
+  initialGrid: boolean;
+}) {
+  const [store] = useState(() => new SketchStore(problem.id, initialElements, initialGrid));
   const s = useSketch(store);
   const desktop = useMediaQuery("(min-width: 768px)", true);
   const readOnly = !desktop;

@@ -86,6 +86,8 @@ const userSchema = new Schema(
     preferences: {
       chatLayout: { type: String, enum: CHAT_LAYOUTS, required: false },
       problemView: { type: String, enum: PROBLEM_VIEWS, required: false },
+      // Whether the sketch canvas shows its grid lines. Absent means off.
+      sketchGrid: { type: Boolean, required: false },
       // First-run tours already shown (see `toursSeenBy()`). Absent on accounts that never had one.
       toursSeen: { type: [{ type: String, enum: TOURS }], default: undefined },
     },

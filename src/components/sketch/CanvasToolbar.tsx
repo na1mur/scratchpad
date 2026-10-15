@@ -2,6 +2,7 @@
 
 import {
   ArrowUpRightIcon,
+  Grid3x3Icon,
   HandIcon,
   MousePointer2Icon,
   PencilIcon,
@@ -119,6 +120,18 @@ export function CanvasToolbar({ store, readOnly }: { store: SketchStore; readOnl
         </Button>
         <Button variant="ghost" size="icon-sm" aria-label="Fit everything in view" title="Fit everything in view (Shift+1)" onClick={() => zoomToFit(store)}>
           <ScanIcon />
+        </Button>
+        <span className="mx-1 h-5 w-px bg-border" />
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-pressed={s.grid}
+          aria-label="Show grid"
+          title={s.grid ? "Hide the grid" : "Show the grid"}
+          className={cn(s.grid && "bg-brand-soft text-ink hover:bg-brand-soft")}
+          onClick={() => store.setGrid(!s.grid)}
+        >
+          <Grid3x3Icon />
         </Button>
       </div>
     </>

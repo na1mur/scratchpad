@@ -202,6 +202,14 @@
   background-size: 28px 28px;
 }
 
+/* The same paper with fainter lines, for the sketch canvas, where the drawing matters more than the grid. */
+@utility bg-graph-subtle {
+  background-image:
+    linear-gradient(color-mix(in oklch, var(--grid) 45%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklch, var(--grid) 45%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
 /* Ruled notebook lines, one per 32px. */
 @utility bg-ruled {
   background-image: repeating-linear-gradient(

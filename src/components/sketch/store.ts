@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { toast } from "sonner";
 import { ApiClientError, api } from "@/lib/fetcher";
 import { followBindings } from "@/lib/sketch/bindings";
 import { mergeElements } from "@/lib/sketch/elements";
@@ -72,6 +73,8 @@ export type SketchSnapshot = {
   /** The style the shape and line tools draw with: the last one picked in the style panel. */
   newStyle: Style;
   overlay: Overlay | null;
+  /** Whether the canvas shows its graph paper lines. Only the look: snapping to the grid stays on. */
+  grid: boolean;
   canUndo: boolean;
   canRedo: boolean;
   save: SaveStatus;
@@ -102,6 +105,7 @@ export class SketchStore {
   constructor(
     private readonly problemId: string,
     initial: readonly SketchElement[],
+    grid: boolean,
   ) {
     const elements = new Map(restoreElements(initial).elements.map((el) => [el.id, el]));
     this.snapshot = {
@@ -116,6 +120,7 @@ export class SketchStore {
       preview: null,
       newStyle: DEFAULT_NEW_STYLE,
       overlay: null,
+      grid,
       canUndo: false,
       canRedo: false,
       save: "saved",
@@ -231,6 +236,17 @@ export class SketchStore {
 
   setPreview(elements: Iterable<SketchElement> | null) {
     this.set({ preview: elements ? new Map([...elements].map((el) => [el.id, el])) : null });
+  }
+
+  /**
+   * Shows or hides the grid. The choice is saved on the user (`preferences.sketchGrid`), so it applies to every
+   * sketch; it isn't part of the sketch itself. A failed save only costs persistence.
+   */
+  setGrid(grid: boolean) {
+    this.set({ grid });
+    api("/api/settings/preferences", { method: "PATCH", body: { sketchGrid: grid } }).catch(() =>
+      toast.error("Couldn't save the grid setting; it'll be back to the old one next time."),
+    );
   }
 
   setNewStyle(patch: StylePatch) {
