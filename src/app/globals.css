@@ -130,6 +130,11 @@
   --brand-strong: oklch(0.45 0.09 175);
   --brand-soft: color-mix(in oklab, var(--brand) 55%, transparent);
   --lilac: oklch(0.66 0.15 300);
+  /* Sketch palette beyond ink and the pens (src/lib/sketch/style.ts); fills mix these into the paper. */
+  --sketch-gray: oklch(0.55 0.02 250);
+  --sketch-amber: oklch(0.66 0.15 70);
+  --sketch-green: oklch(0.55 0.14 150);
+  --sketch-violet: oklch(0.52 0.18 300);
 }
 
 .dark {
@@ -184,6 +189,10 @@
   --brand-strong: oklch(0.78 0.12 175);
   --brand-soft: color-mix(in oklab, var(--brand) 32%, transparent);
   --lilac: oklch(0.74 0.13 300);
+  --sketch-gray: oklch(0.7 0.02 240);
+  --sketch-amber: oklch(0.8 0.14 75);
+  --sketch-green: oklch(0.74 0.15 150);
+  --sketch-violet: oklch(0.74 0.14 300);
 }
 
 /* Quadrille paper. */
@@ -191,6 +200,14 @@
   background-image:
     linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
   background-size: 28px 28px;
+}
+
+/* The same paper with fainter lines, for the sketch canvas, where the drawing matters more than the grid. */
+@utility bg-graph-subtle {
+  background-image:
+    linear-gradient(color-mix(in oklch, var(--grid) 45%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklch, var(--grid) 45%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px;
 }
 
 /* Ruled notebook lines, one per 32px. */

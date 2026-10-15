@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Controller, useForm, useWatch } from "react-hook-form";
@@ -14,6 +14,7 @@ import {
   EraserIcon,
   InfoIcon,
   LockIcon,
+  PencilRulerIcon,
   PlayIcon,
   RotateCcwIcon,
   SparklesIcon,
@@ -53,7 +54,7 @@ import { ChangeModelLink } from "@/components/workspace/ChangeModelLink";
 import { ChatDock, chatOnSide, splitSizes, useChatDock } from "@/components/workspace/ChatDock";
 import { DeleteAttemptButton } from "@/components/workspace/DeleteAttemptButton";
 import { CodeEditor } from "@/components/workspace/CodeEditor";
-import { useNotebookUpload, type UploadedImage } from "@/components/workspace/NotebookUpload";
+import { MAX_IMAGES, useNotebookUpload, type UploadedImage } from "@/components/workspace/NotebookUpload";
 import { ProblemActions } from "@/components/workspace/ProblemActions";
 import { ProgressStepper } from "@/components/workspace/ProgressStepper";
 import { attemptProgressDetails } from "@/components/workspace/RunProgressDetails";
@@ -69,6 +70,8 @@ import { TestCases } from "./TestCases";
 import { starterCode } from "@/lib/runner/entry";
 import { isRunLanguage } from "@/lib/runner/protocol";
 import { PROVIDER_LABELS, type ProviderId } from "@/lib/providers";
+import { problemPath } from "@/lib/slug";
+import { takeSketchReading, type SketchReading } from "@/lib/sketch/reading";
 import { createAttemptSchema, type CreateAttemptInput } from "@/lib/schemas/attempts";
 import { MAX_TEXT } from "@/lib/schemas/problems";
 import { playCompletionSound } from "@/lib/sounds";
@@ -421,19 +424,47 @@ export function Workspace({
   const shownCode = mode === "view" && viewing ? viewing.pseudoCode : draftCode;
   const draftIdea = useWatch({ control: form.control, name: "idea" });
   const draftImages =(useWatch({ control: form.control, name: "images" }) ?? []) as UploadedImage[];
+
+  /** Adds read text to the draft. Appends rather than overwrites: never lose what the learner already typed. */
+  function appendToDraft(pseudoCode: string, idea: string) {
+    const current = form.getValues();
+    const join = (a: string | undefined, b: string) => (a?.trim() ? `${a.trimEnd()}\n\n${b}` : b);
+    if (pseudoCode.trim()) form.setValue("pseudoCode", join(current.pseudoCode, pseudoCode), { shouldDirty: true });
+    if (idea.trim()) form.setValue("idea", join(current.idea, idea), { shouldDirty: true });
+  }
+
   const notebook = useNotebookUpload({
     problemId: problem.id,
     images: draftImages,
     onChange: (images) => form.setValue("images", images, { shouldDirty: true }),
     disabled: Boolean(running),
-    onExtracted: ({ pseudoCode, notes }) => {
-      const { pseudoCode: code, idea } = form.getValues();
-      // Append rather than overwrite: never lose what the learner already typed.
-      const join = (a: string | undefined, b: string) => (a?.trim() ? `${a.trimEnd()}\n\n${b}` : b);
-      if (pseudoCode.trim()) form.setValue("pseudoCode", join(code, pseudoCode), { shouldDirty: true });
-      if (notes.trim()) form.setValue("idea", join(idea, notes), { shouldDirty: true });
-    },
+    onExtracted: ({ pseudoCode, notes }) => appendToDraft(pseudoCode, notes),
   });
+
+  // "Draft an attempt" on the sketch page leaves what it read for this page, taken once on the way in. It fills
+  // the new-attempt draft for the learner to check; nothing is processed. A saved attempt being viewed isn't a
+  // draft, so the new one starts from the sketch alone; text already in a draft stays, with the sketch's below it.
+  const onSketchReading = useEffectEvent((reading: SketchReading) => {
+    if (mode === "view") startNewAttempt(null, true);
+    appendToDraft(reading.pseudoCode, reading.idea);
+    const images = (form.getValues("images") ?? []) as UploadedImage[];
+    if (reading.image && images.length < MAX_IMAGES) {
+      form.setValue("images", [...images, reading.image], { shouldDirty: true });
+      if (reading.imageUrl) notebook.addPreview(reading.image.r2Key, reading.imageUrl);
+    }
+    if (reading.pseudoCode.trim()) toast.success("Filled in from your sketch. Check it before processing.");
+    else toast.success("What your sketch shows is in Idea / explanation. Add your pseudo-code, then process.");
+  });
+  useEffect(() => {
+    // Waits for a run in progress to end, since the draft can't change until then.
+    if (isRunning) return;
+    // Taken in the frame after the page shows, and only then, so an effect that's set up twice can't lose it.
+    const frame = requestAnimationFrame(() => {
+      const reading = takeSketchReading(problem.id);
+      if (reading) onSketchReading(reading);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [problem.id, isRunning]);
   // Attempts made before the model was recorded fall back to the learner's current model.
   const ranOn = viewing?.model ?? aiModel;
   const canRun = Boolean(aiModel?.hasKey);
@@ -521,6 +552,15 @@ export function Workspace({
             )}
           </div>
           <div className="flex shrink-0 items-center">
+            <Link
+              href={`${problemPath(problem)}/sketch`}
+              className={buttonVariants({ variant: "soft", className: "mr-2" })}
+              title="Draw the problem with arrays, pointers, nodes and notes"
+              aria-label="Sketch"
+            >
+              <PencilRulerIcon />
+              <span className="hidden sm:inline">Sketch</span>
+            </Link>
             {runner && (
               <Button
                 variant="pen"
