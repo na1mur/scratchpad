@@ -122,18 +122,13 @@ export async function captureSketch(store: SketchStore, opts: CaptureOptions): P
   copy.style.transform = `translate(${PADDING - rect.x}px, ${PADDING - rect.y}px)`;
   copy.style.transformOrigin = "0 0";
 
-  // Laid out off-screen, so it's styled like the original without showing.
+  // Laid out inside a zero-size clipped wrapper, so it's styled like the original without showing. It can't sit
+  // far off-screen instead: modern-screenshot then draws nothing and the PNG comes out fully transparent.
+  const wrapper = document.createElement("div");
+  wrapper.setAttribute("aria-hidden", "true");
+  Object.assign(wrapper.style, { position: "fixed", left: "0", top: "0", width: "0", height: "0", overflow: "hidden", pointerEvents: "none" });
   const host = document.createElement("div");
-  host.setAttribute("aria-hidden", "true");
-  Object.assign(host.style, {
-    position: "fixed",
-    left: "-100000px",
-    top: "0",
-    width: `${width}px`,
-    height: `${height}px`,
-    overflow: "hidden",
-    pointerEvents: "none",
-  });
+  Object.assign(host.style, { width: `${width}px`, height: `${height}px`, overflow: "hidden" });
   if (opts.theme === "light" && document.documentElement.classList.contains("dark")) {
     for (const [prop, value] of lightVariables()) host.style.setProperty(prop, value);
     host.style.colorScheme = "light";
@@ -149,7 +144,8 @@ export async function captureSketch(store: SketchStore, opts: CaptureOptions): P
     host.style.backgroundPosition = `${PADDING - rect.x}px ${PADDING - rect.y}px`;
   }
   host.append(copy);
-  document.body.append(host);
+  wrapper.append(host);
+  document.body.append(wrapper);
   try {
     await document.fonts.ready;
     return await domToBlob(host, {
@@ -157,11 +153,10 @@ export async function captureSketch(store: SketchStore, opts: CaptureOptions): P
       height,
       scale,
       backgroundColor: null,
-      style: { position: "relative", left: "0", top: "0" },
       filter: (node) => !(node instanceof Element && node.hasAttribute("data-export-skip")),
     });
   } finally {
-    host.remove();
+    wrapper.remove();
   }
 }
 
