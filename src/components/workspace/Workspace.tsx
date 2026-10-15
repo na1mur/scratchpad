@@ -66,6 +66,7 @@ import { ApiClientError, api, apiRaw, toApiError } from "@/lib/fetcher";
 import type { ProblemDetail } from "@/lib/problems";
 import { CodeRunner } from "./CodeRunner";
 import { TestCases } from "./TestCases";
+import { starterCode } from "@/lib/runner/entry";
 import { isRunLanguage } from "@/lib/runner/protocol";
 import { PROVIDER_LABELS, type ProviderId } from "@/lib/providers";
 import { createAttemptSchema, type CreateAttemptInput } from "@/lib/schemas/attempts";
@@ -454,21 +455,42 @@ export function Workspace({
   const harness = problem.harness;
   const runnable = isRunLanguage(problem.language) && harness.status === "ready" ? { language: problem.language, view: harness } : null;
 
-  // Edit & run for someone who took the analysis tour before it had that step; the tour itself covers it.
-  useTour("editRun", {
-    seen: toursSeen,
-    ready:
-      Boolean(runnable) &&
-      toursSeen.includes("analysis") &&
-      mode === "view" &&
-      viewing?.status === "done" &&
-      Boolean(viewing.vizSpec) &&
-      !running &&
-      !loadingAttempt,
-  });
+  // Edit & run is there from the start, beside the title. It opens the code the visualization shows once an
+  // analysis has it (the completed code, added lines included), the attempt as written before that, and while
+  // drafting, the draft; with nothing written yet, an empty function with the signature the tests call.
+  let runner: { draftKey: string; code: string; title: string } | null = null;
+  if (runnable) {
+    const starter = () => starterCode(runnable.language, runnable.view);
+    if (mode === "view" && viewing?.vizSpec) {
+      runner = {
+        draftKey: `${viewing.id}-${viewing.specVersion}`,
+        code: viewing.vizSpec.codeLines.join("\n"),
+        title: "Edit the completed code from this analysis and run it on the test cases, in your browser",
+      };
+    } else if (mode === "view" && viewing) {
+      runner = {
+        draftKey: `attempt-${viewing.id}`,
+        code: viewing.pseudoCode.trim() ? viewing.pseudoCode : starter(),
+        title: "Edit this attempt's code and run it on the test cases, in your browser",
+      };
+    } else {
+      runner = {
+        draftKey: `new-${problem.id}`,
+        code: draftCode?.trim() ? draftCode : starter(),
+        title: "Run your code on the test cases in your browser before processing it: no tokens, nothing saved",
+      };
+    }
+  }
+
   useTour("analysis", {
     seen: toursSeen,
     ready: mode === "view" && viewing?.status === "done" && Boolean(viewing.vizSpec) && !running && !loadingAttempt,
+  });
+  // Edit & run for someone who took the workspace tour before it had that step. Called after the analysis
+  // tour so that one goes first when both are due (it covers this one).
+  useTour("editRun", {
+    seen: toursSeen,
+    ready: Boolean(runner) && toursSeen.includes("workspace") && !running && !loadingAttempt && !confirmingNew,
   });
 
 
@@ -499,6 +521,20 @@ export function Workspace({
             )}
           </div>
           <div className="flex shrink-0 items-center">
+            {runner && (
+              <Button
+                variant="soft"
+                size="sm"
+                className="mr-2"
+                onClick={() => setRunnerOpen(true)}
+                title={runner.title}
+                aria-label="Edit & run"
+                data-tour="edit-run"
+              >
+                <CodeIcon />
+                <span className="hidden sm:inline">Edit &amp; run</span>
+              </Button>
+            )}
             <span className="mr-2" data-tour="solution">
               <SolutionButton
                 problemId={problem.id}
@@ -742,6 +778,17 @@ export function Workspace({
           </div>
         )}
       </form>
+      {runner && runnable && (
+        <CodeRunner
+          open={runnerOpen}
+          onOpenChange={setRunnerOpen}
+          draftKey={runner.draftKey}
+          initialCode={runner.code}
+          language={runnable.language}
+          view={runnable.view}
+          statement={problem.statement}
+        />
+      )}
     </div>
   );
 
@@ -857,35 +904,11 @@ export function Workspace({
           )}
         </div>
         <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <TabsList data-tour="tabs">
-              <TabsTrigger value="viz">Visualization</TabsTrigger>
-              <TabsTrigger value="diagnosis">Diagnosis</TabsTrigger>
-              <TabsTrigger value="hints">Hints</TabsTrigger>
-            </TabsList>
-            {runnable && (
-              <Button
-                variant="soft"
-                size="sm"
-                onClick={() => setRunnerOpen(true)}
-                title="Edit the code shown below (with the lines added to complete it) and run it on the test cases, in your browser"
-                data-tour="edit-run"
-              >
-                <CodeIcon /> Edit &amp; run
-              </Button>
-            )}
-          </div>
-          {runnable && (
-            // Starts from the code the visualization shows: the completed code, added lines included.
-            <CodeRunner
-              open={runnerOpen}
-              onOpenChange={setRunnerOpen}
-              draftKey={`${viewing.id}-${viewing.specVersion}`}
-              initialCode={spec.codeLines.join("\n")}
-              language={runnable.language}
-              view={runnable.view}
-            />
-          )}
+          <TabsList data-tour="tabs">
+            <TabsTrigger value="viz">Visualization</TabsTrigger>
+            <TabsTrigger value="diagnosis">Diagnosis</TabsTrigger>
+            <TabsTrigger value="hints">Hints</TabsTrigger>
+          </TabsList>
           <TabsContent value="viz" className="flex flex-col gap-3 pt-3">
             <div data-tour="cases">
               <CaseBar spec={spec} caseIndex={shownCase} onCaseChange={(ci) => showStep(ci, 0)} gives="Your code gives" />

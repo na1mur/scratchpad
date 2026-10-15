@@ -31,15 +31,12 @@ export function SolutionApproach({
   model,
   activeLine,
   origin,
-  codeActions,
 }: {
   content: SolutionContent;
   language: string;
   model: { provider: ProviderId; model: string } | null;
   activeLine: number | null;
   origin?: { requestKind: SolutionRequestKind; requestNote: string; basedOnAttemptVersion: number | null };
-  /** Extra buttons beside Copy (the owner's Edit & run). */
-  codeActions?: React.ReactNode;
 }) {
   return (
     <>
@@ -116,10 +113,7 @@ export function SolutionApproach({
           <h3 className="text-sm font-medium">
             Code <span className="font-normal text-muted-foreground">· {languageLabel(language)}</span>
           </h3>
-          <div className="flex items-center gap-1.5">
-            {codeActions}
-            <CopyCodeButton code={content.codeLines.join("\n")} />
-          </div>
+          <CopyCodeButton code={content.codeLines.join("\n")} />
         </div>
         <CodePane lines={content.codeLines} language={language} activeLine={activeLine} className="max-h-[28rem]" />
         {!content.verified && (

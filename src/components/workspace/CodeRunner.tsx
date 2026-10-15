@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   CheckIcon,
+  ChevronRightIcon,
   CircleIcon,
   ClockIcon,
   FootprintsIcon,
@@ -82,6 +83,7 @@ export function CodeRunner({
   initialCode,
   language,
   view,
+  statement,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -90,9 +92,11 @@ export function CodeRunner({
   initialCode: string;
   language: RunLanguage;
   view: ReadyView;
+  /** The problem statement, folded away above the editor. */
+  statement: string;
 }) {
   const [code, setCode] = useState(() => drafts.get(draftKey) ?? initialCode);
-  const [trace, setTrace] = useState(false);
+  const [trace, setTrace] = useState(true);
   const [run, setRun] = useState<(RunState & { code: string; traced: boolean }) | null>(null);
   const [shownCase, setShownCase] = useState<number | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
@@ -100,13 +104,16 @@ export function CodeRunner({
   const running = Boolean(run && run.phase !== "done");
   const provided = providedCode(language, view);
 
-  // Another attempt opened in the same dialog: start from its code.
-  const [key, setKey] = useState(draftKey);
-  if (key !== draftKey) {
-    setKey(draftKey);
+  // Another attempt opened in the same dialog: start from its code. The same one with new starting code (the
+  // learner kept typing their draft): follow it unless they've edited it here.
+  const [source, setSource] = useState({ draftKey, initialCode });
+  if (source.draftKey !== draftKey || source.initialCode !== initialCode) {
+    setSource({ draftKey, initialCode });
     setCode(drafts.get(draftKey) ?? initialCode);
-    setRun(null);
-    setShownCase(null);
+    if (source.draftKey !== draftKey) {
+      setRun(null);
+      setShownCase(null);
+    }
   }
 
   useEffect(() => () => stopRef.current?.(), []);
@@ -197,8 +204,17 @@ export function CodeRunner({
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(14rem,45%)_1fr] lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:grid-rows-1">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(14rem,45%)_1fr] lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:grid-rows-1">
           <div className="flex min-h-0 flex-col border-b lg:border-r lg:border-b-0">
+            <details className="group/statement border-b bg-tile/60 px-3 py-1.5 text-xs">
+              <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+                <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open/statement:rotate-90" aria-hidden />
+                <span className="font-medium">Problem statement</span>
+              </summary>
+              <pre className="mt-2 mb-1 max-h-[40vh] overflow-auto rounded border bg-background p-2 font-sans text-sm leading-relaxed whitespace-pre-wrap">
+                {statement}
+              </pre>
+            </details>
             <details className="group border-b bg-tile/60 px-3 py-1.5 text-xs">
               <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
                 <span className="shrink-0 text-muted-foreground">The tests call</span>

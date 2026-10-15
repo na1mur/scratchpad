@@ -134,29 +134,42 @@ const PROVIDED: Record<RunLanguage, { list: string; tree: string; note: string }
   },
 };
 
-/**
- * What the hidden runtime provides, as the learner would write it: the function the tests call and the
- * node classes its types use. Shown above the editor so nothing about the run is a surprise.
- */
-export function providedCode(
-  language: RunLanguage,
-  sig: { functionName: string; params: HarnessParam[]; returnType: string; outputParam?: string; cycle?: HarnessCycle },
-): { signature: string; definitions: string } {
+type Signature = { functionName: string; params: HarnessParam[]; returnType: string; outputParam?: string; cycle?: HarnessCycle };
+
+/** The function's header in the learner's language (`def f(a: int) -> int:`), and the in-place note for after it. */
+function header(language: RunLanguage, sig: Signature): { head: string; note: string } {
   const params = sig.params.map((p) => ({ name: p.name, type: parseType(p.type) }));
   const ret = parseType(sig.returnType);
-  const used = new Set<string>();
-  for (const t of [...params.map((p) => p.type), ret]) if (t) kinds(t, used);
   const typed = (p: { name: string; type: ValueType | null }) =>
     language === "javascript" || !p.type ? p.name : `${p.name}: ${typeName(language, p.type)}`;
   const args = params.map(typed).join(", ");
   const retName = ret ? typeName(language, ret) : "";
-  const inPlace = sig.outputParam ? `  # changes ${sig.outputParam} in place; that's the answer` : "";
-  const signature =
+  const comment = language === "python" ? "#" : "//";
+  const note = sig.outputParam ? `  ${comment} changes ${sig.outputParam} in place; that's the answer` : "";
+  const head =
     language === "python"
-      ? `def ${sig.functionName}(${args}) -> ${retName}:${inPlace}`
+      ? `def ${sig.functionName}(${args}) -> ${retName}:`
       : language === "typescript"
-        ? `function ${sig.functionName}(${args}): ${retName}${inPlace.replace("#", "//")}`
-        : `function ${sig.functionName}(${args})${inPlace.replace("#", "//")}`;
+        ? `function ${sig.functionName}(${args}): ${retName}`
+        : `function ${sig.functionName}(${args})`;
+  return { head, note };
+}
+
+/** An empty function with the signature the tests call, for Edit & run before there's any code to start from. */
+export function starterCode(language: RunLanguage, sig: Signature): string {
+  const { head, note } = header(language, sig);
+  return language === "python" ? `${head}${note}\n    pass\n` : `${head} {${note}\n  \n}\n`;
+}
+
+/**
+ * What the hidden runtime provides, as the learner would write it: the function the tests call and the
+ * node classes its types use. Shown above the editor so nothing about the run is a surprise.
+ */
+export function providedCode(language: RunLanguage, sig: Signature): { signature: string; definitions: string } {
+  const used = new Set<string>();
+  for (const t of [...sig.params.map((p) => parseType(p.type)), parseType(sig.returnType)]) if (t) kinds(t, used);
+  const { head, note } = header(language, sig);
+  const signature = `${head}${note}`;
   const p = PROVIDED[language];
   const comment = language === "python" ? "#" : "//";
   const cycle = sig.cycle

@@ -35,7 +35,9 @@ import { stepAt, stepRefs } from "@/lib/ai/schemas/vizSpec";
 import { ApiClientError, api, apiRaw, toApiError } from "@/lib/fetcher";
 import type { ProblemDetail } from "@/lib/problems";
 import type { SolutionDetail, SolutionSummary } from "@/lib/solutions";
-import { isRunLanguage } from "@/lib/runner/protocol";
+import type { HarnessView } from "@/lib/harness/types";
+import { starterCode } from "@/lib/runner/entry";
+import { isRunLanguage, type RunLanguage } from "@/lib/runner/protocol";
 import { problemPath } from "@/lib/slug";
 import { playCompletionSound } from "@/lib/sounds";
 import type { TourId } from "@/lib/tours";
@@ -303,17 +305,22 @@ export function SolutionView({
   const content = viewing?.status === "done" ? viewing.content : null;
   const currentLine = (spec && stepAt(spec, caseIndex, playerIndex)?.line) ?? null;
   const viewingSummary = viewing ? (solutions.find((s) => s.id === viewing.id) ?? null) : null;
-  // Edit & run the solution itself, e.g. to try another way of solving it: a language the browser can run,
-  // and the problem's test cases.
+  // Edit & run, always beside the title when the browser can run it on the problem's test cases: the solution
+  // being viewed, e.g. to try another way of solving it, or (none finished yet) the learner's own scratch code
+  // in the problem's language, shared with the workspace's draft.
   const harness = problem.harness;
-  const runnable =
-    content && viewing && isRunLanguage(viewing.language) && harness.status === "ready"
-      ? { language: viewing.language, view: harness }
-      : null;
+  let runner: { draftKey: string; code: string; language: RunLanguage; view: Extract<HarnessView, { status: "ready" }> } | null = null;
+  if (harness.status === "ready") {
+    if (content && viewing && isRunLanguage(viewing.language)) {
+      runner = { draftKey: `solution-${viewing.id}`, code: content.codeLines.join("\n"), language: viewing.language, view: harness };
+    } else if (!content && isRunLanguage(problem.language)) {
+      runner = { draftKey: `new-${problem.id}`, code: starterCode(problem.language, harness), language: problem.language, view: harness };
+    }
+  }
 
   useTour("solution", { seen: toursSeen, ready: Boolean(spec && content) && !loading });
   // Edit & run for someone who took the solution tour before it had that step; the tour itself covers it.
-  useTour("editRun", { seen: toursSeen, ready: Boolean(runnable) && toursSeen.includes("solution") && !loading });
+  useTour("editRun", { seen: toursSeen, ready: Boolean(runner) && toursSeen.includes("solution") && !loading });
 
   const left = (
     <div className="flex flex-col gap-4 p-4">
@@ -335,9 +342,28 @@ export function SolutionView({
               </div>
             )}
           </div>
-          <CollapsibleTrigger render={<Button variant="soft" size="sm" className="shrink-0 data-panel-open:[&_svg]:rotate-180" />}>
-            Statement <ChevronDownIcon className="transition-transform" />
-          </CollapsibleTrigger>
+          <div className="flex shrink-0 items-center gap-2">
+            {runner && (
+              <Button
+                variant="soft"
+                size="sm"
+                onClick={() => setRunnerOpen(true)}
+                title={
+                  content
+                    ? "Edit this solution (or write your own) and run it on the test cases, in your browser"
+                    : "Run your own code on the test cases, in your browser"
+                }
+                aria-label="Edit & run"
+                data-tour="edit-run"
+              >
+                <CodeIcon />
+                <span className="hidden sm:inline">Edit &amp; run</span>
+              </Button>
+            )}
+            <CollapsibleTrigger render={<Button variant="soft" size="sm" className="data-panel-open:[&_svg]:rotate-180" />}>
+              Statement <ChevronDownIcon className="transition-transform" />
+            </CollapsibleTrigger>
+          </div>
         </div>
         <CollapsibleContent>
           <pre className="mt-3 max-h-64 overflow-auto rounded-lg border bg-tile p-3 font-sans text-sm whitespace-pre-wrap">
@@ -413,29 +439,17 @@ export function SolutionView({
             requestNote: viewing.requestNote,
             basedOnAttemptVersion: viewing.basedOnAttemptVersion,
           }}
-          codeActions={
-            runnable && (
-              <Button
-                variant="soft"
-                size="sm"
-                onClick={() => setRunnerOpen(true)}
-                title="Edit this solution (or write your own) and run it on the test cases, in your browser"
-                data-tour="edit-run"
-              >
-                <CodeIcon /> Edit &amp; run
-              </Button>
-            )
-          }
         />
       )}
-      {runnable && content && viewing && (
+      {runner && (
         <CodeRunner
           open={runnerOpen}
           onOpenChange={setRunnerOpen}
-          draftKey={`solution-${viewing.id}`}
-          initialCode={content.codeLines.join("\n")}
-          language={runnable.language}
-          view={runnable.view}
+          draftKey={runner.draftKey}
+          initialCode={runner.code}
+          language={runner.language}
+          view={runner.view}
+          statement={problem.statement}
         />
       )}
     </div>

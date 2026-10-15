@@ -61,6 +61,14 @@ export const TOUR_STEPS: Record<TourId, TourStep[]> = {
       side: "top",
     },
     {
+      target: "edit-run",
+      title: "Or just run it",
+      description:
+        "Edit & run runs real code on the test cases right in your browser, before or after processing: no tokens, nothing saved. Turn on Show steps to watch it run.",
+      side: "bottom",
+      covers: "editRun",
+    },
+    {
       target: "solution",
       title: "Stuck? There's a solution too",
       description:
