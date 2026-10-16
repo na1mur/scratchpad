@@ -266,6 +266,13 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
   const ref = useRef<HTMLDivElement>(null);
   const gesture = useRef<Gesture | null>(null);
   const space = useRef(false);
+  /** Mirrors `space` and the pan gesture so the cursor can show an open or closed hand. */
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const [panning, setPanning] = useState(false);
+  const holdSpace = (down: boolean) => {
+    space.current = down;
+    setSpaceHeld(down);
+  };
   const touches = useRef(new Map<number, Point>());
   /** What a palette part dragged over the canvas, or a pointer's name being dragged, would attach to. */
   const [dropShape, setDropShape] = useState<Shape | null>(null);
@@ -367,6 +374,7 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
 
     if (e.button === 1 || st.tool === "hand" || space.current || readOnly) {
       gesture.current = { kind: "pan", start, camera: st.camera };
+      setPanning(true);
       return;
     }
     if (e.button !== 0) return;
@@ -582,6 +590,7 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
       return;
     }
     gesture.current = null;
+    setPanning(false);
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
     if (!g) return;
     showBindHint(null);
@@ -721,7 +730,7 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
     const mod = e.metaKey || e.ctrlKey;
     const key = e.key.toLowerCase();
     if (e.key === " ") {
-      space.current = true;
+      holdSpace(true);
       e.preventDefault();
       return;
     }
@@ -852,9 +861,12 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
       aria-describedby="sketch-canvas-help"
       className={cn(
         sketchFonts,
-        "relative h-full w-full touch-none overflow-hidden bg-paper outline-none select-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset",
+        "relative h-full w-full touch-none overflow-hidden bg-paper outline-none select-none",
         s.grid && "bg-graph-subtle",
         readOnly ? "cursor-grab" : CURSOR[s.tool],
+        // An open hand while Space is held, a closed one while dragging; it also covers elements' own cursors.
+        (spaceHeld || panning) && "cursor-grab **:cursor-grab!",
+        panning && "cursor-grabbing **:cursor-grabbing!",
       )}
       style={{
         backgroundSize: `${32 * camera.zoom}px ${32 * camera.zoom}px`,
@@ -867,11 +879,9 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
       onDoubleClick={onDoubleClick}
       onKeyDown={onKeyDown}
       onKeyUp={(e) => {
-        if (e.key === " ") space.current = false;
+        if (e.key === " ") holdSpace(false);
       }}
-      onBlur={() => {
-        space.current = false;
-      }}
+      onBlur={() => holdSpace(false)}
       onPointerLeave={() => {
         if (!gesture.current) showBindHint(null);
       }}
