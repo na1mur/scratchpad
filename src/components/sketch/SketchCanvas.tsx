@@ -958,6 +958,8 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
           const b = el.type === "pointer" ? pointerLabelRect(el) : elementBounds(el);
           // A selected line shows a halo along itself (LineView) instead of a box.
           if (!b || el.type === "line") return null;
+          // Plain text being typed draws its own outline, which grows with the words.
+          if (el.type === "text" && s.editing?.kind === "text" && s.editing.elementId === el.id) return null;
           return (
             <div
               key={`sel-${el.id}`}
