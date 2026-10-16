@@ -703,10 +703,24 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
   function onDoubleClick(e: React.MouseEvent<HTMLDivElement>) {
     if (readOnly) return;
     const st = store.state;
-    const hit = hitOf(e.target);
+    // The canvas holds the pointer capture from the first click, so the event's target can be the canvas itself;
+    // what's under the pointer is asked for directly.
+    const hit = hitOf(document.elementFromPoint(e.clientX, e.clientY) ?? e.target);
     if (!hit) {
       if (st.tool !== "select") return;
       const p = toScene(e.clientX, e.clientY);
+      // Text and notes only take clicks on their words, so a double-click in the box around them edits them
+      // instead of starting a new one.
+      const existing = [...st.live].reverse().find((el) => {
+        if (el.type !== "text" && el.type !== "note") return false;
+        const b = elementBounds(el);
+        return b && p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+      });
+      if (existing) {
+        store.select([existing.id]);
+        store.setEditing({ kind: "text", elementId: existing.id });
+        return;
+      }
       // Inside an empty shape (whose inside doesn't take clicks), write in the shape.
       const container = shapeAt(st.live, p);
       if (container) {

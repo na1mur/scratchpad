@@ -268,13 +268,13 @@ function NoteView({ el }: { el: ElementOf<"note"> }) {
   );
 }
 
-function TextView({ el }: { el: ElementOf<"text"> }) {
+function TextView({ el, editing }: { el: ElementOf<"text">; editing: boolean }) {
   const s = styleOf(el);
   const { w } = textBox(el);
   return (
     <div
       data-el={el.id}
-      className="absolute whitespace-pre"
+      className={cn("absolute whitespace-pre", editing && "invisible")}
       style={{ left: el.x, top: el.y, width: w, opacity: s.opacity / 100, ...textCss(s, textMetrics(s)) }}
     >
       {el.text || <span className="text-muted-foreground">Text</span>}
@@ -539,7 +539,7 @@ export function ElementView({
     case "note":
       return <NoteView el={el} />;
     case "text":
-      return <TextView el={el} />;
+      return <TextView el={el} editing={editingText} />;
     case "freehand":
       return <FreehandView el={el} />;
     case "shape":

@@ -15,6 +15,7 @@ import {
   shapeTextHeight,
   shapeTextRect,
   tableColumns,
+  textBox,
   tableRowRect,
   textMetrics,
   type ElementMap,
@@ -212,6 +213,22 @@ export function InlineEditor({ store, target, element }: { store: SketchStore; t
         {...handlers}
         className="absolute z-30 resize-none overflow-hidden border-0 bg-transparent p-0 break-words outline-none"
         style={{ left: spec.rect.x + (spec.rect.w - w) / 2, top: spec.rect.y + (spec.rect.h - h) / 2, width: w, height: h, ...editorFont(element) }}
+      />
+    );
+  }
+  if (element.type === "text") {
+    // Plain text has no box of its own: the editor sits exactly where the words are and grows to the right and
+    // downward as they're typed (with a character of room for the caret), so it never scrolls or wraps.
+    const m = textMetrics(styleOf(element));
+    const box = textBox({ ...element, text: value });
+    return (
+      <textarea
+        {...handlers}
+        wrap="off"
+        rows={1}
+        onFocus={(e) => e.target.setSelectionRange(e.target.value.length, e.target.value.length)}
+        className="absolute z-30 resize-none overflow-hidden rounded-sm border-0 bg-transparent p-0 whitespace-pre outline-1 outline-offset-4 outline-brand/70"
+        style={{ left: element.x, top: element.y, width: box.w + m.px, height: box.h, ...editorFont(element) }}
       />
     );
   }
