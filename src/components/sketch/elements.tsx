@@ -225,10 +225,7 @@ function NodeView({ el }: { el: ElementOf<"node"> }) {
   return (
     <div
       data-el={el.id}
-      className={cn(
-        "absolute flex items-center justify-center overflow-hidden border-2 border-ink bg-paper font-mono text-[13px] text-ink",
-        el.variant === "list" ? "rounded-md" : "rounded-full",
-      )}
+      className="absolute flex items-center justify-center overflow-hidden rounded-full border-2 border-ink bg-paper font-mono text-[13px] text-ink"
       style={{ left: el.x, top: el.y, width: w, height: h }}
     >
       {el.value || EMPTY}

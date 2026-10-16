@@ -30,7 +30,6 @@ export const INDEX_H = 18;
 export const ROW_H = 30;
 export const ROW_LABEL_W = 22;
 export const NODE_D = 44;
-export const LIST_NODE_H = 40;
 export const POINTER_H = 22;
 export const NOTE_W = 200;
 export const NULL_LINK_LENGTH = 40;
@@ -94,14 +93,12 @@ export function tableRowRect(el: TableElement, row: number): Rect {
 }
 
 export function nodeSize(el: ElementOf<"node">): { w: number; h: number } {
-  if (el.variant === "list") return { w: Math.max(52, 24 + textW(el.value)), h: LIST_NODE_H };
   const d = Math.max(NODE_D, 20 + textW(el.value));
   return { w: d, h: d };
 }
 
 export function nodeShape(el: ElementOf<"node">): Shape {
   const { w, h } = nodeSize(el);
-  if (el.variant === "list") return { kind: "rect", rect: { x: el.x, y: el.y, w, h } };
   return { kind: "circle", cx: el.x + w / 2, cy: el.y + h / 2, r: w / 2 };
 }
 

@@ -24,7 +24,6 @@ import {
   PlusIcon,
   Rows3Icon,
   Share2Icon,
-  SquareIcon,
   VariableIcon,
   WorkflowIcon,
   type LucideIcon,
@@ -45,14 +44,14 @@ const KIND_ICONS: Record<PaletteKind, LucideIcon> = {
   queue: ListEndIcon,
   variables: VariableIcon,
   linkedList: WorkflowIcon,
-  listNode: SquareIcon,
+  listNode: CircleIcon,
   tree: NetworkIcon,
   treeNode: CircleIcon,
   graphNode: Share2Icon,
 };
 
 const PART_ICONS: Record<Exclude<PartIcon, "whole">, LucideIcon> = {
-  listNode: SquareIcon,
+  listNode: CircleIcon,
   treeNode: CircleIcon,
   leftChild: CornerDownLeftIcon,
   rightChild: CornerDownRightIcon,

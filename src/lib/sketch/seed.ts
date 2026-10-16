@@ -1,6 +1,6 @@
 import { hierarchy, tree as d3tree } from "d3-hierarchy";
 import { parseType, type HarnessView, type PublicTestCase, type ValueType } from "@/lib/harness/types";
-import { CELL_H, INDEX_H, LABEL_H, LIST_NODE_H, NODE_D } from "./layout";
+import { CELL_H, INDEX_H, LABEL_H, NODE_D } from "./layout";
 import { listTemplate } from "./templates";
 import { MAX_CELLS, MAX_MATRIX, MAX_VALUE_LENGTH, type NewElement } from "./types";
 
@@ -75,7 +75,7 @@ function place(name: string, t: ValueType, value: unknown, y: number, cycleTo: n
         { type: "pointer", x: 0, y, name: clip(name), target: { kind: "node", elementId: `${prefix}0` } },
         ...listTemplate(values, cycleTo < values.length ? cycleTo : -1, { x: 0, y: y + POINTER_ROW }, prefix),
       ],
-      height: POINTER_ROW + LIST_NODE_H,
+      height: POINTER_ROW + NODE_D,
     };
   }
   if (t.kind === "tree" && Array.isArray(value) && value.length && value[0] !== null) {
