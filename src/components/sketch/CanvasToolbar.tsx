@@ -31,11 +31,11 @@ import { cn } from "@/lib/utils";
 import { clearCanvas, resetZoom, zoomAt, zoomToFit } from "./commands";
 import { useSketch, type ShapeTool, type SketchStore, type Tool } from "./store";
 
-const TOOLS: { tool: Tool; label: string; key: string; icon: LucideIcon }[] = [
-  { tool: "select", label: "Select and move", key: "V", icon: MousePointer2Icon },
-  { tool: "hand", label: "Pan (or hold Space)", key: "H", icon: HandIcon },
-  { tool: "pointer", label: "Pointer: click a cell or node, or drag to one", key: "P", icon: ArrowUpRightIcon },
-  { tool: "link", label: "Link: drag from a node to another, or to empty space for null", key: "L", icon: SplineIcon },
+const TOOLS: { tool: Tool; label: string; hint?: string; key: string; icon: LucideIcon }[] = [
+  { tool: "select", label: "Select", hint: "click or drag to move, drag on empty space to select several", key: "V", icon: MousePointer2Icon },
+  { tool: "hand", label: "Pan", hint: "or hold Space and drag", key: "H", icon: HandIcon },
+  { tool: "pointer", label: "Pointer", hint: "click a cell or node, or drag to one", key: "P", icon: ArrowUpRightIcon },
+  { tool: "link", label: "Link", hint: "drag from a node to another, or to empty space for null", key: "L", icon: SplineIcon },
   { tool: "freehand", label: "Draw", key: "D", icon: PencilIcon },
   { tool: "note", label: "Note", key: "N", icon: StickyNoteIcon },
   { tool: "text", label: "Text", key: "T", icon: TypeIcon },
@@ -70,6 +70,47 @@ const LINE_HINT = "drag from one element to another to connect them, Shift snaps
 
 const bar = "flex items-center gap-0.5 rounded-lg border bg-popover p-1 text-popover-foreground shadow-sm";
 
+/**
+ * A toolbar button with its shortcut printed in the bottom-right corner, as Excalidraw does, so nobody has to
+ * hover to learn it. The tooltip says what the tool does.
+ */
+function ToolButton({
+  label,
+  hint,
+  shortcut,
+  active,
+  onClick,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  shortcut: string;
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-pressed={active}
+      aria-label={label}
+      aria-keyshortcuts={shortcut}
+      title={hint ? `${label}: ${hint}` : label}
+      className={cn("relative", active && "bg-brand-soft text-ink hover:bg-brand-soft")}
+      onClick={onClick}
+    >
+      {children}
+      <kbd
+        aria-hidden
+        className="pointer-events-none absolute right-[3px] bottom-px font-sans text-[9px] leading-none font-medium text-muted-foreground"
+      >
+        {shortcut}
+      </kbd>
+    </Button>
+  );
+}
+
 /** Tools and undo along the top of the canvas; zoom in the bottom corner. */
 export function CanvasToolbar({ store, readOnly }: { store: SketchStore; readOnly: boolean }) {
   const s = useSketch(store);
@@ -78,38 +119,24 @@ export function CanvasToolbar({ store, readOnly }: { store: SketchStore; readOnl
     <>
       {!readOnly && (
         <div role="toolbar" aria-label="Tools" className={cn(bar, "absolute top-3 left-1/2 z-20 max-w-[calc(100%-1.5rem)] -translate-x-1/2 overflow-x-auto")}>
-          {TOOLS.map(({ tool, label, key, icon: Icon }) => (
-            <Button
-              key={tool}
-              variant="ghost"
-              size="icon-sm"
-              aria-pressed={s.tool === tool}
-              aria-label={`${label} (${key})`}
-              title={`${label} (${key})`}
-              className={cn(s.tool === tool && "bg-brand-soft text-ink hover:bg-brand-soft")}
-              onClick={() => store.setTool(tool)}
-            >
+          {TOOLS.map(({ tool, label, hint, key, icon: Icon }) => (
+            <ToolButton key={tool} label={label} hint={hint} shortcut={key} active={s.tool === tool} onClick={() => store.setTool(tool)}>
               <Icon />
-            </Button>
+            </ToolButton>
           ))}
           <span className="mx-1 h-5 w-px bg-border" />
-          {SHAPE_ITEMS.map(({ tool, label, key }) => {
-            const title = `${label}: ${tool === "line" || tool === "arrow" ? LINE_HINT : SHAPE_HINT} (${key})`;
-            return (
-              <Button
-                key={tool}
-                variant="ghost"
-                size="icon-sm"
-                aria-pressed={s.tool === tool}
-                aria-label={`${label} (${key})`}
-                title={title}
-                className={cn(s.tool === tool && "bg-brand-soft text-ink hover:bg-brand-soft")}
-                onClick={() => store.setTool(tool)}
-              >
-                <ShapeGlyph tool={tool} />
-              </Button>
-            );
-          })}
+          {SHAPE_ITEMS.map(({ tool, label, key }) => (
+            <ToolButton
+              key={tool}
+              label={label}
+              hint={tool === "line" || tool === "arrow" ? LINE_HINT : SHAPE_HINT}
+              shortcut={key}
+              active={s.tool === tool}
+              onClick={() => store.setTool(tool)}
+            >
+              <ShapeGlyph tool={tool} />
+            </ToolButton>
+          ))}
           <span className="mx-1 h-5 w-px bg-border" />
           <Button variant="ghost" size="icon-sm" aria-label="Undo (Ctrl+Z)" title="Undo (Ctrl+Z)" disabled={!s.canUndo} onClick={() => store.undo()}>
             <Undo2Icon />
