@@ -70,4 +70,6 @@ export const rateLimits = {
   solutions: () => configured("solutions", env.RATE_LIMIT_SOLUTIONS_PER_HOUR),
   providerProbe: () => limiter("providerProbe", 30, 15 * 60_000),
   uploads: () => limiter("uploads", 30, 60 * 60_000),
+  // Pictures added to the sketch image library.
+  sketchImages: () => limiter("sketchImages", 60, 60 * 60_000),
 };

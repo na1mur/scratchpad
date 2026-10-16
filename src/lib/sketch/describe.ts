@@ -20,6 +20,7 @@ const KIND: Record<SketchElement["type"], string> = {
   text: "Text",
   freehand: "Drawing",
   shape: "Shape",
+  image: "Image",
   line: "Line",
 };
 
@@ -36,6 +37,7 @@ function nameOf(elements: ReadonlyMap<string, SketchElement>, id: string): strin
   const el = elements.get(id);
   if (!el) return "a removed element";
   if (el.type === "node") return `node ${el.value || "(empty)"}`;
+  if (el.type === "image") return el.alt ? `image ${quote(el.alt)}` : "image";
   if (el.type === "shape") return `${SHAPE_NAMES[el.shape].toLowerCase()}${el.text.trim() ? ` ${quote(el.text)}` : ""}`;
   if ((el.type === "note" || el.type === "text") && el.text.trim()) return `${el.type} ${quote(el.text)}`;
   return "label" in el && el.label ? el.label : KIND[el.type].toLowerCase();
@@ -81,6 +83,8 @@ export function describeElement(elements: ReadonlyMap<string, SketchElement>, el
       return "Drawing";
     case "shape":
       return `${SHAPE_NAMES[el.shape]}${el.text.trim() ? `: ${el.text}` : ""}`;
+    case "image":
+      return `Image${el.alt ? `: ${el.alt}` : ""}`;
     case "line": {
       const heads = [el.startHead, el.endHead].filter((h) => h && h !== "none").length;
       const what = heads === 2 ? "Double-headed arrow" : heads === 1 ? "Arrow" : "Line";

@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { ImageOffIcon } from "lucide-react";
 import { getStroke } from "perfect-freehand";
 import { cn } from "@/lib/utils";
 import {
@@ -30,6 +32,8 @@ import {
   type ResizeHandle,
   type TextMetrics,
 } from "@/lib/sketch/layout";
+import { apiRaw } from "@/lib/fetcher";
+import { imageUrl } from "@/lib/sketch/images";
 import { FONT_CSS, FREEHAND_PX, STROKE_PX, colorCss, dashArray, fillCss, styleOf, type Style } from "@/lib/sketch/style";
 import type { CellsElement, ElementOf, SketchElement, TableElement } from "@/lib/sketch/types";
 
@@ -357,6 +361,44 @@ function ShapeView({ el, selected, editingText }: { el: ElementOf<"shape">; sele
   );
 }
 
+/**
+ * A library picture. The file comes from our own route, which needs the session: if the first load fails (the
+ * access token ran out while the page sat open), a request through the fetcher renews the session and the picture
+ * is asked for once more before it is given up on as missing (deleted from the library, or offline).
+ */
+function ImageView({ el }: { el: ElementOf<"image"> }) {
+  const [attempt, setAttempt] = useState(0);
+  const src = imageUrl(el.imageId);
+  return (
+    <div
+      data-el={el.id}
+      className="absolute overflow-hidden select-none"
+      style={{ left: el.x, top: el.y, width: el.w, height: el.h, opacity: (el.opacity ?? 100) / 100 }}
+    >
+      {attempt >= 2 ? (
+        <div className="flex size-full flex-col items-center justify-center gap-1 border border-dashed border-ink/40 bg-muted/60 p-1 text-center text-[11px] text-muted-foreground">
+          <ImageOffIcon className="size-4" aria-hidden />
+          <span className="line-clamp-2">{el.alt ? `${el.alt} is no longer in your library` : "Image not available"}</span>
+        </div>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element -- a private file of the learner's; next/image can't load it
+        <img
+          key={attempt}
+          src={attempt ? `${src}?retry=${attempt}` : src}
+          alt={el.alt ?? ""}
+          draggable={false}
+          decoding="async"
+          className="pointer-events-none size-full object-fill"
+          onError={() => {
+            if (attempt === 0) void apiRaw(src).finally(() => setAttempt(1));
+            else setAttempt(2);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 /** A line or arrow through its points, with heads drawn as paths so they take the line's colour and width. */
 function LineView({ el, selected }: { el: ElementOf<"line">; selected: boolean }) {
   const s = styleOf(el);
@@ -439,7 +481,7 @@ export function SelectionHandles({ el, zoom }: { el: SketchElement; zoom: number
       style={{ left: p.x - size / 2, top: p.y - size / 2, width: size, height: size, borderWidth: border }}
     />
   );
-  if (el.type === "shape") {
+  if (el.type === "shape" || el.type === "image") {
     // On the selection box, which sits 4 units outside the shape.
     const x0 = el.x - 4;
     const y0 = el.y - 4;
@@ -502,6 +544,8 @@ export function ElementView({
       return <FreehandView el={el} />;
     case "shape":
       return <ShapeView el={el} selected={selected} editingText={editingText} />;
+    case "image":
+      return <ImageView el={el} />;
     case "line":
       return <LineView el={el} selected={selected} />;
     case "pointer":

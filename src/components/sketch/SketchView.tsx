@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ArrowLeftIcon, CheckIcon, CloudAlertIcon, Loader2Icon, PanelRightCloseIcon, PanelRightIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import type { PublicTestCase } from "@/lib/harness/types";
@@ -14,6 +15,7 @@ import type { SketchElement } from "@/lib/sketch/types";
 import { problemPath } from "@/lib/slug";
 import { CanvasToolbar } from "./CanvasToolbar";
 import { insertElements } from "./commands";
+import { ImageLibrary } from "./ImageLibrary";
 import { Palette } from "./Palette";
 import { SketchActions } from "./SketchActions";
 import { SketchCanvas } from "./SketchCanvas";
@@ -67,6 +69,7 @@ export function SketchView({
   const desktop = useMediaQuery("(min-width: 768px)", true);
   const readOnly = !desktop;
   const [panelOpen, setPanelOpen] = useState(true);
+  const [sideTab, setSideTab] = useState<"elements" | "images">("elements");
   const harness = problem.harness.status === "ready" ? (problem.harness as ReadyHarnessView) : null;
   const suggested = suggestedKinds(problem.harness, problem.tags);
 
@@ -133,8 +136,29 @@ export function SketchView({
 
       <div className="flex min-h-0 flex-1">
         {desktop && (
-          <aside className="w-52 shrink-0 overflow-y-auto border-r bg-background p-2">
-            <Palette store={store} suggested={suggested} />
+          <aside className="flex w-52 shrink-0 flex-col overflow-y-auto border-r bg-background p-2">
+            <div role="tablist" aria-label="Sidebar" className="mb-2 grid grid-cols-2 gap-0.5 rounded-lg bg-muted p-0.5">
+              {(["elements", "images"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  role="tab"
+                  id={`sketch-side-${tab}`}
+                  aria-selected={sideTab === tab}
+                  aria-controls="sketch-side-panel"
+                  onClick={() => setSideTab(tab)}
+                  className={cn(
+                    "rounded-md px-2 py-1 text-xs font-medium text-muted-foreground focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none",
+                    sideTab === tab ? "bg-background text-foreground shadow-sm" : "hover:text-foreground",
+                  )}
+                >
+                  {tab === "elements" ? "Elements" : "Images"}
+                </button>
+              ))}
+            </div>
+            <div id="sketch-side-panel" role="tabpanel" aria-labelledby={`sketch-side-${sideTab}`} className="min-h-0 flex-1">
+              {sideTab === "elements" ? <Palette store={store} suggested={suggested} /> : <ImageLibrary store={store} />}
+            </div>
           </aside>
         )}
 

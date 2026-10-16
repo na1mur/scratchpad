@@ -20,6 +20,7 @@ export const MAX_LABEL_LENGTH = 40;
 export const MAX_POINTER_NAME = 16;
 export const MAX_TEXT_LENGTH = 1000;
 export const MAX_FREEHAND_POINTS = 1500;
+export const MAX_IMAGE_NAME_LENGTH = 80;
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,40}$/, "Invalid id");
 const coord = z.number().finite().min(-100_000).max(100_000);
@@ -212,6 +213,21 @@ export const shapeElementSchema = base.extend({
   ...opacity,
 });
 /**
+ * A picture from the learner's image library (`SketchImage`, src/lib/sketch/images.ts). The element keeps only the
+ * library id, so the file is stored once and served through `imageUrl()`; `alt` is the library name at the time
+ * it was placed, for screen readers and the read-out of the sketch. Resizing keeps the picture's proportions
+ * unless Shift is held.
+ */
+export const imageElementSchema = base.extend({
+  type: z.literal("image"),
+  imageId: z.string().regex(/^[a-f\d]{24}$/i, "Invalid image id"),
+  w: dimension,
+  h: dimension,
+  alt: z.string().max(MAX_IMAGE_NAME_LENGTH).optional(),
+  ...opacity,
+});
+
+/**
  * An arrow's end attached to another element: the end sits on that element's outline, aimed along the arrow, and
  * follows it when it moves or changes size (bindings.ts).
  */
@@ -245,6 +261,7 @@ export const sketchElementSchema = z.discriminatedUnion("type", [
   textElementSchema,
   freehandElementSchema,
   shapeElementSchema,
+  imageElementSchema,
   lineElementSchema,
 ]);
 

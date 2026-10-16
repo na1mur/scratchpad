@@ -363,6 +363,7 @@ export function elementBounds(el: SketchElement): Rect | null {
     case "freehand":
       return freehandBounds(el);
     case "shape":
+    case "image":
       return { x: el.x, y: el.y, w: el.w, h: el.h };
     case "line":
       return lineBounds(el);

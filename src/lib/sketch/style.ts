@@ -38,7 +38,7 @@ export type Style = {
 export type StyleKey = keyof Style;
 export type StylePatch = Partial<Style>;
 
-export type StyledElement = ElementOf<"shape" | "line" | "text" | "note" | "freehand">;
+export type StyledElement = ElementOf<"shape" | "image" | "line" | "text" | "note" | "freehand">;
 export type StyledType = StyledElement["type"];
 
 /** The properties each type takes, in the order the style panel lists them. */
@@ -48,6 +48,7 @@ export const STYLE_KEYS: Record<StyledType, readonly StyleKey[]> = {
   text: ["strokeColor", "fontFamily", "fontSize", "fontWeight", "textAlign", "opacity"],
   note: ["strokeColor", "fillColor", "fontFamily", "fontSize", "fontWeight", "textAlign", "opacity"],
   freehand: ["strokeColor", "strokeWidth", "opacity"],
+  image: ["opacity"],
 };
 
 export function isStyled(el: SketchElement): el is StyledElement {
@@ -130,6 +131,8 @@ export function styleOf(el: StyledElement): Style {
         textAlign: el.textAlign ?? "left",
         opacity: o,
       };
+    case "image":
+      return { ...BASE, opacity: o };
     case "freehand":
       return { ...BASE, strokeColor: el.strokeColor ?? TONE_COLOR[el.tone], strokeWidth: el.strokeWidth ?? "bold", opacity: o };
   }

@@ -49,6 +49,7 @@ import { Connectors } from "./connectors";
 import { InlineEditor } from "./editor";
 import { ElementView, PointerLabel, SelectionHandles } from "./elements";
 import { ElementToolbar } from "./ElementToolbar";
+import { LIBRARY_IMAGE_MIME, libraryImage, placeImage, uploadImages } from "./libraryStore";
 import { PALETTE_PART_MIME, draggedPart, runPart, setDraggedPart } from "./partCommands";
 import { sketchFonts } from "./fonts";
 import { useSketch, type Camera, type ShapeTool, type SketchStore, type Tool } from "./store";
@@ -87,7 +88,7 @@ type Gesture =
       startBind: string | null;
       endBind: string | null;
     }
-  | { kind: "resize"; original: ElementOf<"shape">; handle: ResizeHandle; origin: Point }
+  | { kind: "resize"; original: ElementOf<"shape" | "image">; handle: ResizeHandle; origin: Point }
   | { kind: "endpoint"; original: ElementOf<"line">; end: "start" | "end"; origin: Point };
 
 type Hit = {
@@ -221,7 +222,7 @@ function drawnElement(store: SketchStore, g: Extract<Gesture, { kind: "shape" }>
 }
 
 /** The point a resize handle drags: the corner or the middle of the edge it sits on. */
-function handlePoint(el: ElementOf<"shape">, handle: ResizeHandle): Point {
+function handlePoint(el: ElementOf<"shape" | "image">, handle: ResizeHandle): Point {
   const x = handle.includes("w") ? el.x : handle.includes("e") ? el.x + el.w : el.x + el.w / 2;
   const y = handle.includes("n") ? el.y : handle.includes("s") ? el.y + el.h : el.y + el.h / 2;
   return { x, y };
@@ -390,7 +391,7 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
         }
         // Resize handles on a selected shape, endpoint handles on a selected line (SelectionHandles).
         const handled = hit?.handle ? st.elements.get(hit.id) : undefined;
-        if (handled?.type === "shape" && hit!.handle!.startsWith("resize-")) {
+        if ((handled?.type === "shape" || handled?.type === "image") && hit!.handle!.startsWith("resize-")) {
           gesture.current = { kind: "resize", original: handled, handle: hit!.handle!.slice(7) as ResizeHandle, origin: p };
           return;
         }
@@ -559,7 +560,9 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
         // The handle follows the pointer from where it was grabbed, so the edge doesn't jump to the cursor.
         const from = handlePoint(el, g.handle);
         const q = { x: from.x + p.x - g.origin.x, y: from.y + p.y - g.origin.y };
-        const r = resizeRect({ x: el.x, y: el.y, w: el.w, h: el.h }, g.handle, e.shiftKey ? q : { x: snap(q.x), y: snap(q.y) }, e.shiftKey);
+        // A picture keeps its proportions unless Shift is held; a shape the other way round.
+        const keepRatio = el.type === "image" ? !e.shiftKey : e.shiftKey;
+        const r = resizeRect({ x: el.x, y: el.y, w: el.w, h: el.h }, g.handle, keepRatio ? q : { x: snap(q.x), y: snap(q.y) }, keepRatio);
         store.setPreview([{ ...el, ...r }]);
         return;
       }
@@ -683,6 +686,8 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
           // Narrowing a shape can make its text need more height.
           const h = fittedShapeHeight({ ...current, w: shown.w, h: shown.h });
           store.commit([withChanges(current, { x: shown.x, y: shown.y, w: shown.w, h })]);
+        } else if (current.type === "image" && shown.type === "image") {
+          store.commit([withChanges(current, { x: shown.x, y: shown.y, w: shown.w, h: shown.h })]);
         } else if (current.type === "line" && shown.type === "line") {
           const [x0, y0] = shown.points[0];
           if (shown.points.every(([x, y]) => x === x0 && y === y0)) return;
@@ -795,8 +800,16 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
     if (!e.altKey && TOOL_KEYS[key]) store.setTool(TOOL_KEYS[key]);
   }
 
+  /** Picture files dragged in from the desktop: they join the library and land where they were dropped. */
+  const carriesFiles = (dt: DataTransfer) => dt.types.includes("Files");
+
   function onDragOver(e: React.DragEvent<HTMLDivElement>) {
     const { types } = e.dataTransfer;
+    if (!readOnly && (types.includes(LIBRARY_IMAGE_MIME) || carriesFiles(e.dataTransfer))) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      return;
+    }
     if (readOnly || (!types.includes(PALETTE_MIME) && !types.includes(PALETTE_PART_MIME))) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
@@ -810,6 +823,22 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
   function onDrop(e: React.DragEvent<HTMLDivElement>) {
     showDropShape(null);
     if (readOnly) return;
+    const at = toScene(e.clientX, e.clientY);
+    const imageId = e.dataTransfer.getData(LIBRARY_IMAGE_MIME);
+    if (imageId) {
+      e.preventDefault();
+      const image = libraryImage(imageId);
+      if (image) placeImage(store, image, at);
+      ref.current?.focus({ preventScroll: true });
+      return;
+    }
+    const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith("image/"));
+    if (files.length) {
+      e.preventDefault();
+      void uploadImages(files).then((added) => added.forEach((image, i) => placeImage(store, image, { x: at.x + i * 24, y: at.y + i * 24 })));
+      ref.current?.focus({ preventScroll: true });
+      return;
+    }
     const part = partById(e.dataTransfer.getData(PALETTE_PART_MIME));
     if (part) {
       e.preventDefault();

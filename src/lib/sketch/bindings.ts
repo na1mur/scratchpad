@@ -13,7 +13,7 @@ import type { ElementOf, LineBinding, SketchElement } from "./types";
 /** Space between a bound end and the outline, so the arrowhead stays visible. */
 export const BIND_GAP = 6;
 
-const BINDABLE = new Set<SketchElement["type"]>(["shape", "text", "note", "node", "array", "stack", "queue", "set", "matrix", "hashmap", "variables"]);
+const BINDABLE = new Set<SketchElement["type"]>(["shape", "image", "text", "note", "node", "array", "stack", "queue", "set", "matrix", "hashmap", "variables"]);
 
 export type Outline = { kind: "rect" | "ellipse" | "diamond"; rect: Rect };
 

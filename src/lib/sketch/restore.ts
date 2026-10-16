@@ -71,9 +71,9 @@ export function restoreElements(input: readonly unknown[]): RestoreResult {
     }
     // Storyboard frames aren't drawn yet, so no element can belong to one.
     if (el.frameId !== null) put(withChanges(byId.get(el.id)!, { frameId: null }));
-    // A shape too small to grab grows to the smallest size the canvas draws.
-    if (el.type === "shape" && (el.w < MIN_SHAPE_SIZE || el.h < MIN_SHAPE_SIZE)) {
-      const shape = byId.get(el.id) as ElementOf<"shape">;
+    // A shape or picture too small to grab grows to the smallest size the canvas draws.
+    if ((el.type === "shape" || el.type === "image") && (el.w < MIN_SHAPE_SIZE || el.h < MIN_SHAPE_SIZE)) {
+      const shape = byId.get(el.id) as ElementOf<"shape" | "image">;
       put(withChanges(shape, { w: Math.max(MIN_SHAPE_SIZE, shape.w), h: Math.max(MIN_SHAPE_SIZE, shape.h) }));
     }
     // A line whose points all coincide can't be seen or clicked.
