@@ -50,6 +50,7 @@ import { LoadingButton } from "@/components/loading-button";
 import { ShareButton } from "@/components/share/share-button";
 import { FixAttemptButton } from "@/components/solution/FixAttemptButton";
 import { SolutionButton } from "@/components/solution/SolutionButton";
+import { LessonButton } from "@/components/lesson/LessonButton";
 import { ChangeModelLink } from "@/components/workspace/ChangeModelLink";
 import { ChatDock, chatOnSide, splitSizes, useChatDock } from "@/components/workspace/ChatDock";
 import { DeleteAttemptButton } from "@/components/workspace/DeleteAttemptButton";
@@ -141,6 +142,7 @@ export function Workspace({
   aiModel,
   uploadsEnabled,
   hasSolution,
+  hasLesson,
   chatLayout,
   toursSeen,
 }: {
@@ -153,6 +155,8 @@ export function Workspace({
   uploadsEnabled: boolean;
   /** Whether a solution exists (or is being written), so the button opens it instead of asking first. */
   hasSolution: boolean;
+  /** Whether a lesson exists (or is being built), so the button opens it instead of starting one. */
+  hasLesson: boolean;
   /** The learner's saved choice of where the chat sits. */
   chatLayout: ChatLayout;
   /** First-run tours the learner has already been shown. */
@@ -585,6 +589,7 @@ export function Workspace({
               Playground
             </Button>
           )}
+          <LessonButton problemId={problem.id} problemSlug={problem.slug} hasLesson={hasLesson} canGenerate={canRun} />
           <span data-tour="solution">
             <SolutionButton
               problemId={problem.id}
