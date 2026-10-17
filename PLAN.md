@@ -1,5 +1,10 @@
 ## Scratchpad: Build Plan
 
+> This is the original build plan, kept for context. Parts of it are out of date: for example, uploads go through the
+> server to Cloudinary rather than through presigned URLs, and tracing is automatic (the code is instrumented) rather
+> than hand-written `trace()` calls. Later features (test case harness, Playground, Sketch, sharing, admin and more)
+> are not described here. [`CLAUDE.md`](CLAUDE.md) is the living reference for how the app works today.
+
 ### 1. Product summary
 
 A web app where a learner pastes pseudo-code and their reasoning for a DSA problem, or uploads a photo of their notebook. An AI agent works out what they're trying to do, simulates their approach on a small input, and shows a step-by-step animated visualization of execution, including each loop iteration. It then explains why the approach fails, if it does. The AI never volunteers the solution: it points out where the reasoning breaks and nudges how to think about the problem. A learner who wants the solution can ask for it explicitly (section 11a). Users bring their own API key (OpenAI, Anthropic, Google, xAI, and a dozen more; see `src/lib/providers.ts`).
@@ -54,7 +59,7 @@ src/
       problems/[id]/attempts/route.ts                # create + process (streams progress)
       attempts/[id]/route.ts
       attempts/[id]/messages/route.ts                # follow-up questions
-      uploads/presign/route.ts, uploads/extract/route.ts
+      uploads/file/route.ts, uploads/extract/route.ts      # uploads/presign was replaced by uploads/file (server-side upload)
   components/
     ui/ (shadcn)
     viz/ Player.tsx, CodePane.tsx, ExplanationPanel.tsx,
@@ -240,7 +245,7 @@ Constraints enforced in the prompt and validated in code:
 
 **Stage 2: trace.** This is the accuracy-critical stage, because LLMs are unreliable at simulating execution in their heads. Use execution as the primary path and fall back to LLM simulation:
 
-1. The LLM translates the user's pseudo-code faithfully into an instrumented JavaScript function. It must preserve the user's logic, including the bugs. The function calls `trace({ line, iteration, event, states, pointers, highlights })` at each meaningful point.
+1. The LLM translates the user's pseudo-code faithfully into a JavaScript function. It must preserve the user's logic, including the bugs. *(Superseded: the model no longer writes `trace(...)` calls. It writes plain JS with each statement marked by its source line, and the code is instrumented automatically with acorn. See "Automatic tracing" in `CLAUDE.md` and `src/lib/trace/`.)* In the original design the function called `trace({ line, iteration, event, states, pointers, highlights })` at each meaningful point.
 2. Run it in `quickjs-emscripten` with a memory limit, a ~2s time limit, and a 500-trace-event limit. It has no network or filesystem access. Infinite loops get caught by the limits, and hitting a limit is itself a diagnosis ("your loop never terminates because…").
 3. The raw trace events become `steps`. A second LLM call then writes `title` and `explanation` for each step and marks `isBugMoment`.
 4. If translation or execution fails twice, fall back to having the LLM produce the whole spec directly via structured output.
@@ -274,7 +279,7 @@ The tutor never volunteers a solution, but a learner can ask for one from the wo
 
 ### 12. File storage (Cloudinary)
 
-The client requests `POST /api/uploads/presign` with `{ problemId, mimeType, size }`. The server validates the type (png, jpg, or webp) and size (≤ 8 MB), then returns a presigned PUT URL. Object keys follow `users/{userId}/problems/{problemId}/{uuid}.{ext}`.
+The client posts the image as multipart form data (with `problemId`) to `POST /api/uploads/file`. The server validates the type (png, jpg, or webp) and size (≤ 8 MB), uploads it to Cloudinary and returns `{ key, viewUrl, mimeType }`. There are no presigned PUT URLs. Object keys follow `users/{userId}/problems/{problemId}/{uuid}.{ext}`.
 
 Files are uploaded through the server as `authenticated` Cloudinary assets and displayed through signed URLs. Every visualization spec is stored as a raw JSON file under `.../specs/{attemptId}-v{n}.json` and the document keeps the key (`specKey`) plus the verdict; it falls back to inline in MongoDB only when storage isn't configured or an upload fails.
 

@@ -1,12 +1,12 @@
 # Terms of Service
 
-**Effective date:** October 8, 2026
+**Effective date:** October 17, 2026
 
 Welcome to Scratchpad. These Terms of Service ("Terms") govern your use of the Scratchpad website and service at [https://dsa-scratchpad.vercel.app](https://dsa-scratchpad.vercel.app) (the "Service"). By creating an account or using the Service, you agree to these Terms and to our [Privacy Policy](/privacy-policy). If you do not agree, do not use the Service.
 
 ## 1. What Scratchpad is
 
-Scratchpad is a learning tool for data structures and algorithms. You submit pseudo-code, reasoning, or photos of your notes, and the Service uses AI models to trace your approach, point out where it breaks, give hints, and, when you ask, show worked solutions. The Service is provided for personal, educational use.
+Scratchpad is a learning tool for data structures and algorithms. You submit pseudo-code, reasoning, sketches, or photos of your notes, and the Service uses AI models to trace your approach, point out where it breaks, give hints, and, when you ask, show worked solutions. It also lets you run code in your browser on test cases and, if you choose, share an attempt or solution by link. The Service is provided for personal, educational use.
 
 ## 2. Your account
 
@@ -19,22 +19,24 @@ Scratchpad is a learning tool for data structures and algorithms. You submit pse
 Scratchpad does not supply AI models. To run problems you connect your own AI provider by entering an API key or by connecting through OpenRouter.
 
 - You are responsible for the key you provide, for having the right to use it, and for all charges, usage limits and terms that your provider applies. Scratchpad is not responsible for provider costs, quotas or outages.
-- When you run a problem, the content you submit is sent to the provider and model you selected. Their terms and privacy practices apply to that content. See our [Privacy Policy](/privacy-policy) for details.
+- When you run a problem, the content you submit (including notebook photos and pictures of your sketches) is sent to the provider and model you selected. Their terms and privacy practices apply to that content. See our [Privacy Policy](/privacy-policy) for details.
 - Do not share your key with anyone else, and revoke it with your provider if you believe it has been exposed.
 
 ## 4. Your content
 
-You keep ownership of everything you submit to the Service, including problem statements, code, notes, photos, and chat messages ("Your Content"). You grant Scratchpad a limited, non-exclusive, worldwide licence to store, process, display and transmit Your Content, only as needed to run the Service for you, including sending it to the AI provider you chose.
+You keep ownership of everything you submit to the Service, including problem statements, code, notes, photos, sketches, pictures, and chat messages ("Your Content"). You grant Scratchpad a limited, non-exclusive, worldwide licence to store, process, display and transmit Your Content, only as needed to run the Service for you, including sending it to the AI provider you chose.
+
+**Sharing.** You can choose to make one attempt or one solution version public by link. While it is shared, you also grant Scratchpad a limited, non-exclusive, worldwide licence to display that item, with its problem details (title, statement, tags and link), to anyone who has the link, and to let visitors copy the problem into their own accounts ("fork" it). A fork copies the problem only, not your attempts, solutions or chats. The licence for display ends when you unshare, which deletes the link. It does not reach copies of the problem that others made before then. You are responsible for what you share: only share what you have the right to share, and remember that anyone with the link can see it. Don't share material that includes someone else's confidential or personal information.
 
 You are responsible for Your Content. You confirm that you have the right to submit it and that it does not break the law or anyone else's rights. Please do not submit confidential material, other people's personal data, or content you do not have permission to share.
 
-Problem statements you take from other websites, such as coding-practice sites, belong to their owners. Add them for your own study only and respect those sites' terms.
+Problem statements you take from other websites, such as coding-practice sites, belong to their owners. Scratchpad fetches the page you link so it can read the statement, and keeps its text with your problem. Add problems for your own study only and respect those sites' terms. If you share an attempt or solution, the problem's statement is shown on the public page and copied when someone forks it, so only share problems you may share that way.
 
 ## 5. AI-generated output
 
-Scratchpad's traces, hints, explanations and solutions are produced by AI models and by code that runs your approach on sample inputs. They can be wrong, incomplete or misleading. Treat them as a study aid, not as an authority, and check important results yourself. Hints are designed not to reveal full solutions, but we cannot guarantee that they never do. Worked solutions may draw on public reference solutions, and the page credits those sources where it applies.
+Scratchpad's traces, hints, explanations, test cases and solutions are produced by AI models and by code that runs your approach on sample inputs. The test cases and their expected answers are generated and checked automatically, so they can be wrong too, and a passing result does not prove your code is correct. All of it can be wrong, incomplete or misleading. Treat them as a study aid, not as an authority, and check important results yourself. Hints are designed not to reveal full solutions, but we cannot guarantee that they never do. Worked solutions may draw on public reference solutions, and the page credits those sources where it applies.
 
-Scratchpad is not affiliated with, endorsed by, or sponsored by LeetCode, GitHub, Google, OpenRouter, or any AI provider.
+Scratchpad is not affiliated with, endorsed by, or sponsored by LeetCode, GitHub, Google, OpenRouter, any website you link problems from, or any AI provider.
 
 ## 6. Acceptable use
 
@@ -47,7 +49,8 @@ You agree not to:
 - use the Service to build a competing product, or to resell or sublicense access to it;
 - use the Service to cheat in a way that breaks the rules of an exam, interview, or competition you are taking part in;
 - submit unlawful, abusive, hateful or sexually explicit content, or images of other people without their consent;
-- point the problem-link feature at addresses you do not have the right to fetch, or try to use it to reach private networks.
+- point the problem-link feature at addresses you do not have the right to fetch, or try to use it to reach private networks;
+- share content publicly that is unlawful, abusive, hateful or sexually explicit, or that infringes someone's rights, or use share links to spread spam or malware.
 
 We may limit, suspend or end access if we believe these rules have been broken.
 
