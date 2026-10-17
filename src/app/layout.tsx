@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: { default: "Scratchpad", template: "%s · Scratchpad" },
   description:
-    "Paste your pseudo-code and reasoning, watch it run step by step, and find out where your approach breaks.",
+    "Write pseudo-code or real code, photograph your notebook or sketch the state, and watch it run step by step to find where your approach breaks.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

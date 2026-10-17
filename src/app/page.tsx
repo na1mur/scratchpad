@@ -13,6 +13,8 @@ import { LandingHeader } from "@/components/landing/landing-header";
 import { Highlight, MotionRoot, WordHeading } from "@/components/landing/motion";
 import { NotebookTranscript } from "@/components/landing/notebook-transcript";
 import { ScrollToTop } from "@/components/landing/scroll-to-top";
+import { SketchSpecimen } from "@/components/landing/sketch-specimen";
+import { TestRunSpecimen } from "@/components/landing/test-run-specimen";
 import { TraceSpecimen } from "@/components/landing/trace-specimen";
 import { LANGUAGES } from "@/lib/languages";
 
@@ -48,13 +50,32 @@ const press = {
 
 const SHORT_LABELS: Record<string, string> = { pseudocode: "Pseudo-code" };
 
+const EXTRAS = [
+  {
+    title: "Paste a link",
+    text: "Scratchpad reads the statement from LeetCode, Codeforces, AtCoder, GeeksforGeeks, CodeChef, HackerRank, Naukri Code360 or any other page. You can edit it before you save.",
+  },
+  {
+    title: "Ask beside the run",
+    text: "Chat about any step without leaving the animation. It answers what you asked: an explanation, a hint, or the fix when you request it.",
+  },
+  {
+    title: "Share a link",
+    text: "Make one attempt or solution public. Visitors can read it and copy the problem into their own account. Unshare it and the link stops working for good.",
+  },
+  {
+    title: "Keep a streak",
+    text: "Your profile shows a year of practice with current and longest streaks, counted by your own time zone.",
+  },
+];
+
 export const metadata: Metadata = {
   title: { absolute: "Scratchpad: see exactly where your approach breaks" },
   openGraph: {
     type: "website",
     title: "Scratchpad: see exactly where your approach breaks",
     description:
-      "Paste your pseudo-code and reasoning, watch it run step by step, and find the step where it goes wrong. Hints first, and the solution only when you ask for it.",
+      "Write pseudo-code or real code, photograph your notebook or sketch the state, and watch it run step by step to find where it goes wrong. Hints first, and the solution only when you ask for it.",
   },
 };
 
@@ -83,9 +104,9 @@ export default function Home() {
                 className="text-display text-[3.25rem] text-balance sm:text-[4.5rem] xl:text-[5rem]"
               />
               <motion.p {...enter(1.3)} className="max-w-[34rem] text-lg leading-7 text-ink/75">
-                Paste your pseudo-code and your reasoning, or photograph your notebook. Scratchpad runs it on a small
-                input, animates every loop, and marks the step where it goes wrong. It gives hints, not answers, until you
-                ask for the solution.
+                Write pseudo-code or real code, photograph your notebook, or sketch the state. Scratchpad runs it on
+                small inputs, animates every loop, and marks the step where it goes wrong. You get hints, not answers,
+                until you ask for the solution.
               </motion.p>
               <motion.div {...enter(1.6)} className="flex flex-col items-start gap-3">
                 <div className="flex flex-wrap gap-2">
@@ -142,6 +163,83 @@ export default function Home() {
         </section>
 
         <section className="bg-sheet">
+          <div className={cn(container, "grid gap-10 py-24 lg:grid-cols-[5fr_7fr] lg:gap-16 lg:py-36")}>
+            <motion.div {...reveal()} className="flex flex-col gap-5 lg:sticky lg:top-8 lg:self-start">
+              <h2 className={heading}>Hints first, <Highlight>answers when you ask</Highlight>.</h2>
+              <p className="max-w-md text-lg leading-7 text-ink/75">
+                Scratchpad points at where your logic breaks and asks the question that gets you thinking again. Hints
+                come one at a time, from vague to specific, and none of them is code you can copy.
+              </p>
+              <p className="max-w-md text-lg leading-7 text-ink/75">
+                Still stuck after a real try? Ask for the solution. It starts from your own attempt, shows what had to
+                change, and explains the code line by line. Want another approach or a better Big-O? Ask for that too.
+              </p>
+            </motion.div>
+            <motion.div {...reveal(0.12)}>
+              <HintLadder />
+            </motion.div>
+          </div>
+        </section>
+
+        <section>
+          <div className={cn(container, "grid items-center gap-10 py-24 lg:grid-cols-[7fr_5fr] lg:gap-16 lg:py-36")}>
+            <motion.div {...reveal()} className="flex flex-col gap-5 lg:order-2">
+              <h2 className={cn(heading, "text-balance")}>Test cases you can trust.</h2>
+              <p className="max-w-md text-lg leading-7 text-ink/75">
+                Most problems get three to six fixed test cases. Their answers come from running a reference solution,
+                not from the model&apos;s guess, so a pass or a fail means what it says.
+              </p>
+              <p className="max-w-md text-lg leading-7 text-ink/75">
+                Open the Playground to run your own Python, JavaScript or TypeScript on them. It runs in your browser,
+                spends no tokens and saves nothing. Turn on Show steps and the run plays frame by frame.
+              </p>
+              <p className="max-w-md text-lg leading-7 text-ink/75">
+                Tracing is automatic. Scratchpad runs the code and records each step, so the values you see come from a
+                real run. Pseudo-code is translated into runnable code first.
+              </p>
+            </motion.div>
+            <motion.div {...reveal(0.12)} className="min-w-0 lg:order-1">
+              <TestRunSpecimen />
+            </motion.div>
+          </div>
+        </section>
+
+        <section className="bg-sheet">
+          <div className={cn(container, "grid items-center gap-10 py-24 lg:grid-cols-[5fr_7fr] lg:gap-16 lg:py-36")}>
+            <motion.div {...reveal()} className="flex flex-col gap-5">
+              <h2 className={cn(heading, "text-balance")}>Draw the state before you write the code.</h2>
+              <p className="max-w-md text-lg leading-7 text-ink/75">
+                Sketch is a canvas for data structures. Drop in arrays, stacks, queues, hash maps and list, tree or
+                graph nodes, then add pointers, notes and freehand ink. A pointer binds to an index, and one past the
+                end turns red.
+              </p>
+              <p className="max-w-md text-lg leading-7 text-ink/75">
+                Export a PNG, or choose Draft an attempt. A vision model reads your drawing and fills in a draft for
+                you to check. Nothing is submitted until you say so.
+              </p>
+            </motion.div>
+            <motion.div {...reveal(0.12)} className="min-w-0">
+              <SketchSpecimen />
+            </motion.div>
+          </div>
+        </section>
+
+        <section>
+          <div className={cn(container, "py-24 lg:py-36")}>
+            <motion.div {...reveal()} className="mb-12 flex max-w-3xl flex-col gap-5">
+              <h2 className={cn(heading, "text-balance")}>Start from <Highlight>the page in front of you</Highlight>.</h2>
+              <p className="text-lg leading-7 text-ink/75">
+                Photograph your notebook and Scratchpad types it out exactly as written, mistakes included. You check
+                the text before it runs, so the trace follows what you actually wrote.
+              </p>
+            </motion.div>
+            <motion.div {...reveal(0.1)}>
+              <NotebookTranscript />
+            </motion.div>
+          </div>
+        </section>
+
+        <section className="bg-sheet">
           <div className={cn(container, "grid gap-12 py-24 lg:grid-cols-2 lg:gap-0 lg:py-36")}>
             <motion.div {...reveal()} className="flex flex-col gap-6 lg:border-r lg:border-ink/15 lg:pr-16">
               <h2 className={heading}>Explained in <Highlight>your language</Highlight>.</h2>
@@ -164,42 +262,29 @@ export default function Home() {
                 key from OpenAI, Anthropic, Google Gemini, xAI, DeepSeek or any of ten other providers. Keys are
                 stored encrypted and only ever used to call your model.
               </p>
+              <p className="max-w-md text-lg leading-7 text-ink/75">
+                Photos and sketches need a model that can read images, which you pick separately.
+              </p>
             </motion.div>
           </div>
         </section>
 
         <section>
           <div className={cn(container, "grid gap-10 py-24 lg:grid-cols-[5fr_7fr] lg:gap-16 lg:py-36")}>
-            <motion.div {...reveal()} className="flex flex-col gap-5 lg:sticky lg:top-8 lg:self-start">
-              <h2 className={heading}>Hints first, <Highlight>answers when you ask</Highlight>.</h2>
-              <p className="max-w-md text-lg leading-7 text-ink/75">
-                Scratchpad points at where your logic breaks and asks the question that gets you thinking again. Hints
-                come one at a time, from vague to specific, and none of them is code you can copy.
-              </p>
-              <p className="max-w-md text-lg leading-7 text-ink/75">
-                Still stuck after a real try? Ask for the solution. It starts from your own attempt and shows what had
-                to change, then explains the code line by line and animates every loop iteration. Want another
-                approach or a better Big-O? Ask for that too.
-              </p>
-            </motion.div>
-            <motion.div {...reveal(0.12)}>
-              <HintLadder />
-            </motion.div>
-          </div>
-        </section>
-
-        <section className="bg-sheet">
-          <div className={cn(container, "py-24 lg:py-36")}>
-            <motion.div {...reveal()} className="mb-12 flex max-w-3xl flex-col gap-5">
-              <h2 className={cn(heading, "text-balance")}>Start from <Highlight>the page in front of you</Highlight>.</h2>
-              <p className="text-lg leading-7 text-ink/75">
-                Photograph your notebook and Scratchpad types it out exactly as written, mistakes included. You check
-                the text before it runs, so the trace follows what you actually wrote.
-              </p>
-            </motion.div>
-            <motion.div {...reveal(0.1)}>
-              <NotebookTranscript />
-            </motion.div>
+            <motion.h2 {...reveal()} className={cn(heading, "text-balance lg:sticky lg:top-8 lg:self-start")}>
+              Small things that keep you practising.
+            </motion.h2>
+            <motion.dl {...reveal(0.12)} className="border-t border-ink/20">
+              {EXTRAS.map((item) => (
+                <div
+                  key={item.title}
+                  className="grid gap-1 border-b border-ink/20 py-5 sm:grid-cols-[10rem_1fr] sm:gap-6"
+                >
+                  <dt className="text-lg leading-7 font-medium">{item.title}</dt>
+                  <dd className="max-w-md text-lg leading-7 text-ink/75">{item.text}</dd>
+                </div>
+              ))}
+            </motion.dl>
           </div>
         </section>
 
@@ -229,9 +314,9 @@ export default function Home() {
       </main>
 
       <footer className="bg-sheet">
-        <div className={cn(container, "flex items-center justify-between py-5 text-sm")}>
+        <div className={cn(container, "flex flex-wrap items-center justify-between gap-x-6 gap-y-3 py-5 text-sm")}>
           <Logo href="/" height={28} />
-          <nav aria-label="Footer" className="flex gap-5 text-ink/70">
+          <nav aria-label="Footer" className="flex flex-wrap gap-x-5 gap-y-2 text-ink/70">
             <Link href="/demo" className={footerLink}>
               Demo
             </Link>
@@ -241,6 +326,9 @@ export default function Home() {
             <Link href="/signup" className={footerLink}>
               Get started
             </Link>
+            <a href="https://github.com/na1mur/scratchpad" className={footerLink}>
+              GitHub
+            </a>
             <Link href="/privacy-policy" className={footerLink}>
               Privacy
             </Link>
