@@ -9,7 +9,8 @@ export default function NewProblemPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">New problem</h1>
         <p className="text-sm text-muted-foreground">
-          Start with the statement. You&apos;ll add your pseudo-code and reasoning on the next screen.
+          Link the problem and we&apos;ll read the statement, or paste it yourself. You&apos;ll add your pseudo-code and
+          reasoning on the next screen.
         </p>
       </div>
       <NewProblemForm />

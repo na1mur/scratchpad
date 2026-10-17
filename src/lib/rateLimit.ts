@@ -69,6 +69,8 @@ export const rateLimits = {
   messages: () => configured("messages", env.RATE_LIMIT_MESSAGES_PER_HOUR),
   solutions: () => configured("solutions", env.RATE_LIMIT_SOLUTIONS_PER_HOUR),
   providerProbe: () => limiter("providerProbe", 30, 15 * 60_000),
+  // Statements fetched from a problem link while creating a problem (a server-side request per try).
+  statementLookups: () => limiter("statementLookups", 30, 15 * 60_000),
   uploads: () => limiter("uploads", 30, 60 * 60_000),
   // Pictures added to the sketch image library.
   sketchImages: () => limiter("sketchImages", 60, 60 * 60_000),

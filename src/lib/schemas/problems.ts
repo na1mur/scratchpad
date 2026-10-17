@@ -37,6 +37,11 @@ export const createProblemSchema = z.object({
 });
 export type CreateProblemInput = z.input<typeof createProblemSchema>;
 
+/** The link whose page is read for a statement; unlike the optional `sourceUrl`, it can't be empty. */
+export const fetchStatementSchema = z.object({
+  url: sourceUrlField.refine((v) => v !== "", "Enter the problem's URL"),
+});
+
 /** Edit dialog form: every field is present, the title is required. */
 export const editProblemSchema = z.object({
   title: titleField,

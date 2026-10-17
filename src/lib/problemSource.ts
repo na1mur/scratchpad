@@ -168,18 +168,29 @@ export { request as safeRequest };
 
 // HTML to text ---------------------------------------------------------------
 
-const NOISE = "script, style, noscript, svg, template, iframe, nav, footer, header, form, button, head";
+const NOISE = "script, style, noscript, svg, template, iframe, nav, footer, header, form, button, head, aside";
 const BLOCKS = "p, div, ul, ol, li, h1, h2, h3, h4, h5, h6, tr, table, section, blockquote, dl, dd, dt";
-// Most specific first: Codeforces' statement block, then the page's main content.
+// Where an unknown page's statement usually is, most specific first.
 const CONTENT = [".problem-statement", "main", "article", "body"];
 
+type TextOptions = {
+  /** Selectors for the statement block, tried in order before the generic ones. */
+  root?: string[];
+  /** With `root`: give up (empty text) when none of them is on the page, instead of reading the whole page. */
+  strict?: boolean;
+  /** Where the title is, when the page's <title> carries the site name. */
+  titleFrom?: string;
+};
+
 /** Readable text from a page: drops chrome and scripts, keeps paragraphs, lists and <pre> examples. */
-export function htmlToText(html: string): string {
+export function htmlToText(html: string, opts: TextOptions = {}): string {
   const $ = cheerio.load(html);
-  const title = $("title").first().text().trim();
+  const title = (opts.titleFrom ? $(opts.titleFrom) : $("title")).first().text().trim();
   $(NOISE).remove();
+  const named = opts.root?.map((sel) => $(sel).first()).find((el) => el.length && el.text().trim());
+  if (opts.strict && opts.root && !named) return "";
   const root =
-    CONTENT.map((sel) => $(sel).first()).find((el) => el.length && el.text().trim().length > 200) ?? $.root();
+    named ?? CONTENT.map((sel) => $(sel).first()).find((el) => el.length && el.text().trim().length > 200) ?? $.root();
 
   // <pre> examples keep their exact whitespace: park them behind placeholders while the rest is collapsed.
   const pres: string[] = [];
@@ -190,6 +201,9 @@ export function htmlToText(html: string): string {
   });
   root.find("sup").each((_, el) => {
     $(el).replaceWith(`^${$(el).text()}`);
+  });
+  root.find("sub").each((_, el) => {
+    $(el).replaceWith(`_${$(el).text()}`);
   });
   root.find("br").replaceWith("\n");
   root.find("li").prepend("- ");
@@ -206,8 +220,8 @@ export function htmlToText(html: string): string {
   return title && !text.startsWith(title) ? `${title}\n\n${text}` : text;
 }
 
-function clip(text: string): string {
-  return text.length > MAX_SOURCE_TEXT ? `${text.slice(0, MAX_SOURCE_TEXT - 1).trimEnd()}…` : text;
+function clip(text: string, limit: number): string {
+  return text.length > limit ? `${text.slice(0, limit - 1).trimEnd()}…` : text;
 }
 
 // Fetchers -------------------------------------------------------------------
@@ -235,28 +249,156 @@ async function fetchLeetCode(url: URL, signal: AbortSignal): Promise<string | nu
   return `${q.title ?? slug}\n\n${htmlToText(html)}`;
 }
 
-async function fetchGeneric(url: URL, signal: AbortSignal): Promise<string | null> {
+async function fetchGeneric(url: URL, signal: AbortSignal, opts?: TextOptions): Promise<string | null> {
   const res = await request(url, { signal });
   if (res.status !== 200) return null;
   if (/text\/plain/i.test(res.contentType)) return res.body.trim();
   if (!/html/i.test(res.contentType)) return null;
-  return htmlToText(res.body);
+  return htmlToText(res.body, opts);
 }
+
+async function getJson(url: URL, signal: AbortSignal): Promise<unknown> {
+  const res = await request(url, { signal, headers: { accept: "application/json" } });
+  return res.status === 200 ? JSON.parse(res.body) : null;
+}
+
+/** The non-empty parts, one blank line apart. */
+function joinParts(...parts: (string | null | undefined)[]): string {
+  return parts
+    .map((p) => p?.trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+const section = (heading: string, body: string | null | undefined) => (body?.trim() ? `${heading}\n${body.trim()}` : "");
+
+/** First object, at any depth, that has a string under `key`. */
+function findWithKey(node: unknown, key: string, depth = 0): Record<string, unknown> | null {
+  if (!node || typeof node !== "object" || depth > 12) return null;
+  const rec = node as Record<string, unknown>;
+  if (typeof rec[key] === "string") return rec;
+  for (const child of Object.values(rec)) {
+    const found = findWithKey(child, key, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** GeeksforGeeks serves the statement as HTML inside the page's Next.js data. */
+async function fetchGeeksForGeeks(url: URL, signal: AbortSignal): Promise<string | null> {
+  if (!url.pathname.startsWith("/problems/")) return null;
+  const res = await request(url, { signal });
+  if (res.status !== 200) return null;
+  const data = /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/.exec(res.body)?.[1];
+  const p = data ? findWithKey(JSON.parse(data), "problem_question") : null;
+  if (!p) return null;
+  const str = (key: string) => (typeof p[key] === "string" ? p[key] : "");
+  const constraints = str("constraints_display");
+  return joinParts(
+    str("problem_name"),
+    htmlToText(str("problem_question")),
+    section("Constraints:", /</.test(constraints) ? htmlToText(constraints) : constraints),
+  );
+}
+
+/** CodeChef's page is a JS shell; its own API answers with the statement as HTML. */
+async function fetchCodeChef(url: URL, signal: AbortSignal): Promise<string | null> {
+  // /problems/CODE, or /CONTEST/problems/CODE for a contest's problem.
+  const m = /^\/(?:([\w-]+)\/)?problems\/([\w-]+)/.exec(url.pathname);
+  if (!m) return null;
+  const api = new URL(`/api/contests/${m[1] ?? "PRACTICE"}/problems/${m[2]}`, "https://www.codechef.com");
+  const json = (await getJson(api, signal)) as { status?: string; problem_name?: string; body?: string } | null;
+  if (json?.status !== "success" || !json.body) return null;
+  return joinParts(json.problem_name, htmlToText(json.body));
+}
+
+/** Naukri Code360 (formerly Coding Ninjas Studio) is an Angular app; the page's data comes from this public API. */
+async function fetchCode360(url: URL, signal: AbortSignal): Promise<string | null> {
+  const slug = /\/problems\/([^/?#]+)/.exec(url.pathname)?.[1];
+  if (!slug) return null;
+  const api = new URL("https://api.codingninjas.com/api/v3/public_section/problem_detail");
+  api.searchParams.set("slug", slug);
+  const json = (await getJson(api, signal)) as {
+    data?: { offerable?: { problem?: { name?: string; description?: string; sample_testcase?: string } } };
+  } | null;
+  const p = json?.data?.offerable?.problem;
+  if (!p?.description) return null;
+  return joinParts(p.name, htmlToText(p.description), p.sample_testcase && htmlToText(p.sample_testcase));
+}
+
+/** HackerRank's rendered page has its math as images; the REST model keeps the markdown source instead. */
+async function fetchHackerRank(url: URL, signal: AbortSignal): Promise<string | null> {
+  const m = /^(?:\/contests\/([\w-]+))?\/challenges\/([\w-]+)/.exec(url.pathname);
+  if (!m) return null;
+  const api = new URL(`/rest/contests/${m[1] ?? "master"}/challenges/${m[2]}`, "https://www.hackerrank.com");
+  const json = (await getJson(api, signal)) as {
+    model?: {
+      name?: string;
+      problem_statement?: string;
+      input_format?: string;
+      output_format?: string;
+      constraints?: string;
+      body_html?: string;
+    };
+  } | null;
+  const c = json?.model;
+  if (!c?.problem_statement?.trim()) return null;
+  // Only the sample blocks are read from the HTML.
+  const $ = cheerio.load(c.body_html ?? "");
+  const sample = (kind: "input" | "output") =>
+    $(`.challenge_sample_${kind}_body pre`)
+      .map((_, el) => $(el).text().trim())
+      .get()
+      .join("\n\n");
+  return joinParts(
+    c.name,
+    c.problem_statement,
+    section("Input Format", c.input_format),
+    section("Constraints", c.constraints),
+    section("Output Format", c.output_format),
+    section("Sample Input", sample("input")),
+    section("Sample Output", sample("output")),
+  );
+}
+
+type Reader = (url: URL, signal: AbortSignal) => Promise<string | null>;
+
+/**
+ * Sites with a better way in than their HTML. When one's reader comes back empty the page isn't read
+ * generically (a JS shell or a login wall would only give junk), except where `generic` says it may be.
+ */
+const SITES: { host: RegExp; read: Reader; generic?: boolean }[] = [
+  { host: /(^|\.)leetcode\.(com|cn)$/i, read: fetchLeetCode, generic: true },
+  {
+    host: /(^|\.)codeforces\.com$/i,
+    read: (url, signal) =>
+      fetchGeneric(url, signal, { root: [".problem-statement"], strict: true, titleFrom: ".problem-statement .header .title" }),
+  },
+  {
+    host: /(^|\.)atcoder\.jp$/i,
+    // The English half of a statement that holds both languages.
+    read: (url, signal) => fetchGeneric(url, signal, { root: ["#task-statement .lang-en", "#task-statement"], strict: true }),
+  },
+  { host: /(^|\.)geeksforgeeks\.org$/i, read: fetchGeeksForGeeks },
+  { host: /(^|\.)codechef\.com$/i, read: fetchCodeChef },
+  { host: /(^|\.)(naukri\.com|codingninjas\.com)$/i, read: fetchCode360 },
+  { host: /(^|\.)hackerrank\.com$/i, read: fetchHackerRank },
+];
 
 /**
  * Best-effort text of the linked problem page. Returns null when the page
  * can't be read or has too little text to be the problem (a JS-only shell,
- * a login wall); never throws.
+ * a login wall); never throws. `maxLength` is where longer text is cut.
  */
-export async function fetchSourceText(rawUrl: string): Promise<string | null> {
+export async function fetchSourceText(rawUrl: string, maxLength = MAX_SOURCE_TEXT): Promise<string | null> {
   try {
     const url = new URL(rawUrl);
     const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
-    const isLeetCode = /(^|\.)leetcode\.(com|cn)$/i.test(url.hostname);
-    const text = isLeetCode
-      ? ((await fetchLeetCode(url, signal).catch(() => null)) ?? (await fetchGeneric(url, signal)))
+    const site = SITES.find((s) => s.host.test(url.hostname));
+    const text = site
+      ? ((await site.read(url, signal).catch(() => null)) ?? (site.generic ? await fetchGeneric(url, signal) : null))
       : await fetchGeneric(url, signal);
-    return text && text.length >= MIN_SOURCE_TEXT ? clip(text) : null;
+    return text && text.length >= MIN_SOURCE_TEXT ? clip(text, maxLength) : null;
   } catch (err) {
     console.warn(`[source] couldn't read ${rawUrl}:`, err instanceof Error ? err.message : err);
     return null;
