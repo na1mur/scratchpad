@@ -2,8 +2,8 @@ import "server-only";
 import { Types } from "mongoose";
 import { ApiError } from "@/lib/api";
 import { connectDB } from "@/lib/db";
-import { deleteKeys } from "@/lib/r2";
 import { imageUrl, type LibraryImage } from "@/lib/sketch/images";
+import { deleteKeys } from "@/lib/storage";
 import { SketchImage, type SketchImageDoc } from "@/models/SketchImage";
 
 /** Every library picture lives under this prefix, so a key can be checked against its owner. */
@@ -29,10 +29,10 @@ export async function getOwnedImage(userId: string, id: string) {
   return doc;
 }
 
-/** Removes the picture from the library and R2. Sketches that still use it show a missing-image box. */
+/** Removes the picture from the library and storage. Sketches that still use it show a missing-image box. */
 export async function deleteImage(userId: string, id: string) {
   const doc = await getOwnedImage(userId, id);
   await SketchImage.deleteOne({ _id: doc._id, userId });
   // Best effort: an orphaned object is harmless and the database is the source of truth.
-  await deleteKeys([doc.r2Key]).catch((err) => console.error("[sketch-images] cleanup failed:", err instanceof Error ? err.message : err));
+  await deleteKeys([doc.storageKey]).catch((err) => console.error("[sketch-images] cleanup failed:", err instanceof Error ? err.message : err));
 }

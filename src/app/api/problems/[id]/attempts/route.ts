@@ -21,7 +21,7 @@ export function GET(req: NextRequest, ctx: RouteContext<"/api/problems/[id]/atte
     const problem = await getOwnedProblem(session.userId, id);
     const attempts = await Attempt.find({ problemId: problem._id, userId: session.userId })
       .sort({ version: -1 })
-      .select({ version: 1, status: 1, createdAt: 1, "vizSpec.summary.verdict": 1 })
+      .select({ version: 1, status: 1, createdAt: 1, verdict: 1 })
       .lean();
     return NextResponse.json({ attempts: attempts.map(serializeAttemptSummary) });
   });
@@ -43,7 +43,7 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/problems/[id]/att
     if (!user.ai.apiKey) throw noKey();
 
     const keyPrefix = `users/${session.userId}/problems/${id}/`;
-    if (input.images.some((img) => !img.r2Key.startsWith(keyPrefix))) {
+    if (input.images.some((img) => !img.storageKey.startsWith(keyPrefix))) {
       throw new ApiError(400, "bad_image", "One of the images doesn't belong to this problem.");
     }
 

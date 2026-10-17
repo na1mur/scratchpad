@@ -172,6 +172,7 @@ export async function runAttemptPipeline(attemptId: string): Promise<void> {
         $set: {
           status: "done",
           traceMode: mode,
+          verdict: finalSpec.summary.verdict,
           ...stored,
           specVersions: [{ createdAt: new Date(), reason: "Initial run", ...stored }],
           tokenUsage: meter.snapshot(),

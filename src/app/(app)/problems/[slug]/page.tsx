@@ -7,7 +7,7 @@ import { getOwnedAttempt, serializeAttempt, serializeAttemptSummary } from "@/li
 import { requirePageSession } from "@/lib/auth/session";
 import { ensureProblemHarness, needsHarness } from "@/lib/harness/build";
 import { getOwnedProblemBySlug, serializeProblem } from "@/lib/problems";
-import { r2Enabled } from "@/lib/r2";
+import { storageEnabled } from "@/lib/storage";
 import { toursSeenBy } from "@/lib/tours";
 import { getPageUser } from "@/lib/users";
 import { Attempt } from "@/models/Attempt";
@@ -39,7 +39,7 @@ export default async function WorkspacePage({ params }: PageProps<"/problems/[sl
   const userId = String(user._id);
   const attempts = await Attempt.find({ problemId: problem._id, userId })
     .sort({ version: -1 })
-    .select({ version: 1, status: 1, createdAt: 1, "vizSpec.summary.verdict": 1 })
+    .select({ version: 1, status: 1, createdAt: 1, verdict: 1 })
     .lean();
   const hasSolution = Boolean(await Solution.exists({ problemId: problem._id, userId, status: { $ne: "error" } }));
   const latest = attempts[0] ? await serializeAttempt(await getOwnedAttempt(userId, String(attempts[0]._id))) : null;
@@ -53,7 +53,7 @@ export default async function WorkspacePage({ params }: PageProps<"/problems/[sl
       initialAttempts={summaries}
       initialAttempt={latest}
       aiModel={user.ai ? { provider: user.ai.provider, model: user.ai.model, hasKey: Boolean(user.ai.apiKey) } : null}
-      uploadsEnabled={r2Enabled}
+      uploadsEnabled={storageEnabled}
       hasSolution={hasSolution}
       chatLayout={user.preferences?.chatLayout ?? "inline"}
       toursSeen={toursSeenBy(user)}

@@ -72,7 +72,7 @@ const userSchema = new Schema(
     googleId: { type: String, required: false, unique: true, sparse: true },
     // Google's profile picture URL, refreshed on every Google login.
     googlePicture: { type: String, required: false },
-    // R2 key of a photo the user uploaded themselves; wins over `googlePicture`.
+    // Storage key of a photo the user uploaded themselves; wins over `googlePicture`.
     avatarKey: { type: String, required: false },
     preferredLanguage: { type: String, enum: LANGUAGES.map((l) => l.id), required: false },
     onboardingStep: { type: String, enum: ONBOARDING_STEPS, default: "language", required: true },

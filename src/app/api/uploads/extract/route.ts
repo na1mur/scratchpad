@@ -4,9 +4,9 @@ import { PipelineError, UsageMeter, generateStructured } from "@/lib/ai/pipeline
 import { baseInstructions } from "@/lib/ai/prompts/system";
 import { getModel } from "@/lib/ai/providers";
 import { getOwnedProblem } from "@/lib/problems";
-import { getObjectBytes, headObject, r2Enabled } from "@/lib/r2";
 import { rateLimits } from "@/lib/rateLimit";
 import { MAX_IMAGE_BYTES, extractSchema, extractionOutputSchema } from "@/lib/schemas/uploads";
+import { tryGetObjectBytes } from "@/lib/storage";
 import { loadUser } from "@/lib/users";
 
 export const maxDuration = 120;
@@ -27,22 +27,20 @@ Keep their line breaks and indentation. Mark a word you truly can't read as [?].
 export function POST(req: NextRequest) {
   return handle(req, async () => {
     const session = await requireUser({ onboarded: true });
-    if (!r2Enabled) throw new ApiError(503, "uploads_disabled", "Image uploads aren't configured on this server.");
-    const { problemId, r2Key, mimeType } = await parseJson(req, extractSchema);
-    if (!r2Key.startsWith(`users/${session.userId}/problems/${problemId}/`)) {
+    const { problemId, storageKey, mimeType } = await parseJson(req, extractSchema);
+    if (!storageKey.startsWith(`users/${session.userId}/problems/${problemId}/`)) {
       throw new ApiError(403, "forbidden", "That image doesn't belong to you.");
     }
     const problem = await getOwnedProblem(session.userId, problemId);
     const limit = await rateLimits.attempts().consume(`extract:${session.userId}`);
     if (!limit.ok) throw new ApiError(429, "rate_limited", "Too many extractions. Try again later.");
 
-    const head = await headObject(r2Key);
-    if (!head) throw new ApiError(404, "not_found", "Upload not found. Try uploading again.");
-    if (head.size > MAX_IMAGE_BYTES) throw new ApiError(400, "too_large", "Images must be 8 MB or smaller.");
+    const data = await tryGetObjectBytes(storageKey);
+    if (!data) throw new ApiError(404, "not_found", "Upload not found. Try uploading again.");
+    if (data.byteLength > MAX_IMAGE_BYTES) throw new ApiError(400, "too_large", "Images must be 8 MB or smaller.");
 
     const user = await loadUser(session);
     const { model } = getModel(user, "vision");
-    const data = await getObjectBytes(r2Key);
     try {
       const out = await generateStructured({
         model,

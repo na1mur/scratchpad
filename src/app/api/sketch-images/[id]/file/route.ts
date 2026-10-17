@@ -1,10 +1,10 @@
 import type { NextRequest } from "next/server";
 import { handle, requireUser } from "@/lib/api";
-import { getObjectBytes } from "@/lib/r2";
+import { getObjectBytes } from "@/lib/storage";
 import { getOwnedImage } from "@/lib/sketchImages";
 
 /**
- * The picture itself, for the canvas. It goes through here (not a presigned bucket URL) so a sketch left open
+ * The picture itself, for the canvas. It goes through here (not a direct storage URL) so a sketch left open
  * never holds an expired link, and only the owner can load it. The browser may keep it: a library picture's file
  * never changes.
  */
@@ -13,7 +13,7 @@ export function GET(req: NextRequest, ctx: RouteContext<"/api/sketch-images/[id]
     const session = await requireUser({ onboarded: true });
     const { id } = await ctx.params;
     const doc = await getOwnedImage(session.userId, id);
-    const bytes = await getObjectBytes(doc.r2Key);
+    const bytes = await getObjectBytes(doc.storageKey);
     return new Response(Buffer.from(bytes), {
       headers: {
         "Content-Type": doc.mimeType,

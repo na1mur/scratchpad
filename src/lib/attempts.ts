@@ -1,9 +1,8 @@
 import "server-only";
 import { Types } from "mongoose";
 import { ApiError } from "@/lib/api";
-import type { VizSpec } from "@/lib/ai/schemas/vizSpec";
 import { connectDB } from "@/lib/db";
-import { r2Enabled, viewUrl } from "@/lib/r2";
+import { storageEnabled, viewUrl } from "@/lib/storage";
 import type { RunProgress } from "@/lib/runProgress";
 import { loadSpec } from "@/lib/specStorage";
 import type { Verdict } from "@/lib/verdicts";
@@ -36,12 +35,11 @@ export async function getOwnedAttempt(userId: string, attemptId: string): Promis
 }
 
 export function serializeAttemptSummary(a: AttemptDoc) {
-  const spec = a.vizSpec as VizSpec | undefined;
   return {
     id: String(a._id),
     version: a.version,
     status: a.status,
-    verdict: (spec?.summary.verdict ?? null) as Verdict | null,
+    verdict: (a.verdict ?? null) as Verdict | null,
     createdAt: a.createdAt.toISOString(),
   };
 }
@@ -58,13 +56,11 @@ export async function serializeAttempt(a: AttemptDoc, specVersion?: number) {
     problemId: String(a.problemId),
     pseudoCode: a.pseudoCode,
     idea: a.idea ?? "",
-    images: await Promise.all(
-      (a.images ?? []).map(async (img) => ({
-        r2Key: img.r2Key,
-        mimeType: img.mimeType,
-        url: r2Enabled ? await viewUrl(img.r2Key).catch(() => null) : null,
-      })),
-    ),
+    images: (a.images ?? []).map((img) => ({
+      storageKey: img.storageKey,
+      mimeType: img.mimeType,
+      url: storageEnabled ? viewUrl(img.storageKey) : null,
+    })),
     vizSpec,
     specVersion: index + 1,
     specVersions: versions.map((v, i) => ({ version: i + 1, createdAt: v.createdAt.toISOString(), reason: v.reason })),

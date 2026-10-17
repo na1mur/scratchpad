@@ -4,7 +4,7 @@ import { MAX_TEXT } from "@/lib/schemas/problems";
 export const IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
 
 export const attemptImageSchema = z.object({
-  r2Key: z.string().min(1).max(300),
+  storageKey: z.string().min(1).max(300),
   mimeType: z.enum(IMAGE_MIME_TYPES),
   extractedText: z.string().max(MAX_TEXT).optional(),
 });

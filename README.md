@@ -26,26 +26,15 @@ Without signing up you can see the visualizer at `/demo`, which plays four hand-
 
 Every variable is documented in [`.env.example`](.env.example): what it's for, whether it's required, and how to
 generate a value. Copy it to `.env.local` and fill it in. Only the database, the JWT and encryption secrets, and
-`APP_URL` are needed to run locally; email, R2 and Google login are optional extras. The server validates
+`APP_URL` are needed to run locally; email, Cloudinary and Google login are optional extras. The server validates
 everything at startup and refuses to start if a required value is missing.
 
-### Cloudflare R2 (optional)
+### Cloudinary (optional)
 
-Browsers upload with presigned PUT URLs. For viewing, either enable public access on the bucket and set
-`R2_PUBLIC_URL` (objects are then readable by anyone with the link; keys contain random UUIDs, and the `r2.dev` domain
-is rate-limited, so use a custom domain in production), or leave it unset and the app hands out short-lived presigned
-GET URLs from a private bucket. Either way the bucket needs a CORS rule allowing your app origin to PUT:
-
-```json
-[
-  {
-    "AllowedOrigins": ["http://localhost:3000"],
-    "AllowedMethods": ["PUT", "GET"],
-    "AllowedHeaders": ["Content-Type"],
-    "MaxAgeSeconds": 3600
-  }
-]
-```
+Uploads (notebook photos, profile photos, sketch pictures, visualizations) go to
+[Cloudinary](https://cloudinary.com) through the server, so there's no CORS rule to set. Create a free account and set
+`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET`. Files are stored with the `authenticated`
+delivery type, so they're only reachable through signed links the app generates.
 
 ## Deploying
 
@@ -64,9 +53,9 @@ Before or right after you click it:
    once you know it) and redeploy if you change it. Requests from any other origin are rejected.
 4. **Email.** Sign-up and password reset send codes over SMTP, so set `SMTP_USER` and `SMTP_PASS` (and `EMAIL_FROM`).
    In production, sending fails without them.
-5. **Optional.** R2 (notebook photos) and Google login can be added later in the project's
+5. **Optional.** Cloudinary (uploads) and Google login can be added later in the project's
    environment variable settings. For Google login, add `<APP_URL>/api/auth/google/callback` as an authorized redirect
-   URI. For R2, add your deployed origin to the bucket's CORS rule.
+   URI.
 
 You don't have to use Vercel. Scratchpad is a standard Next.js app, so it runs anywhere that can run Node 22+: build it
 with `yarn build` and start it with `yarn start`, on a platform of your choice or on your own server. It needs the same

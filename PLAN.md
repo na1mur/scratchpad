@@ -14,7 +14,7 @@ A web app where a learner pastes pseudo-code and their reasoning for a DSA probl
 - **Auth:** `jose` for JWT (works in middleware/edge and Node) and `bcryptjs` or `argon2` for password hashing.
 - **Animation:** `motion` (Framer Motion).
 - **Layout:** `d3-hierarchy` for tree layout. Use a simple circular layout or `dagre` for graphs.
-- **Storage:** `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner` for Cloudflare R2.
+- **Storage:** Cloudinary (`cloudinary`) for uploads.
 - **Sandbox:** `quickjs-emscripten` for the sandboxed trace execution described in section 8.
 - **Code editor:** optionally `@uiw/react-codemirror` with line numbers, so the visualization can highlight the active line. Otherwise use a shadcn Textarea with a line-number gutter.
 
@@ -28,10 +28,9 @@ JWT_ACCESS_SECRET=            # 32+ random bytes
 JWT_REFRESH_SECRET=           # different 32+ random bytes
 ENCRYPTION_KEY=               # 32 bytes, base64 (AES-256-GCM)
 ENCRYPTION_KEY_VERSION=1
-R2_ACCOUNT_ID=
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-R2_BUCKET=
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
 APP_URL=http://localhost:3000
 ```
 
@@ -64,7 +63,7 @@ src/
   lib/
     env.ts, db.ts, crypto.ts, auth/{jwt.ts,cookies.ts,session.ts,password.ts}
     ai/{providers.ts, prompts/*.ts, pipeline/*.ts, schemas/vizSpec.ts}
-    r2.ts, tags.ts, rateLimit.ts
+    storage.ts, tags.ts, rateLimit.ts
   models/ User.ts, RefreshToken.ts, Problem.ts, Attempt.ts, Message.ts
   middleware.ts   # named proxy.ts in Next.js 16+
 ```
@@ -134,7 +133,7 @@ Problem {
 Attempt {
   problemId, userId, version (1,2,3…),
   pseudoCode, idea,
-  images: [{ r2Key, mimeType, extractedText? }],
+  images: [{ storageKey, mimeType, extractedText? }],
   status: 'queued'|'extracting'|'understanding'|'tracing'|'diagnosing'|'done'|'error',
   understanding?: Understanding,       // stage 1 output
   vizSpec?: VizSpec,                   // stage 2 + 3 output
@@ -231,7 +230,7 @@ Constraints enforced in the prompt and validated in code:
 
 `POST /api/problems/[id]/attempts` creates an Attempt and runs the pipeline. It streams progress events to the client (SSE or the AI SDK's data stream) and updates `attempt.status` after each stage, so a page refresh can resume showing progress.
 
-**Stage 0: image to text (optional, before processing).** `/api/uploads/extract` sends the R2 image to the vision model. The prompt asks it to transcribe the handwritten pseudo-code and notes faithfully, preserving the user's mistakes and not fixing anything. The result is inserted into the textarea so the user can review and edit it. Never auto-submit the transcription.
+**Stage 0: image to text (optional, before processing).** `/api/uploads/extract` sends the stored image to the vision model. The prompt asks it to transcribe the handwritten pseudo-code and notes faithfully, preserving the user's mistakes and not fixing anything. The result is inserted into the textarea so the user can review and edit it. Never auto-submit the transcription.
 
 **Stage 1: understand.** A structured output call that returns:
 
@@ -273,11 +272,11 @@ The tutor never volunteers a solution, but a learner can ask for one from the wo
 - `/problems/[id]/solution`: the left pane has the statement, the version picker, the approach (complexity, key ideas, why it works, relation to the attempt) and the code; the right pane has the walkthrough (the Player, with "skip iteration / skip loop" and every step grouped by loop iteration), a line-by-line breakdown, and a chat about the solution.
 - The code is run in the sandbox like an attempt; if its result disagrees with the expected one it's re-solved once, and a remaining mismatch is shown to the learner.
 
-### 12. File storage (Cloudflare R2)
+### 12. File storage (Cloudinary)
 
 The client requests `POST /api/uploads/presign` with `{ problemId, mimeType, size }`. The server validates the type (png, jpg, or webp) and size (≤ 8 MB), then returns a presigned PUT URL. Object keys follow `users/{userId}/problems/{problemId}/{uuid}.{ext}`.
 
-Images are displayed through short-lived presigned GET URLs, and the bucket stays private. Visualization specs live in MongoDB. If a spec ever exceeds about 1 MB, store it in R2 under `.../specs/{attemptId}-v{n}.json` and save the key instead.
+Files are uploaded through the server as `authenticated` Cloudinary assets and displayed through signed URLs. Every visualization spec is stored as a raw JSON file under `.../specs/{attemptId}-v{n}.json` and the document keeps the key (`specKey`) plus the verdict; it falls back to inline in MongoDB only when storage isn't configured or an upload fails.
 
 ### 13. Pages and UI
 
@@ -331,7 +330,7 @@ Images are displayed through short-lived presigned GET URLs, and the bucket stay
 4. **Problems CRUD and list.** Build tag tabs, search, and pagination.
 5. **VizSpec schema and renderers.** Build all renderers and the Player using **hand-written fixture specs**: two-pointer on an array, BFS on a graph, recursion on a tree, and sliding window with a hashmap. Do this before any AI work. *Acceptance:* the fixtures animate smoothly.
 6. **AI pipeline.** Build stages 1–3, starting with the LLM-simulated fallback, then the QuickJS execution path. Add streaming progress, auto-tagging, and the guardrail.
-7. **R2 uploads and image extraction.**
+7. **Uploads and image extraction.**
 8. **Follow-up chat** with regeneration and spec versions.
 9. **Polish.** Add error states, empty states, mobile layout (stack the panes vertically), and cost/token display per attempt.
 

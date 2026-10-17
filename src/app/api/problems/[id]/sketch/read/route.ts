@@ -7,11 +7,11 @@ import { baseInstructions } from "@/lib/ai/prompts/system";
 import { getModel } from "@/lib/ai/providers";
 import { readImageUpload } from "@/lib/image-upload";
 import { getOwnedProblem } from "@/lib/problems";
-import { putObject, r2Enabled, viewUrl } from "@/lib/r2";
 import { rateLimits } from "@/lib/rateLimit";
 import { MAX_TEXT } from "@/lib/schemas/problems";
 import { EXTENSIONS, MAX_IMAGE_BYTES, MAX_SKETCH_TEXT, sketchReadingOutputSchema } from "@/lib/schemas/uploads";
 import type { SketchReading } from "@/lib/sketch/reading";
+import { putObject, storageEnabled, viewUrl } from "@/lib/storage";
 import { loadUser } from "@/lib/users";
 
 export const maxDuration = 120;
@@ -80,13 +80,13 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/problems/[id]/ske
     let image: SketchReading["image"] = null;
     let imageUrl: string | null = null;
     // Attaching the picture is a bonus: without storage, or over the upload limit, the reading still goes back.
-    if (r2Enabled && (await rateLimits.uploads().consume(session.userId)).ok) {
+    if (storageEnabled && (await rateLimits.uploads().consume(session.userId)).ok) {
       const key = `users/${session.userId}/problems/${String(problem._id)}/${randomUUID()}.${EXTENSIONS[type]}`;
       try {
-        await putObject(key, bytes, type);
+        await putObject(key, bytes);
         const extractedText = [pseudoCode, idea].filter((s) => s.trim()).join("\n\n").slice(0, MAX_TEXT);
-        image = { r2Key: key, mimeType: type, extractedText };
-        imageUrl = await viewUrl(key);
+        image = { storageKey: key, mimeType: type, extractedText };
+        imageUrl = viewUrl(key);
       } catch (err) {
         console.error("Couldn't store the sketch picture", err);
       }

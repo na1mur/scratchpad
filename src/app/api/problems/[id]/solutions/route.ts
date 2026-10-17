@@ -57,7 +57,7 @@ export function POST(req: NextRequest, ctx: RouteContext<"/api/problems/[id]/sol
     }
 
     const others = await Solution.find({ problemId: problem._id, userId: session.userId })
-      .select({ ...SOLUTION_SUMMARY_FIELDS, updatedAt: 1, specR2Key: 1, basedOnAttemptId: 1 })
+      .select({ ...SOLUTION_SUMMARY_FIELDS, updatedAt: 1, specKey: 1, basedOnAttemptId: 1 })
       .lean();
 
     // Solutions are kept, never regenerated: an attempt that already has one (done or still being written) gets it back.

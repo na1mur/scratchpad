@@ -15,7 +15,7 @@ const problemId = z.string().regex(/^[a-f\d]{24}$/i, "Invalid problem id");
 
 export const extractSchema = z.object({
   problemId,
-  r2Key: z.string().min(1).max(300),
+  storageKey: z.string().min(1).max(300),
   mimeType: z.enum(IMAGE_MIME_TYPES),
 });
 

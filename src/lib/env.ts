@@ -52,18 +52,11 @@ const envSchema = z.object({
   RATE_LIMIT_MESSAGES_PER_HOUR: perHour(30),
   ENCRYPTION_KEY: base64Key,
   ENCRYPTION_KEY_VERSION: z.coerce.number().int().positive().default(1),
-  // R2 is only needed for notebook image uploads. Leaving these empty disables
-  // uploads (the upload routes answer 503) instead of blocking the whole app.
-  R2_ACCOUNT_ID: z.string().optional().default(""),
-  R2_ACCESS_KEY_ID: z.string().optional().default(""),
-  R2_SECRET_ACCESS_KEY: z.string().optional().default(""),
-  R2_BUCKET: z.string().optional().default(""),
-  // Public base URL of the bucket (r2.dev subdomain or custom domain). When
-  // set, images are served from it; otherwise via short-lived presigned GETs.
-  R2_PUBLIC_URL: z
-    .union([z.url().transform((u) => u.replace(/\/+$/, "")), z.literal("")])
-    .optional()
-    .default(""),
+  // Cloudinary stores new uploads (notebook photos, avatars, sketch pictures, large specs). Leaving these
+  // empty disables uploads (the upload routes answer 503) instead of blocking the whole app.
+  CLOUDINARY_CLOUD_NAME: z.string().optional().default(""),
+  CLOUDINARY_API_KEY: z.string().optional().default(""),
+  CLOUDINARY_API_SECRET: z.string().optional().default(""),
   // Outgoing mail (verification and password-reset codes). Without SMTP_USER
   // and SMTP_PASS the codes are printed to the server console in development
   // and sending fails in production.
@@ -101,9 +94,10 @@ function loadEnv(): Env {
 
 export const env = loadEnv();
 
-export const r2Enabled = Boolean(
-  env.R2_ACCOUNT_ID && env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY && env.R2_BUCKET,
-);
+export const cloudinaryEnabled = Boolean(env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_API_KEY && env.CLOUDINARY_API_SECRET);
+
+/** Whether file uploads work at all. */
+export const storageEnabled = cloudinaryEnabled;
 
 export const emailEnabled = Boolean(env.SMTP_USER && env.SMTP_PASS);
 export const googleEnabled = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
