@@ -1,5 +1,6 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 import { PROVIDERS } from "@/lib/providers";
+import { VERDICTS } from "@/lib/verdicts";
 
 export const ATTEMPT_STATUSES = [
   "queued",
@@ -14,7 +15,7 @@ export type AttemptStatus = (typeof ATTEMPT_STATUSES)[number];
 
 const imageSchema = new Schema(
   {
-    r2Key: { type: String, required: true },
+    storageKey: { type: String, required: true },
     mimeType: { type: String, required: true },
     extractedText: { type: String, required: false },
   },
@@ -26,9 +27,9 @@ const specVersionSchema = new Schema(
     createdAt: { type: Date, default: Date.now, required: true },
     reason: { type: String, required: true },
     // Validated against vizSpecSchema before it is stored. Holds the spec
-    // inline, or `specR2Key` when it was too large and lives in R2.
+    // inline (only when file storage isn't configured or an upload failed), else `specKey`.
     vizSpec: { type: Schema.Types.Mixed, required: false },
-    specR2Key: { type: String, required: false },
+    specKey: { type: String, required: false },
   },
   // Keep empty objects such as `vars: {}` on a step with no variables yet, which the spec requires.
   // Subdocuments drop them by default, even in an update's `$set`.
@@ -47,8 +48,10 @@ const attemptSchema = new Schema(
     understanding: { type: Schema.Types.Mixed, required: false },
     // A RunProgress snapshot while the run is in progress (src/lib/runProgress.ts); removed when it's done.
     progress: { type: Schema.Types.Mixed, required: false },
+    // The first spec's verdict, kept here so listings don't have to load the spec from file storage.
+    verdict: { type: String, enum: VERDICTS, required: false },
     vizSpec: { type: Schema.Types.Mixed, required: false },
-    specR2Key: { type: String, required: false },
+    specKey: { type: String, required: false },
     specVersions: { type: [specVersionSchema], default: [] },
     traceMode: { type: String, enum: ["execution", "simulation"], required: false },
     model: {

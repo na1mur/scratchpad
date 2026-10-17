@@ -16,8 +16,8 @@ function sniffImageType(b: Uint8Array): ImageType | null {
 
 /**
  * Reads a multipart request carrying an image in its `file` field. The browser
- * posts the file to us and we put it in R2, so the bucket needs no CORS rules
- * and no presigned URLs. Returns the form too, for any other fields.
+ * posts the file to us and we put it in file storage, so the browser never talks
+ * to the storage provider. Returns the form too, for any other fields.
  */
 export async function readImageUpload(req: NextRequest, maxBytes: number) {
   const form = await req.formData().catch(() => null);

@@ -25,9 +25,9 @@ const solutionSchema = new Schema(
     status: { type: String, enum: SOLUTION_STATUSES, default: "queued", required: true },
     // Validated against solutionContentSchema before it is stored.
     content: { type: Schema.Types.Mixed, required: false },
-    // The walkthrough, as a VizSpec: inline, or `specR2Key` when it was too large and lives in R2.
+    // The walkthrough, as a VizSpec: in file storage under `specKey`, or inline when storage isn't configured or an upload failed.
     vizSpec: { type: Schema.Types.Mixed, required: false },
-    specR2Key: { type: String, required: false },
+    specKey: { type: String, required: false },
     traceMode: { type: String, enum: ["execution", "simulation"], required: false },
     model: {
       provider: { type: String, enum: PROVIDERS, required: true },

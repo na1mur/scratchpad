@@ -10,7 +10,7 @@ import { IMAGE_MIME_TYPES } from "@/lib/schemas/attempts";
 import { MAX_IMAGE_BYTES } from "@/lib/schemas/uploads";
 
 export type UploadedImage = {
-  r2Key: string;
+  storageKey: string;
   mimeType: (typeof IMAGE_MIME_TYPES)[number];
   extractedText?: string;
 };
@@ -18,7 +18,7 @@ export type UploadedImage = {
 export const MAX_IMAGES = 4;
 
 /**
- * Notebook photos: posted to our API, which stores them in R2 and then
+ * Notebook photos: posted to our API, which stores them in Cloudinary and then
  * transcribes them right away. The transcription is handed back through
  * `onExtracted` for the learner to review; nothing is submitted automatically.
  * Returns the header button and the thumbnail strip separately so they can sit
@@ -61,7 +61,7 @@ export function useNotebookUpload({
         body.append("file", file);
         body.append("problemId", problemId);
         const { key } = await api<{ key: string }>("/api/uploads/file", { method: "POST", body });
-        image = { r2Key: key, mimeType: file.type as UploadedImage["mimeType"] };
+        image = { storageKey: key, mimeType: file.type as UploadedImage["mimeType"] };
         setPreviews((p) => ({ ...p, [key]: URL.createObjectURL(file) }));
         next = [...next, image];
         onChange(next);
@@ -73,9 +73,9 @@ export function useNotebookUpload({
       try {
         const result = await api<{ pseudoCode: string; notes: string }>("/api/uploads/extract", {
           method: "POST",
-          body: { problemId, r2Key: image.r2Key, mimeType: image.mimeType },
+          body: { problemId, storageKey: image.storageKey, mimeType: image.mimeType },
         });
-        next = next.map((i) => (i.r2Key === image.r2Key ? { ...i, extractedText: result.pseudoCode } : i));
+        next = next.map((i) => (i.storageKey === image.storageKey ? { ...i, extractedText: result.pseudoCode } : i));
         onChange(next);
         onExtracted(result);
         toast.success("Transcribed. Check it against your notebook before processing.");
@@ -141,10 +141,10 @@ export function useNotebookUpload({
     images.length > 0 ? (
       <ul className="flex flex-wrap gap-2">
         {images.map((img) => (
-          <li key={img.r2Key} className="relative size-14 overflow-hidden rounded-md border bg-muted/30">
-            {previews[img.r2Key] ? (
+          <li key={img.storageKey} className="relative size-14 overflow-hidden rounded-md border bg-muted/30">
+            {previews[img.storageKey] ? (
               // eslint-disable-next-line @next/next/no-img-element -- local object URL preview
-              <img src={previews[img.r2Key]} alt="Notebook page" className="size-full object-cover" />
+              <img src={previews[img.storageKey]} alt="Notebook page" className="size-full object-cover" />
             ) : (
               <div className="flex size-full items-center justify-center text-xs text-muted-foreground">image</div>
             )}
@@ -155,7 +155,7 @@ export function useNotebookUpload({
               className="absolute top-0.5 right-0.5 size-4 rounded-full"
               aria-label="Remove photo"
               disabled={disabled || busy !== null}
-              onClick={() => onChange(images.filter((i) => i.r2Key !== img.r2Key))}
+              onClick={() => onChange(images.filter((i) => i.storageKey !== img.storageKey))}
             >
               <XIcon className="size-3" />
             </Button>
@@ -165,7 +165,7 @@ export function useNotebookUpload({
     ) : null;
 
   /** Shows a picture that was attached some other way (a sketch read on the sketch page). */
-  const addPreview = (r2Key: string, url: string) => setPreviews((p) => ({ ...p, [r2Key]: url }));
+  const addPreview = (storageKey: string, url: string) => setPreviews((p) => ({ ...p, [storageKey]: url }));
 
   return { button, thumbnails, addPreview };
 }

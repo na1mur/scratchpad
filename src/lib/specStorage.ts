@@ -1,12 +1,13 @@
 import "server-only";
 import { upgradeSpec, type VizSpec, type VizSpecV1 } from "@/lib/ai/schemas/vizSpec";
-import { getJson, putJson, r2Enabled } from "@/lib/r2";
+import { getJson, putJson, storageEnabled } from "@/lib/storage";
 
-const INLINE_LIMIT_BYTES = 1024 * 1024;
+export type StoredSpec = { vizSpec: VizSpec; specKey?: undefined } | { vizSpec?: undefined; specKey: string };
 
-export type StoredSpec = { vizSpec: VizSpec; specR2Key?: undefined } | { vizSpec?: undefined; specR2Key: string };
-
-/** Specs live in Mongo; one that grows past ~1 MB moves to R2 when it's configured. */
+/**
+ * Every spec goes to file storage (Cloudinary), keeping the database small. Only when storage isn't
+ * configured, or an upload fails, does it stay inline in Mongo, so a run still finishes.
+ */
 export async function storeSpec(
   userId: string,
   problemId: string,
@@ -14,17 +15,21 @@ export async function storeSpec(
   version: number,
   spec: VizSpec,
 ): Promise<StoredSpec> {
-  const size = Buffer.byteLength(JSON.stringify(spec));
-  if (size <= INLINE_LIMIT_BYTES || !r2Enabled) return { vizSpec: spec };
+  if (!storageEnabled) return { vizSpec: spec };
   const key = `users/${userId}/problems/${problemId}/specs/${attemptId}-v${version}.json`;
-  await putJson(key, spec);
-  return { specR2Key: key };
+  try {
+    await putJson(key, spec);
+    return { specKey: key };
+  } catch (err) {
+    console.error("[specs] upload failed, keeping the spec in the database:", err instanceof Error ? err.message : err);
+    return { vizSpec: spec };
+  }
 }
 
 /** Specs from before test cases existed come back as a single case. */
-export async function loadSpec(stored: { vizSpec?: unknown; specR2Key?: string | null }): Promise<VizSpec | null> {
+export async function loadSpec(stored: { vizSpec?: unknown; specKey?: string | null }): Promise<VizSpec | null> {
   if (stored.vizSpec) return restoreEmptyObjects(upgradeSpec(stored.vizSpec as VizSpec | VizSpecV1));
-  if (stored.specR2Key) return upgradeSpec(await getJson<VizSpec | VizSpecV1>(stored.specR2Key));
+  if (stored.specKey) return upgradeSpec(await getJson<VizSpec | VizSpecV1>(stored.specKey));
   return null;
 }
 

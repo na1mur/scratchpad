@@ -4,7 +4,6 @@ import { z } from "zod";
 import { ApiError, handle, requireUser } from "@/lib/api";
 import { connectDB } from "@/lib/db";
 import { readImageUpload } from "@/lib/image-upload";
-import { deleteKeys, putObject, r2Enabled } from "@/lib/r2";
 import { rateLimits } from "@/lib/rateLimit";
 import { EXTENSIONS } from "@/lib/schemas/uploads";
 import {
@@ -14,6 +13,7 @@ import {
   MAX_LIBRARY_IMAGE_SIDE,
 } from "@/lib/sketch/images";
 import { listImages, serializeImage, sketchImageKeyPrefix } from "@/lib/sketchImages";
+import { deleteKeys, putObject, storageEnabled } from "@/lib/storage";
 import { SketchImage } from "@/models/SketchImage";
 
 const fieldsSchema = z.object({
@@ -26,7 +26,7 @@ const fieldsSchema = z.object({
 export function GET(req: NextRequest) {
   return handle(req, async () => {
     const session = await requireUser({ onboarded: true });
-    return NextResponse.json({ images: await listImages(session.userId), limit: MAX_LIBRARY_IMAGES, enabled: r2Enabled });
+    return NextResponse.json({ images: await listImages(session.userId), limit: MAX_LIBRARY_IMAGES, enabled: storageEnabled });
   });
 }
 
@@ -34,7 +34,7 @@ export function GET(req: NextRequest) {
 export function POST(req: NextRequest) {
   return handle(req, async () => {
     const session = await requireUser({ onboarded: true });
-    if (!r2Enabled) throw new ApiError(503, "uploads_disabled", "Image uploads aren't configured on this server.");
+    if (!storageEnabled) throw new ApiError(503, "uploads_disabled", "Image uploads aren't configured on this server.");
     const limit = await rateLimits.sketchImages().consume(session.userId);
     if (!limit.ok) throw new ApiError(429, "rate_limited", "Too many uploads. Try again later.");
 
@@ -48,12 +48,12 @@ export function POST(req: NextRequest) {
     }
 
     const key = `${sketchImageKeyPrefix(session.userId)}${randomUUID()}.${EXTENSIONS[type]}`;
-    await putObject(key, bytes, type);
+    await putObject(key, bytes);
     try {
       const doc = await SketchImage.create({
         userId: session.userId,
         name: parsed.data.name || "Image",
-        r2Key: key,
+        storageKey: key,
         mimeType: type,
         width: parsed.data.width,
         height: parsed.data.height,

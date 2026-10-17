@@ -15,7 +15,7 @@ type Busy = "upload" | "remove" | null;
 
 /**
  * Profile photo with upload and remove. The picked image is square-cropped and
- * shrunk in the browser and posted to our API, which stores it in R2 (so the
+ * shrunk in the browser and posted to our API, which stores it in Cloudinary (so the
  * bucket needs no CORS rules), swaps it in and deletes the old one.
  */
 export function AvatarUploader({

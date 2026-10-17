@@ -1,7 +1,7 @@
 import { MAX_IMAGE_NAME_LENGTH } from "./types";
 
 /**
- * The learner's personal image library for the sketch canvas: pictures uploaded once (kept in R2, listed in the
+ * The learner's personal image library for the sketch canvas: pictures uploaded once (kept in Cloudinary, listed in the
  * `SketchImage` collection) and dropped onto any sketch as `image` elements. Safe to import on the client.
  */
 

@@ -450,7 +450,7 @@ export function Workspace({
     const images = (form.getValues("images") ?? []) as UploadedImage[];
     if (reading.image && images.length < MAX_IMAGES) {
       form.setValue("images", [...images, reading.image], { shouldDirty: true });
-      if (reading.imageUrl) notebook.addPreview(reading.image.r2Key, reading.imageUrl);
+      if (reading.imageUrl) notebook.addPreview(reading.image.storageKey, reading.imageUrl);
     }
     if (reading.pseudoCode.trim()) toast.success("Filled in from your sketch. Check it before processing.");
     else toast.success("What your sketch shows is in Idea / explanation. Add your pseudo-code, then process.");
@@ -778,8 +778,8 @@ export function Workspace({
             <div className="grid grid-cols-2 gap-2">
               {viewing.images.map((img) =>
                 img.url ? (
-                  <a key={img.r2Key} href={img.url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-lg border">
-                    {/* eslint-disable-next-line @next/next/no-img-element -- public R2 URL */}
+                  <a key={img.storageKey} href={img.url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-lg border">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- storage URL */}
                     <img src={img.url} alt="Notebook page" className="aspect-[4/3] w-full object-cover" />
                   </a>
                 ) : null,

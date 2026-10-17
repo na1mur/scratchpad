@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { resolveAvatarUrl } from "@/lib/avatar";
-import { r2Enabled } from "@/lib/env";
+import { storageEnabled } from "@/lib/env";
 import { recentProblems } from "@/lib/problems";
 import { getPageUser } from "@/lib/users";
 import { isAdmin } from "@/models/User";
@@ -42,7 +42,7 @@ export default async function ProfilePage() {
                 avatarUrl={avatarUrl}
                 hasUpload={Boolean(user.avatarKey)}
                 hasGoogle={Boolean(user.googlePicture)}
-                uploadsEnabled={r2Enabled}
+                uploadsEnabled={storageEnabled}
               />
               <ProfileForm name={user.name ?? null} />
             </CardContent>
