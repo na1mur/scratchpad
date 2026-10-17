@@ -52,6 +52,7 @@ import { ElementToolbar } from "./ElementToolbar";
 import { LIBRARY_IMAGE_MIME, libraryImage, placeImage, uploadImages } from "./libraryStore";
 import { PALETTE_PART_MIME, draggedPart, runPart, setDraggedPart } from "./partCommands";
 import { sketchFonts } from "./fonts";
+import { LaserLayer, LaserTrail } from "./laser";
 import { useSketch, type Camera, type ShapeTool, type SketchStore, type Tool } from "./store";
 import { StylePanel } from "./StylePanel";
 
@@ -73,6 +74,7 @@ type Gesture =
   | { kind: "aim"; pointerId: string }
   | { kind: "link"; fromId: string }
   | { kind: "draw"; points: [number, number, number][] }
+  | { kind: "laser" }
   /**
    * Drawing a shape or line from `origin`; `id` and `key` stay the same across the preview and the commit. An
    * arrow's ends attach to the elements they start and end on (`startBind`, `endBind`).
@@ -146,6 +148,7 @@ const TOOL_KEYS: Record<string, Tool> = {
   p: "pointer",
   l: "link",
   d: "freehand",
+  k: "laser",
   n: "note",
   t: "text",
   // Shapes: mnemonic letters where they're free, and Excalidraw's number keys.
@@ -167,6 +170,7 @@ const CURSOR: Record<Tool, string> = {
   pointer: "cursor-crosshair",
   link: "cursor-crosshair",
   freehand: "cursor-crosshair",
+  laser: "cursor-crosshair",
   note: "cursor-copy",
   text: "cursor-text",
   rectangle: "cursor-crosshair",
@@ -275,6 +279,12 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
     setSpaceHeld(down);
   };
   const touches = useRef(new Map<number, Point>());
+  /** The laser pointer's fading trail: drawn on its own layer, never part of the sketch. */
+  const [laser] = useState(() => new LaserTrail());
+  const laserAt = (clientX: number, clientY: number) => {
+    const rect = ref.current!.getBoundingClientRect();
+    laser.add(clientX - rect.left, clientY - rect.top);
+  };
   /** What a palette part dragged over the canvas, or a pointer's name being dragged, would attach to. */
   const [dropShape, setDropShape] = useState<Shape | null>(null);
   const showDropShape = (shape: Shape | null) => {
@@ -433,6 +443,10 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
         store.setOverlay({ kind: "freehand", points });
         return;
       }
+      case "laser":
+        gesture.current = { kind: "laser" };
+        laserAt(e.clientX, e.clientY);
+        return;
       case "note":
       case "text": {
         const el = createElement(
@@ -542,6 +556,12 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
         if (Math.hypot(p.x - last[0], p.y - last[1]) < 1 / st.camera.zoom) return;
         g.points = [...g.points, [p.x, p.y, e.pressure || 0.5]];
         store.setOverlay({ kind: "freehand", points: g.points });
+        return;
+      }
+      case "laser": {
+        // Every sample the browser gathered since the last event, so quick strokes stay smooth.
+        const events = e.nativeEvent.getCoalescedEvents?.() ?? [];
+        for (const c of events.length ? events : [e.nativeEvent]) laserAt(c.clientX, c.clientY);
         return;
       }
       case "shape": {
@@ -695,6 +715,9 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
         }
         return;
       }
+      case "laser":
+        laser.release();
+        return;
       case "pan":
         return;
     }
@@ -996,10 +1019,11 @@ export function SketchCanvas({ store, readOnly }: { store: SketchStore; readOnly
 
       {!readOnly && !drag && !s.editing && selected.length === 1 && <ElementToolbar store={store} element={selected[0]} />}
       {!readOnly && <StylePanel store={store} />}
+      <LaserLayer trail={laser} />
 
       <p id="sketch-canvas-help" className="sr-only">
         Tab moves between elements, Enter edits the selected one, arrow keys move it, Delete removes it. V selects, H pans, P adds a
-        pointer, L links nodes, D draws, N adds a note, T adds text. R draws a rectangle, U a rounded rectangle, 3 a diamond, O an
+        pointer, L links nodes, D draws, K holds a laser pointer whose trail fades, N adds a note, T adds text. R draws a rectangle, U a rounded rectangle, 3 a diamond, O an
         ellipse, A an arrow, I a line; Enter on a shape writes in it. An arrow or line drawn from one element to another stays
         attached to both; hold Control to leave its ends free. Changes save every 30 seconds and when you leave; Control S saves now.
       </p>

@@ -19,7 +19,7 @@ import type { SketchElement } from "@/lib/sketch/types";
  * with the whole sketch, which is merged back by version.
  */
 
-export type Tool = "select" | "hand" | "pointer" | "link" | "freehand" | "note" | "text" | ShapeTool;
+export type Tool = "select" | "hand" | "pointer" | "link" | "freehand" | "laser" | "note" | "text" | ShapeTool;
 
 /** Tools that draw a free shape or line by dragging. */
 export const SHAPE_TOOLS = ["rectangle", "rounded", "diamond", "ellipse", "arrow", "line"] as const;

@@ -14,6 +14,7 @@ import {
   Trash2Icon,
   TypeIcon,
   Undo2Icon,
+  WandSparklesIcon,
   ZoomInIcon,
   ZoomOutIcon,
   type LucideIcon,
@@ -37,6 +38,7 @@ const TOOLS: { tool: Tool; label: string; hint?: string; key: string; icon: Luci
   { tool: "pointer", label: "Pointer", hint: "click a cell or node, or drag to one", key: "P", icon: ArrowUpRightIcon },
   { tool: "link", label: "Link", hint: "drag from a node to another, or to empty space for null", key: "L", icon: SplineIcon },
   { tool: "freehand", label: "Draw", key: "D", icon: PencilIcon },
+  { tool: "laser", label: "Laser", hint: "hold and drag to point at things; the trail fades and nothing is saved", key: "K", icon: WandSparklesIcon },
   { tool: "note", label: "Note", key: "N", icon: StickyNoteIcon },
   { tool: "text", label: "Text", key: "T", icon: TypeIcon },
 ];
