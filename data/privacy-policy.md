@@ -21,7 +21,7 @@ This policy explains what information Scratchpad collects, why, who it is shared
 
 - **Problem details from your link.** When you add a link to a problem, we fetch the page and keep the text we find (and a short list of known solutions, see [Who we share information with](#4-who-we-share-information-with)) with the problem so the AI can use it.
 - **Test cases and checks.** For each problem, the AI you chose generates tags, a set of fixed test cases, and a reference solution used only to check answers. They are stored with the problem. The reference solution is never shown to you or to anyone you share with.
-- **Analyses and solutions.** The step-by-step walkthroughs, diagnoses, hints and worked solutions produced for your attempts, including how many AI tokens each run used.
+- **Analyses, solutions and breakdowns.** The step-by-step walkthroughs, diagnoses, hints and worked solutions produced for your attempts, and the breakdown slides you ask for on a problem, including how many AI tokens each run used.
 - **Activity.** The activity calendar and streaks on your profile are worked out from the dates of your own attempts. Your browser sends its time zone so that a day ends where yours does; we do not store it.
 
 ### Information from Google
@@ -39,7 +39,7 @@ If you choose **Continue with Google**, Google sends us your name, email address
 We use your information to:
 
 - create and secure your account, verify your email address, and send you sign-in and password-reset codes;
-- run the features you ask for, including reading the statement from a problem link, building test cases, analysing your attempts, generating hints, walkthroughs and worked solutions, answering your chat messages, and reading your notebook photos and sketches;
+- run the features you ask for, including reading the statement from a problem link, building test cases, analysing your attempts, generating hints, walkthroughs, worked solutions and breakdowns, answering your chat messages, and reading your notebook photos and sketches;
 - show your activity calendar and streaks;
 - let you share an attempt or solution by link, if you choose to (see [Who we share information with](#4-who-we-share-information-with));
 - remember your settings;
@@ -68,7 +68,7 @@ Scratchpad relies on a few service providers to work. They receive only what eac
 - **The AI provider you choose** (for example OpenAI, Anthropic, Google, xAI, DeepSeek, Mistral, Groq, Together AI, or OpenRouter). To produce a result, we send your problem (with the text of any page you linked), your attempt and notes, your chat messages, and any notebook photo to the provider and model you selected, using your own key. When you use **Draft an attempt** on the sketch canvas, we send a PNG picture of your sketch and a text list of its elements to your chosen vision model. How that provider handles the data is governed by your agreement with them and their privacy policy. Please choose a provider you are comfortable with and do not submit anything you would not want to share with it.
 - **OpenRouter**, only if you choose to connect through it. You are sent to OpenRouter to approve access, and it returns a key to Scratchpad.
 - **Hosting and database providers.** The app runs on Vercel, and account and content data is stored in a MongoDB database.
-- **Cloudinary**, which stores the files you upload or that Scratchpad makes for you: notebook photos, your profile photo, pictures in your image library, pictures made from your sketches, and the visualization files (JSON) behind your walkthroughs and solutions. They are stored as private files that can only be opened through signed links.
+- **Cloudinary**, which stores the files you upload or that Scratchpad makes for you: notebook photos, your profile photo, pictures in your image library, pictures made from your sketches, and the visualization files (JSON) behind your walkthroughs, solutions and breakdowns. They are stored as private files that can only be opened through signed links.
 - **Email delivery.** We send verification and password-reset emails over SMTP (currently through Gmail), so your email address and the message pass through that service.
 - **Websites you link.** When you enter a problem link, our server fetches that page, both to show you a preview of the statement before the problem exists and to keep its text with the problem. Depending on the address this is LeetCode, Codeforces, AtCoder, GeeksforGeeks, CodeChef, Naukri Code360 (Coding Ninjas), HackerRank, or any other public web page. The site sees a request from our server for the problem named in your link, not your name, email or account. We also ask LeetCode for a LeetCode problem's function signature when we build its test cases.
 - **Reference lookups.** To give the AI a known solution for comparison, Scratchpad may fetch the public [doocs/leetcode](https://github.com/doocs/leetcode) repository on GitHub for a LeetCode problem or, if you turned on web search, run a search through Tavily made with your own Tavily API key (so it counts against your Tavily account). A search sends only the problem title, the website name and the programming language, not your name, email or your own work.
@@ -83,7 +83,7 @@ Scratchpad relies on a few service providers to work. They receive only what eac
 - Sign-in sessions expire automatically (7 days after last use by default) and are removed from our database once expired.
 - Email verification and password-reset codes expire after 10 minutes and are deleted shortly afterwards.
 - When you replace a profile photo, the previous one is deleted.
-- When you delete a problem, its attempts, solutions, chat messages, sketch, share links, fetched page text, test cases and the files stored for them (notebook photos and visualization files) are deleted with it. Deleting a single attempt or solution removes its chat, its share link and its files in the same way.
+- When you delete a problem, its attempts, solutions, breakdown, chat messages, sketch, share links, fetched page text, test cases and the files stored for them (notebook photos and visualization files) are deleted with it. Deleting a single attempt or solution removes its chat, its share link and its files in the same way, and building a breakdown again replaces the old one.
 - Pictures in your image library are separate from any one problem and stay until you delete them. Deleting one removes the file; sketches that used it show a placeholder instead.
 - Unsharing a link deletes it at once. Copies made by someone who forked the problem before then stay in their account.
 - Deleting a saved API key removes it. If it was the key in use, Scratchpad stops using it.

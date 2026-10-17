@@ -13,6 +13,7 @@ import {
   CpuIcon,
   EraserIcon,
   InfoIcon,
+  Loader2Icon,
   LockIcon,
   PencilRulerIcon,
   PlayIcon,
@@ -50,6 +51,7 @@ import { LoadingButton } from "@/components/loading-button";
 import { ShareButton } from "@/components/share/share-button";
 import { FixAttemptButton } from "@/components/solution/FixAttemptButton";
 import { SolutionButton } from "@/components/solution/SolutionButton";
+import { LessonButton } from "@/components/lesson/LessonButton";
 import { ChangeModelLink } from "@/components/workspace/ChangeModelLink";
 import { ChatDock, chatOnSide, splitSizes, useChatDock } from "@/components/workspace/ChatDock";
 import { DeleteAttemptButton } from "@/components/workspace/DeleteAttemptButton";
@@ -66,7 +68,7 @@ import type { AttemptDetail, AttemptSummary } from "@/lib/attempts";
 import { ApiClientError, api, apiRaw, toApiError } from "@/lib/fetcher";
 import type { ProblemDetail } from "@/lib/problems";
 import { CodeRunner } from "./CodeRunner";
-import { TestCases } from "./TestCases";
+import { TestCases, useProblemHarness } from "./TestCases";
 import { starterCode } from "@/lib/runner/entry";
 import { isRunLanguage } from "@/lib/runner/protocol";
 import { PROVIDER_LABELS, type ProviderId } from "@/lib/providers";
@@ -141,6 +143,7 @@ export function Workspace({
   aiModel,
   uploadsEnabled,
   hasSolution,
+  hasLesson,
   chatLayout,
   toursSeen,
 }: {
@@ -153,6 +156,8 @@ export function Workspace({
   uploadsEnabled: boolean;
   /** Whether a solution exists (or is being written), so the button opens it instead of asking first. */
   hasSolution: boolean;
+  /** Whether a lesson exists (or is being built), so the button opens it instead of starting one. */
+  hasLesson: boolean;
   /** The learner's saved choice of where the chat sits. */
   chatLayout: ChatLayout;
   /** First-run tours the learner has already been shown. */
@@ -482,9 +487,12 @@ export function Workspace({
 
   // First time on a problem: the form. First finished analysis: the results.
   useTour("workspace", { seen: toursSeen, ready: mode === "new" && !running && !confirmingNew });
-  // Playground needs a language the browser can run and the problem's test cases.
-  const harness = problem.harness;
-  const runnable = isRunLanguage(problem.language) && harness.status === "ready" ? { language: problem.language, view: harness } : null;
+  // Playground needs a language the browser can run and the problem's test cases. A new problem's cases are
+  // still being prepared, so the button waits for them (followed here) instead of hiding until a reload.
+  const { harness, pending: preparingCases } = useProblemHarness(problem.id, problem.harness);
+  const canPlay = isRunLanguage(problem.language);
+  const runnable =
+    isRunLanguage(problem.language) && harness.status === "ready" ? { language: problem.language, view: harness } : null;
 
   // Playground is there from the start, beside the title. It opens the code the visualization shows once an
   // analysis has it (the completed code, added lines included), the attempt as written before that, and while
@@ -585,6 +593,19 @@ export function Workspace({
               Playground
             </Button>
           )}
+          {!runner && canPlay && preparingCases && (
+            <Button
+              variant="pen"
+              className="shadow-sm ring-3 ring-pen-red/25"
+              disabled
+              title="The test cases are being prepared; the Playground opens as soon as they're ready"
+              aria-label="Playground (preparing test cases)"
+            >
+              <Loader2Icon className="animate-spin" />
+              Playground
+            </Button>
+          )}
+          <LessonButton problemId={problem.id} problemSlug={problem.slug} hasLesson={hasLesson} canGenerate={canRun} />
           <span data-tour="solution">
             <SolutionButton
               problemId={problem.id}
@@ -601,7 +622,7 @@ export function Workspace({
             {problem.statement}
           </pre>
           <div className="mt-3">
-            <TestCases problemId={problem.id} initial={problem.harness} language={problem.language} />
+            <TestCases harness={harness} pending={preparingCases} language={problem.language} />
           </div>
         </CollapsibleContent>
       </Collapsible>

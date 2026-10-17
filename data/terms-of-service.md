@@ -6,7 +6,7 @@ Welcome to Scratchpad. These Terms of Service ("Terms") govern your use of the S
 
 ## 1. What Scratchpad is
 
-Scratchpad is a learning tool for data structures and algorithms. You submit pseudo-code, reasoning, sketches, or photos of your notes, and the Service uses AI models to trace your approach, point out where it breaks, give hints, and, when you ask, show worked solutions. It also lets you run code in your browser on test cases and, if you choose, share an attempt or solution by link. The Service is provided for personal, educational use.
+Scratchpad is a learning tool for data structures and algorithms. You submit pseudo-code, reasoning, sketches, or photos of your notes, and the Service uses AI models to trace your approach, point out where it breaks, give hints, and, when you ask, show worked solutions and breakdowns (slides on how to approach a problem). It also lets you run code in your browser on test cases and, if you choose, share an attempt or solution by link. The Service is provided for personal, educational use.
 
 ## 2. Your account
 
@@ -34,7 +34,7 @@ Problem statements you take from other websites, such as coding-practice sites, 
 
 ## 5. AI-generated output
 
-Scratchpad's traces, hints, explanations, test cases and solutions are produced by AI models and by code that runs your approach on sample inputs. The test cases and their expected answers are generated and checked automatically, so they can be wrong too, and a passing result does not prove your code is correct. All of it can be wrong, incomplete or misleading. Treat them as a study aid, not as an authority, and check important results yourself. Hints are designed not to reveal full solutions, but we cannot guarantee that they never do. Worked solutions may draw on public reference solutions, and the page credits those sources where it applies.
+Scratchpad's traces, hints, explanations, test cases, solutions and breakdowns are produced by AI models and by code that runs your approach on sample inputs. The test cases and their expected answers are generated and checked automatically, so they can be wrong too, and a passing result does not prove your code is correct. All of it can be wrong, incomplete or misleading. Treat them as a study aid, not as an authority, and check important results yourself. Hints are designed not to reveal full solutions, but we cannot guarantee that they never do. Worked solutions and breakdowns explain an approach on purpose, because you ask for them. Worked solutions may draw on public reference solutions, and the page credits those sources where it applies.
 
 Scratchpad is not affiliated with, endorsed by, or sponsored by LeetCode, GitHub, Google, OpenRouter, any website you link problems from, or any AI provider.
 

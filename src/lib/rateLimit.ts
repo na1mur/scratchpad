@@ -68,6 +68,8 @@ export const rateLimits = {
   attempts: () => configured("attempts", env.RATE_LIMIT_ATTEMPTS_PER_HOUR),
   messages: () => configured("messages", env.RATE_LIMIT_MESSAGES_PER_HOUR),
   solutions: () => configured("solutions", env.RATE_LIMIT_SOLUTIONS_PER_HOUR),
+  // A lesson costs about what a solution does, so it shares that cap (counted separately).
+  lessons: () => configured("lessons", env.RATE_LIMIT_SOLUTIONS_PER_HOUR),
   providerProbe: () => limiter("providerProbe", 30, 15 * 60_000),
   // Statements fetched from a problem link while creating a problem (a server-side request per try).
   statementLookups: () => limiter("statementLookups", 30, 15 * 60_000),

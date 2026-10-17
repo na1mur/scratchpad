@@ -20,10 +20,10 @@ const COMPARE_NOTES: Partial<Record<CompareMode, string>> = {
 };
 
 /**
- * The problem's fixed test cases, which every attempt runs on. While they're being prepared (just after
- * creating or editing the problem, or on first visiting an older one), polls until they're ready.
+ * The problem's harness. While its test cases are being prepared (just after creating or editing the
+ * problem, or on first visiting an older one), polls until they're ready. `pending` is true meanwhile.
  */
-export function TestCases({ problemId, initial, language }: { problemId: string; initial: HarnessView; language: string }) {
+export function useProblemHarness(problemId: string, initial: HarnessView): { harness: HarnessView; pending: boolean } {
   const [harness, setHarness] = useState(initial);
   // A fresh server render (e.g. after editing the problem) replaces what polling found.
   const [shown, setShown] = useState(initial);
@@ -56,6 +56,11 @@ export function TestCases({ problemId, initial, language }: { problemId: string;
     };
   }, [pending, problemId]);
 
+  return { harness, pending };
+}
+
+/** The problem's fixed test cases, which every attempt runs on (from `useProblemHarness()`). */
+export function TestCases({ harness, pending, language }: { harness: HarnessView; pending: boolean; language: string }) {
   if (pending) {
     return (
       <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
