@@ -12,6 +12,7 @@ import { landingFonts } from "@/components/landing/fonts";
 import { LandingHeader } from "@/components/landing/landing-header";
 import { Highlight, MotionRoot, WordHeading } from "@/components/landing/motion";
 import { NotebookTranscript } from "@/components/landing/notebook-transcript";
+import { BreakdownSpecimen } from "@/components/landing/breakdown-specimen";
 import { ScrollToTop } from "@/components/landing/scroll-to-top";
 import { SketchSpecimen } from "@/components/landing/sketch-specimen";
 import { TestRunSpecimen } from "@/components/landing/test-run-specimen";
@@ -225,6 +226,28 @@ export default function Home() {
         </section>
 
         <section>
+          <div className={cn(container, "grid items-center gap-10 py-24 lg:grid-cols-[7fr_5fr] lg:gap-16 lg:py-36")}>
+            <motion.div {...reveal()} className="flex flex-col gap-5 lg:order-2">
+              <h2 className={cn(heading, "text-balance")}>
+                Don&apos;t know where to start? <Highlight>Get a breakdown</Highlight>.
+              </h2>
+              <p className="max-w-md text-lg leading-7 text-ink/75">
+                Breakdown turns a problem into a short set of slides: what it asks, why the obvious way is slow, the
+                idea that unlocks it, and a plan in plain words. There&apos;s no code on any of them.
+              </p>
+              <p className="max-w-md text-lg leading-7 text-ink/75">
+                The pictures come from running a correct solution on the problem&apos;s own examples, so every state you
+                watch is real. It stops for you to try the idea yourself, and asks you to predict the next move before
+                showing it.
+              </p>
+            </motion.div>
+            <motion.div {...reveal(0.12)} className="min-w-0 lg:order-1">
+              <BreakdownSpecimen />
+            </motion.div>
+          </div>
+        </section>
+
+        <section className="bg-sheet">
           <div className={cn(container, "py-24 lg:py-36")}>
             <motion.div {...reveal()} className="mb-12 flex max-w-3xl flex-col gap-5">
               <h2 className={cn(heading, "text-balance")}>Start from <Highlight>the page in front of you</Highlight>.</h2>
@@ -239,7 +262,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="bg-sheet">
+        <section>
           <div className={cn(container, "grid gap-12 py-24 lg:grid-cols-2 lg:gap-0 lg:py-36")}>
             <motion.div {...reveal()} className="flex flex-col gap-6 lg:border-r lg:border-ink/15 lg:pr-16">
               <h2 className={heading}>Explained in <Highlight>your language</Highlight>.</h2>
@@ -269,7 +292,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section>
+        <section className="bg-sheet">
           <div className={cn(container, "grid gap-10 py-24 lg:grid-cols-[5fr_7fr] lg:gap-16 lg:py-36")}>
             <motion.h2 {...reveal()} className={cn(heading, "text-balance lg:sticky lg:top-8 lg:self-start")}>
               Small things that keep you practising.
