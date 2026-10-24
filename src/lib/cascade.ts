@@ -3,7 +3,6 @@ import type { Types } from "mongoose";
 import { serializeAttemptSummary } from "@/lib/attempts";
 import { deleteKeys } from "@/lib/storage";
 import { Attempt } from "@/models/Attempt";
-import { Lesson } from "@/models/Lesson";
 import { Message } from "@/models/Message";
 import { Problem } from "@/models/Problem";
 import { Share } from "@/models/Share";
@@ -35,19 +34,14 @@ async function cleanupFiles(keys: string[]) {
 export async function deleteProblemCascade(userId: string, problemId: Types.ObjectId) {
   const attempts = await Attempt.find({ problemId, userId }).select(STORED_FILE_FIELDS).lean();
   const solutions = await Solution.find({ problemId, userId }).select({ specKey: 1 }).lean();
-  const lessons = await Lesson.find({ problemId, userId }).select({ specKey: 1 }).lean();
   await Message.deleteMany({ attemptId: { $in: attempts.map((a) => a._id) }, userId });
   await Message.deleteMany({ solutionId: { $in: solutions.map((s) => s._id) }, userId });
   await Attempt.deleteMany({ problemId, userId });
   await Solution.deleteMany({ problemId, userId });
   await Share.deleteMany({ problemId, userId });
   await Sketch.deleteMany({ problemId, userId });
-  await Lesson.deleteMany({ problemId, userId });
   await Problem.deleteOne({ _id: problemId, userId });
-  await cleanupFiles([
-    ...attempts.flatMap(attemptStoredKeys),
-    ...[...solutions, ...lessons].flatMap((s) => (s.specKey ? [s.specKey] : [])),
-  ]);
+  await cleanupFiles([...attempts.flatMap(attemptStoredKeys), ...solutions.flatMap((s) => (s.specKey ? [s.specKey] : []))]);
 }
 
 /**

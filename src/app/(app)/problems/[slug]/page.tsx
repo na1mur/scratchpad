@@ -11,7 +11,6 @@ import { storageEnabled } from "@/lib/storage";
 import { toursSeenBy } from "@/lib/tours";
 import { getPageUser } from "@/lib/users";
 import { Attempt } from "@/models/Attempt";
-import { Lesson } from "@/models/Lesson";
 import { Solution } from "@/models/Solution";
 
 // A problem without a harness gets one built in after() while the learner reads (src/lib/harness/build.ts).
@@ -43,7 +42,6 @@ export default async function WorkspacePage({ params }: PageProps<"/problems/[sl
     .select({ version: 1, status: 1, createdAt: 1, verdict: 1 })
     .lean();
   const hasSolution = Boolean(await Solution.exists({ problemId: problem._id, userId, status: { $ne: "error" } }));
-  const hasLesson = Boolean(await Lesson.exists({ problemId: problem._id, userId, status: { $ne: "error" } }));
   const latest = attempts[0] ? await serializeAttempt(await getOwnedAttempt(userId, String(attempts[0]._id))) : null;
   const summaries = attempts.map(serializeAttemptSummary);
   // The detail load may have just marked a stale run as failed.
@@ -57,7 +55,6 @@ export default async function WorkspacePage({ params }: PageProps<"/problems/[sl
       aiModel={user.ai ? { provider: user.ai.provider, model: user.ai.model, hasKey: Boolean(user.ai.apiKey) } : null}
       uploadsEnabled={storageEnabled}
       hasSolution={hasSolution}
-      hasLesson={hasLesson}
       chatLayout={user.preferences?.chatLayout ?? "inline"}
       toursSeen={toursSeenBy(user)}
     />

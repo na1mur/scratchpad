@@ -2,7 +2,7 @@
 
 > This is the original build plan, kept for context. Parts of it are out of date: for example, uploads go through the
 > server to Cloudinary rather than through presigned URLs, and tracing is automatic (the code is instrumented) rather
-> than hand-written `trace()` calls. Later features (test case harness, Playground, Sketch, Breakdown, sharing, admin and more)
+> than hand-written `trace()` calls. Later features (test case harness, Playground, Sketch, sharing, admin and more)
 > are not described here. [`CLAUDE.md`](CLAUDE.md) is the living reference for how the app works today.
 
 ### 1. Product summary

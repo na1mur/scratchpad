@@ -11,8 +11,6 @@ one, and it is built from your own attempt.
 - **Playground.** Run your code against those cases in the browser (no server, no tokens) and step through it.
 - **Sketch.** A canvas of arrays, stacks, queues, linked lists, trees, graphs, pointers and notes for working a problem
   out visually. A drawing can be turned into a draft attempt.
-- **Breakdown.** For when you don't know where to start: a short slide deck on how to think about the problem, from the
-  statement to the idea that solves it, with animated pictures of the data and no code.
 - **Activity calendar.** Your profile shows a year of practice and your streaks.
 - **Sharing.** Make one attempt or one solution public by link; others can fork the problem into their own account.
   Unsharing kills the link.
@@ -49,7 +47,7 @@ Tavily and OpenRouter need no server configuration: those keys belong to each le
 
 ### Cloudinary (optional)
 
-Uploads (notebook photos, profile photos, sketch pictures, visualizations, breakdown slides) go to
+Uploads (notebook photos, profile photos, sketch pictures, visualizations) go to
 [Cloudinary](https://cloudinary.com) through the server, so there's no CORS rule to set. Create a free account and set
 `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET`. Files are stored with the `authenticated`
 delivery type, so they're only reachable through signed links the app generates. Without these three values uploads
@@ -110,8 +108,8 @@ An attempt runs through a pipeline on the server, and its progress streams to th
    return value with the expected one, not by the model.
 
 Every structured output is validated with Zod and retried with the validation errors. Every diagnosis and chat
-answer goes through a separate "does this reveal the solution?" check, and is rewritten if it does. Solutions and
-breakdowns are the deliberate exceptions: you ask for them, and they have their own pipelines.
+answer goes through a separate "does this reveal the solution?" check, and is rewritten if it does. Solutions are the
+one deliberate exception: you ask for them, and they have their own pipeline.
 
 **Test case harness.** When a problem is created (or its statement or link changes), a background job builds a hidden
 harness (`src/lib/harness/`): the function signature (from LeetCode's metadata when the link is LeetCode, otherwise
@@ -123,13 +121,6 @@ fall back to model-picked cases.
 **Solutions.** A solution is built from your newest analysed attempt, or from a request such as a different approach or
 a better complexity. Its code is run in the sandbox against the cases and re-solved once if the result disagrees, then
 narrated like an attempt. Solutions are versioned and stored, so opening one again costs nothing.
-
-**Breakdowns.** A breakdown teaches the newest finished solution's approach. Without one, it works out a solution the
-same way (in JavaScript, never shown and not saved as a solution). One more model call then writes the slides: the
-problem in plain words, why the obvious way falls short, the key idea, a pause to try it, the plan, animated
-walkthroughs, a prediction to make, why it works and the cost. Every picture is a state recorded from the real run; the
-model only picks which ones to show, and a slide whose text reads as code is sent back. The deck is stored like a
-visualization, one per problem. In the code it's called a lesson (`src/lib/ai/schemas/lesson.ts`).
 
 **Playground.** For Python, JavaScript and TypeScript problems with a ready harness, your code runs on the fixed cases
 in your browser: JS and TS in a Web Worker, Python in a warm [Pyodide](https://pyodide.org) worker. "Show steps" traces

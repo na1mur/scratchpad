@@ -114,7 +114,7 @@ export function abortable<T>(work: Promise<T>, signal: AbortSignal | undefined):
 
 const CALL_TIMEOUT_MS = 180_000;
 /** Plan: retry up to 2 times with the validation error appended. */
-export const MAX_FIX_RETRIES = 2;
+const MAX_FIX_RETRIES = 2;
 
 type Check<T, R> = (value: T) => { ok: true; value: R } | { ok: false; issues: string };
 

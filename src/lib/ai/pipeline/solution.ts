@@ -80,7 +80,7 @@ import { collapseSteps, describeSteps } from "./steps";
  * `source` (the linked page's text) and `reference` (known solutions from the web) only go to the solve
  * stage; later stages work from the plan.
  */
-export type SolveCtx = {
+type SolveCtx = {
   model: LanguageModel;
   meter: UsageMeter;
   language: string;
@@ -146,7 +146,7 @@ function sameResult(got: string | null, expectedJson: string): boolean {
 
 // Stage 1: solve ------------------------------------------------------------
 
-export type PlanContext = {
+type PlanContext = {
   attempt?: { version: number; pseudoCode: string; idea: string; spec: VizSpec | null };
   existing: { version: number; name: string; time: string; space: string }[];
   request: { kind: SolutionRequestKind; note: string };
@@ -277,7 +277,7 @@ function showPlan(ctx: SolveCtx, plan: SolutionPlan) {
 // Stage 2: trace ------------------------------------------------------------
 
 type CaseRun = AutoRun & { matched: boolean | undefined };
-export type Execution = { loops: Loop[]; runs: (CaseRun | null)[] };
+type Execution = { loops: Loop[]; runs: (CaseRun | null)[] };
 
 /** A case counts as matched unless its answer was checked and differs. */
 const ok = (r: CaseRun | null) => Boolean(r) && r!.matched !== false;
@@ -441,42 +441,6 @@ async function executeAll(ctx: SolveCtx, plan: SolutionPlan): Promise<Execution 
   return best;
 }
 
-/**
- * Stages 1 and 2: writes the solution and runs it on every case (`onRun` marks the switch). When even a
- * faithful run disagrees, the code itself may be wrong: it's re-solved once and whichever version gets
- * more cases right is kept. `exec` is null when nothing could run, so the cases are simulated.
- */
-export async function solveAndRun(
-  ctx: SolveCtx,
-  pc: PlanContext,
-  onRun: () => Promise<void>,
-): Promise<{ plan: SolutionPlan; exec: Execution | null }> {
-  let plan = await solve(ctx, pc);
-  showPlan(ctx, plan);
-
-  await onRun();
-  let exec = await executeAll(ctx, plan);
-  if (exec && !allMatched(exec)) {
-    ctx.progress.update((p) => void (p.reworking = true));
-    const retryPlan = await solve(
-      ctx,
-      pc,
-      ctx.harness
-        ? `Running your solution gave wrong answers; the expected answers have been checked:\n${mismatches(casesOf(plan), exec)}\nFix the solution.`
-        : `Running your solution gave results that differ from the ones you said it returns:\n${mismatches(casesOf(plan), exec)}\nFix the solution (or an expected value if that was wrong).`,
-    );
-    showPlan(ctx, retryPlan);
-    const retry = await executeAll(ctx, retryPlan);
-    if (retry && (allMatched(retry) || matchedShare(retry) > matchedShare(exec))) {
-      plan = retryPlan;
-      exec = retry;
-    }
-    // Back to the version being kept, whichever it is.
-    showPlan(ctx, plan);
-  }
-  return { plan, exec };
-}
-
 /** The cases a run got wrong, for retry prompts. */
 function mismatches(cases: PipelineCase[], e: Execution): string {
   return cases
@@ -559,34 +523,22 @@ function traceBySimulation(ctx: SolveCtx, plan: SolutionPlan, c: PipelineCase): 
   });
 }
 
-/**
- * Every case's walkthrough: narrated runs where execution worked, simulations elsewhere, in parallel.
- * `narrate: false` keeps a run's steps as recorded (for a caller that writes its own captions), and
- * `limit` traces only the first cases.
- */
-export function traceCases(
-  ctx: SolveCtx,
-  plan: SolutionPlan,
-  exec: Execution | null,
-  opts: { narrate?: boolean; limit?: number } = {},
-): Promise<CaseTrace[]> {
-  const { narrate: narrating = true, limit = MAX_CASES_HARD } = opts;
+/** Every case's walkthrough: narrated runs where execution worked, simulations elsewhere, in parallel. */
+function traceCases(ctx: SolveCtx, plan: SolutionPlan, exec: Execution | null): Promise<CaseTrace[]> {
   const finished = (t: CaseTrace) => {
     ctx.progress.updateCase(t.id, { state: "done", actual: t.actualOutput, steps: t.steps.length });
     return t;
   };
-  const traced = casesOf(plan).slice(0, limit);
-  ctx.progress.update((p) => {
-    if (p.cases && p.cases.length > traced.length) p.cases = p.cases.slice(0, traced.length);
-    // Cases the program couldn't trace are simulated by hand; with none traced, that's all of them.
-    if (!exec) {
+  // Cases the program couldn't trace are simulated by hand; with none traced, that's all of them.
+  if (!exec) {
+    ctx.progress.update((p) => {
       p.simulating = true;
       delete p.program;
       for (const c of p.cases ?? []) c.state = "simulating";
-    }
-  });
+    });
+  }
   return Promise.all(
-    traced.map(async (c, i): Promise<CaseTrace> => {
+    casesOf(plan).map(async (c, i): Promise<CaseTrace> => {
       const run = exec?.runs[i];
       if (!exec || !run) {
         ctx.progress.updateCase(c.id, { state: "simulating" });
@@ -594,13 +546,13 @@ export function traceCases(
       }
       const steps = prefixStepIds(c.id, collapseSteps(run.steps, exec.loops));
       const actualOutput = shownOutput(run.result);
-      ctx.progress.updateCase(c.id, { state: narrating ? "explaining" : "done", actual: actualOutput, steps: steps.length });
+      ctx.progress.updateCase(c.id, { state: "explaining", actual: actualOutput, steps: steps.length });
       return finished({
         ...c,
         mode: "execution",
         structures: run.structures,
         loops: exec.loops,
-        steps: narrating ? await narrate(ctx, plan, c, steps, run.result) : steps,
+        steps: await narrate(ctx, plan, c, steps, run.result),
         actualOutput,
         passed: run.matched,
       });
@@ -608,7 +560,7 @@ export function traceCases(
   );
 }
 
-export function assemble(plan: SolutionPlan, cases: CaseTrace[]): VizSpec {
+function assemble(plan: SolutionPlan, cases: CaseTrace[]): VizSpec {
   return {
     version: 2,
     summary: { understoodApproach: (plan.summary || plan.name).slice(0, 1200), verdict: "works" },
@@ -628,7 +580,7 @@ export function assemble(plan: SolutionPlan, cases: CaseTrace[]): VizSpec {
   };
 }
 
-export function toContent(plan: SolutionPlan, verified: boolean, reference: Reference | null): SolutionContent {
+function toContent(plan: SolutionPlan, verified: boolean, reference: Reference | null): SolutionContent {
   return solutionContentSchema.parse({
     name: plan.name.slice(0, 120) || "Solution",
     summary: plan.summary.slice(0, 1500),
@@ -732,7 +684,31 @@ export async function runSolutionPipeline(solutionId: string): Promise<void> {
     };
 
     await stage("solving");
-    const { plan, exec } = await solveAndRun(ctx, pc, () => stage("tracing"));
+    let plan = await solve(ctx, pc);
+    showPlan(ctx, plan);
+
+    await stage("tracing");
+    let exec = await executeAll(ctx, plan);
+    if (exec && !allMatched(exec)) {
+      // Even a faithful program disagrees, so the code itself may be wrong: ask for a fix once and keep
+      // whichever version gets more cases right.
+      progress.update((p) => void (p.reworking = true));
+      const retryPlan = await solve(
+        ctx,
+        pc,
+        ctx.harness
+          ? `Running your solution gave wrong answers; the expected answers have been checked:\n${mismatches(casesOf(plan), exec)}\nFix the solution.`
+          : `Running your solution gave results that differ from the ones you said it returns:\n${mismatches(casesOf(plan), exec)}\nFix the solution (or an expected value if that was wrong).`,
+      );
+      showPlan(ctx, retryPlan);
+      const retry = await executeAll(ctx, retryPlan);
+      if (retry && (allMatched(retry) || matchedShare(retry) > matchedShare(exec))) {
+        plan = retryPlan;
+        exec = retry;
+      }
+      // Back to the version being kept, whichever it is.
+      showPlan(ctx, plan);
+    }
 
     await stage("narrating");
     const cases = await traceCases(ctx, plan, exec);
